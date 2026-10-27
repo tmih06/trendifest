@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" id="theme-color" content="#ffffff" />
+    <meta
+      name="description"
+      content="Trendifest tracks Google Trends, forecasts where search interest is heading, and alerts you when a trend moves."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Trendifest — trend analysis and forecasting</title>
+    <script>
+      // Apply the stored theme before first paint so the interface never flashes
+      // the wrong surface color. Dark is the only class that changes tokens.
+      (() => {
+        try {
+          const stored = localStorage.getItem("trendifest-theme");
+          const dark =
+            stored === "dark" ||
+            (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+        } catch {
+          // Storage can be unavailable in private contexts; light remains the default.
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
