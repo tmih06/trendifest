@@ -22,7 +22,8 @@ open the root. The graph is a real force-directed canvas built with
 `react-force-graph-2d` and `d3-force`, not a positioned illustration.
 
 - **Explore** — drag to rearrange, scroll or pinch to zoom, and select any node to
-  inspect it. Selecting a pattern also zooms to its local cluster.
+  inspect it. Selection never moves the camera; use the focus control when you
+  want to zoom to the selected neighborhood.
 - **Search and source filters** — narrow the network to a node or an input source.
 - **Browse signals** — a keyboard and screen-reader route through all 36 nodes.
 - **Inspector** — meaning, connections, anatomy, evidence and a local tracking

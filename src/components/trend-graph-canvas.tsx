@@ -1,5 +1,5 @@
 import { forceCollide } from "d3-force";
-import { Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
+import { Crosshair, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { Button } from "@/components/ui/button";
@@ -251,40 +251,41 @@ export function TrendGraphCanvas({
     graph.d3ReheatSimulation();
   }, [layoutVersion]);
 
-  const fitView = useCallback(
+  const compact = size.width < 700 || size.height < 560;
+
+  const fitAll = useCallback(
+    (duration: number) => {
+      graphRef.current?.zoomToFit(duration, compact ? 44 : 92);
+    },
+    [compact],
+  );
+
+  /** Camera motion is explicit: clicking a node never moves the graph. */
+  const fitSelection = useCallback(
     (duration: number) => {
       const graph = graphRef.current;
       if (!graph) return;
-      const compact = size.width < 700 || size.height < 560;
       if (!selectedId) {
-        graph.zoomToFit(duration, compact ? 44 : 92);
+        fitAll(duration);
         return;
       }
       const focusIds = new Set([selectedId]);
-      const selected = GRAPH_NODES.find((node) => node.id === selectedId);
+      const node = GRAPH_NODES.find((candidate) => candidate.id === selectedId);
       for (const connection of connectionsFor(selectedId)) {
-        // A pattern's direct echo links span the whole network. Keep the local
-        // fit on its own concepts, sound and communities instead.
-        if (selected?.kind === "pattern" && connection.node.kind === "pattern") continue;
+        if (node?.kind === "pattern" && connection.node.kind === "pattern") continue;
         focusIds.add(connection.node.id);
       }
-      graph.zoomToFit(duration, compact ? 42 : 150, (node) => focusIds.has(String(node.id)));
+      graph.zoomToFit(duration, compact ? 42 : 150, (target) => focusIds.has(String(target.id)));
     },
-    [selectedId, size.height, size.width],
+    [compact, fitAll, selectedId],
   );
-
-  useEffect(() => {
-    if (!size.width || !size.height) return;
-    const timer = window.setTimeout(() => fitView(reducedMotion ? 0 : selectedId ? 450 : 400), 160);
-    return () => window.clearTimeout(timer);
-  }, [fitView, reducedMotion, selectedId, size.width, size.height]);
 
   const finishLayout = useCallback(() => {
     if (shouldFit.current) {
       shouldFit.current = false;
-      fitView(reducedMotion ? 0 : 600);
+      fitAll(reducedMotion ? 0 : 300);
     }
-  }, [fitView, reducedMotion]);
+  }, [fitAll, reducedMotion]);
 
   const colorFor = useCallback(
     (kind: GraphNode["kind"]) => {
@@ -352,6 +353,7 @@ export function TrendGraphCanvas({
    * the force graph zooms. Colliding labels are skipped except for the active
    * selection.
    */
+  const drawLabelsRef = useRef<() => void>(() => {});
   const drawLabels = useCallback(() => {
     const graph = graphRef.current;
     const canvas = labelCanvasRef.current;
@@ -478,15 +480,21 @@ export function TrendGraphCanvas({
     }
   }, [activeIds, hoveredId, palette, selectedId, showContextLabels, size.height, size.width]);
 
+  drawLabelsRef.current = drawLabels;
+
+  /**
+   * Draw labels after the engine paints a frame, and once after any state-only
+   * change (search, selection, theme). A stable frame callback reads the latest
+   * closure through the ref so React updates cannot leave stale labels behind.
+   */
+  const paintLabelFrame = useCallback(() => {
+    drawLabelsRef.current();
+  }, []);
+
   useEffect(() => {
-    let frame = 0;
-    const tick = () => {
-      drawLabels();
-      frame = window.requestAnimationFrame(tick);
-    };
-    frame = window.requestAnimationFrame(tick);
+    const frame = window.requestAnimationFrame(paintLabelFrame);
     return () => window.cancelAnimationFrame(frame);
-  }, [drawLabels]);
+  }, [drawLabels, paintLabelFrame]);
 
   const linkColor = useCallback(
     (raw: object) => {
@@ -556,6 +564,7 @@ export function TrendGraphCanvas({
             onRenderFramePre={() => {
               frameNodes.current = [];
             }}
+            onRenderFramePost={paintLabelFrame}
             onNodeHover={(raw) => setHoveredId(raw ? String(raw.id) : null)}
             onNodeClick={(raw) => {
               const node = raw as NodePoint;
@@ -563,10 +572,10 @@ export function TrendGraphCanvas({
             }}
             onBackgroundClick={() => onSelect(null)}
             onEngineStop={finishLayout}
-            cooldownTicks={reducedMotion ? 0 : 110}
+            cooldownTicks={reducedMotion ? 0 : 80}
             warmupTicks={reducedMotion ? 80 : 24}
-            d3AlphaDecay={0.035}
-            d3VelocityDecay={0.34}
+            d3AlphaDecay={0.045}
+            d3VelocityDecay={0.35}
             minZoom={0.35}
             maxZoom={2.5}
             enableNodeDrag
@@ -607,10 +616,21 @@ export function TrendGraphCanvas({
           size="icon-sm"
           aria-label="Fit graph to view"
           title="Fit graph to view"
-          onClick={() => graphRef.current?.zoomToFit(reducedMotion ? 0 : 350, 92)}
+          onClick={() => fitAll(reducedMotion ? 0 : 300)}
         >
           <Maximize2 />
         </Button>
+        {selectedId && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Focus selected node"
+            title="Focus selected node"
+            onClick={() => fitSelection(reducedMotion ? 0 : 350)}
+          >
+            <Crosshair />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-sm"
