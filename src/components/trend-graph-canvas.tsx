@@ -298,6 +298,17 @@ export function TrendGraphCanvas({
     raf: number;
     lastFrame: number;
   } | null>(null);
+  const cameraAnimation = useRef<{
+    raf: number;
+    start: number;
+    fromX: number;
+    fromY: number;
+    fromScale: number;
+    toX: number;
+    toY: number;
+    toScale: number;
+    duration: number;
+  } | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
   const cursorRef = useRef("");
   const shouldFit = useRef(true);
@@ -311,6 +322,66 @@ export function TrendGraphCanvas({
   const [dragging, setDragging] = useState(false);
   // Restarting the layout reseeds leaf arrangements while hubs keep their ring.
   const graphData = useMemo(() => makeGraphData(layoutVersion), [layoutVersion]);
+
+  const stopWheelZoom = useCallback(() => {
+    const state = wheelZoom.current;
+    if (state?.raf) window.cancelAnimationFrame(state.raf);
+    wheelZoom.current = null;
+  }, []);
+
+  const stopCameraAnimation = useCallback(() => {
+    const animation = cameraAnimation.current;
+    if (animation?.raf) window.cancelAnimationFrame(animation.raf);
+    cameraAnimation.current = null;
+  }, []);
+
+  const animateCameraTo = useCallback(
+    (x: number, y: number, scale: number, duration = 600) => {
+      const graph = graphRef.current;
+      if (!graph) return;
+      stopWheelZoom();
+      stopCameraAnimation();
+      const center = graph.centerAt();
+      const animation = {
+        raf: 0,
+        start: performance.now(),
+        fromX: center.x,
+        fromY: center.y,
+        fromScale: graph.zoom() || 1,
+        toX: x,
+        toY: y,
+        toScale: scale,
+        duration,
+      };
+      cameraAnimation.current = animation;
+
+      const tick = (now: number) => {
+        if (cameraAnimation.current !== animation) return;
+        const progress = Math.min(1, (now - animation.start) / animation.duration);
+        const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
+        const nextScale = animation.fromScale + (animation.toScale - animation.fromScale) * eased;
+        const nextX = animation.fromX + (animation.toX - animation.fromX) * eased;
+        const nextY = animation.fromY + (animation.toY - animation.fromY) * eased;
+        graph.zoom(nextScale, 0);
+        graph.centerAt(nextX, nextY, 0);
+        if (progress < 1) {
+          animation.raf = window.requestAnimationFrame(tick);
+        } else {
+          cameraAnimation.current = null;
+        }
+      };
+      animation.raf = window.requestAnimationFrame(tick);
+    },
+    [stopCameraAnimation, stopWheelZoom],
+  );
+
+  useEffect(
+    () => () => {
+      stopCameraAnimation();
+      stopWheelZoom();
+    },
+    [stopCameraAnimation, stopWheelZoom],
+  );
 
   const getLabelBitmap = useCallback(
     (label: string, isPattern: boolean, color: string, background: string, dpr: number) => {
@@ -411,6 +482,7 @@ export function TrendGraphCanvas({
       const graph = graphRef.current;
       if (!graph) return;
       event.preventDefault();
+      stopCameraAnimation();
 
       const rect = container.getBoundingClientRect();
       const screenX = event.clientX - rect.left;
@@ -461,7 +533,7 @@ export function TrendGraphCanvas({
       if (state?.raf) window.cancelAnimationFrame(state.raf);
       wheelZoom.current = null;
     };
-  }, []);
+  }, [stopCameraAnimation]);
 
   useEffect(() => {
     const graph = graphRef.current;
@@ -507,30 +579,76 @@ export function TrendGraphCanvas({
 
   const fitAll = useCallback(
     (duration: number) => {
+      stopCameraAnimation();
       graphRef.current?.zoomToFit(duration, compact ? 44 : 92);
     },
-    [compact],
+    [compact, stopCameraAnimation],
   );
 
-  /** Camera motion is explicit: clicking a node never moves the graph. */
-  const fitSelection = useCallback(
+  /**
+   * Ease the camera to a box containing the selected node and its direct
+   * relationships. Mobile subtracts the inspector overlay from the usable
+   * viewport so the group lands above it.
+   */
+  const fitSelectionCamera = useCallback(
     (duration: number) => {
+      if (!selectedId || !size.width || !size.height) return;
       const graph = graphRef.current;
       if (!graph) return;
-      if (!selectedId) {
-        fitAll(duration);
-        return;
-      }
-      const focusIds = new Set([selectedId]);
-      const node = GRAPH_NODES.find((candidate) => candidate.id === selectedId);
+      const byId = new Map(graphData.nodes.map((node) => [node.id, node]));
+      const selected = byId.get(selectedId);
+      if (!selected) return;
+
+      const focus = [selected];
+      const seen = new Set([selected.id]);
       for (const connection of connectionsFor(selectedId)) {
-        if (node?.kind === "pattern" && connection.node.kind === "pattern") continue;
-        focusIds.add(connection.node.id);
+        if (selected.kind === "pattern" && connection.node.kind === "pattern") continue;
+        const node = byId.get(connection.node.id);
+        if (node && !seen.has(node.id)) {
+          seen.add(node.id);
+          focus.push(node);
+        }
       }
-      graph.zoomToFit(duration, compact ? 42 : 150, (target) => focusIds.has(String(target.id)));
+
+      let minX = Number.POSITIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      let maxY = Number.NEGATIVE_INFINITY;
+      for (const node of focus) {
+        if (typeof node.x !== "number" || typeof node.y !== "number") continue;
+        const radius = (node.radius ?? 5) + 8;
+        minX = Math.min(minX, node.x - radius);
+        minY = Math.min(minY, node.y - radius);
+        maxX = Math.max(maxX, node.x + radius);
+        maxY = Math.max(maxY, node.y + radius);
+      }
+      if (!Number.isFinite(minX)) return;
+
+      const mobile = size.width < 1024;
+      const bottomInset = mobile
+        ? Math.min(Math.round(window.innerHeight * 0.45), Math.round(size.height * 0.6))
+        : 0;
+      const padding = compact ? 42 : 92;
+      const availableWidth = Math.max(1, size.width - padding * 2);
+      const availableHeight = Math.max(1, size.height - bottomInset - padding * 2);
+      const bboxWidth = Math.max(1, maxX - minX);
+      const bboxHeight = Math.max(1, maxY - minY);
+      const scale = Math.min(
+        2.5,
+        Math.max(0.35, Math.min(availableWidth / bboxWidth, availableHeight / bboxHeight)),
+      );
+      const targetX = (minX + maxX) / 2;
+      const targetScreenY = (size.height - bottomInset) / 2;
+      const targetY = (minY + maxY) / 2 + (size.height / 2 - targetScreenY) / scale;
+      animateCameraTo(targetX, targetY, scale, duration);
     },
-    [compact, fitAll, selectedId],
+    [animateCameraTo, compact, graphData, selectedId, size.height, size.width],
   );
+
+  useEffect(() => {
+    if (!selectedId) return;
+    fitSelectionCamera(620);
+  }, [fitSelectionCamera, selectedId]);
 
   const finishLayout = useCallback(() => {
     if (shouldFit.current) {
@@ -548,12 +666,6 @@ export function TrendGraphCanvas({
     if (hoveredIdRef.current === id) return;
     hoveredIdRef.current = id;
     setHoveredId(id);
-  }, []);
-
-  const stopWheelZoom = useCallback(() => {
-    const state = wheelZoom.current;
-    if (state?.raf) window.cancelAnimationFrame(state.raf);
-    wheelZoom.current = null;
   }, []);
 
   const setGraphCursor = useCallback((cursor: string) => {
@@ -639,6 +751,7 @@ export function TrendGraphCanvas({
       return;
     }
     stopWheelZoom();
+    stopCameraAnimation();
     const hitId = findHitAt(event.clientX, event.clientY);
     pointerStart.current = {
       x: event.clientX,
@@ -1052,6 +1165,7 @@ export function TrendGraphCanvas({
 
   function zoomBy(factor: number) {
     stopWheelZoom();
+    stopCameraAnimation();
     const graph = graphRef.current;
     if (!graph) return;
     graph.zoom(graph.zoom() * factor, reducedMotion ? 0 : 250);
@@ -1059,6 +1173,7 @@ export function TrendGraphCanvas({
 
   function resetLayout() {
     stopWheelZoom();
+    stopCameraAnimation();
     shouldFit.current = true;
     setLayoutVersion((version) => version + 1);
   }
@@ -1144,7 +1259,7 @@ export function TrendGraphCanvas({
             aria-label="Focus selected node"
             title="Focus selected node"
             className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
-            onClick={() => fitSelection(reducedMotion ? 0 : 350)}
+            onClick={() => fitSelectionCamera(reducedMotion ? 0 : 450)}
           >
             <Crosshair />
           </Button>
