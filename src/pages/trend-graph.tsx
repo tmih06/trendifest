@@ -782,7 +782,7 @@ export function TrendGraphPrototype() {
             />
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="relative flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_300px]">
             <section
               aria-label="Interactive relationship graph"
               aria-describedby="graph-description"
@@ -836,7 +836,7 @@ export function TrendGraphPrototype() {
               className={cn(
                 "min-h-0 overflow-hidden bg-muted lg:flex lg:flex-col lg:border-l lg:border-border",
                 selected
-                  ? "flex max-h-[45dvh] shrink-0 flex-col border-t border-border lg:max-h-none"
+                  ? "max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-20 max-lg:flex max-lg:h-[45dvh] max-lg:flex-col max-lg:border-t max-lg:border-border max-lg:shadow-[0_-10px_30px_rgb(0_0_0_/_0.35)]"
                   : "hidden lg:flex",
               )}
             >

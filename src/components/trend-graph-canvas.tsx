@@ -6,9 +6,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { flushSync } from "react-dom";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { Button } from "@/components/ui/button";
 import type { Theme } from "@/hooks/use-app";
@@ -40,6 +40,55 @@ interface LabelHitArea {
   top: number;
   right: number;
   bottom: number;
+}
+
+interface LabelBitmap {
+  canvas: HTMLCanvasElement;
+  width: number;
+  height: number;
+  textWidth: number;
+}
+
+const LABEL_FONT_FAMILY = '"Inter Variable", "Inter", sans-serif';
+
+/**
+ * Labels repeat every frame. Rasterize the halo and glyphs once per role,
+ * color and DPR; the frame loop then only draws the bitmap.
+ */
+function makeLabelBitmap(
+  label: string,
+  isPattern: boolean,
+  color: string,
+  background: string,
+  dpr: number,
+): LabelBitmap {
+  const fontSize = isPattern ? 12 : 11;
+  const font = `${isPattern ? 500 : 400} ${fontSize}px ${LABEL_FONT_FAMILY}`;
+  const measure = document.createElement("canvas").getContext("2d");
+  if (!measure) {
+    return { canvas: document.createElement("canvas"), width: 0, height: 0, textWidth: 0 };
+  }
+  measure.font = font;
+  const textWidth = measure.measureText(label).width;
+  const width = Math.ceil(textWidth + 8);
+  const height = Math.ceil(fontSize + 8);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.ceil(width * dpr));
+  canvas.height = Math.max(1, Math.ceil(height * dpr));
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.scale(dpr, dpr);
+    context.font = font;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.lineWidth = 3;
+    context.lineJoin = "round";
+    context.strokeStyle = background;
+    context.strokeText(label, width / 2, height / 2);
+    context.fillStyle = color;
+    context.fillText(label, width / 2, height / 2);
+  }
+  return { canvas, width, height, textWidth };
 }
 
 const INTERACTIVE_TARGET = "button, a, input, select, textarea, [role='dialog']";
@@ -223,11 +272,22 @@ export function TrendGraphCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const frameNodes = useRef<NodePoint[]>([]);
   const labelHitAreas = useRef<LabelHitArea[]>([]);
+  const labelCache = useRef(new Map<string, LabelBitmap>());
+  const labelCacheDpr = useRef(0);
   const pointerStart = useRef<{
     x: number;
     y: number;
     hitId: string | null;
     pointerType: string;
+  } | null>(null);
+  const dragNode = useRef<{
+    node: NodePoint;
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+    active: boolean;
+    initialFx?: number;
+    initialFy?: number;
   } | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
   const cursorRef = useRef("");
@@ -237,23 +297,35 @@ export function TrendGraphCanvas({
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [palette, setPalette] = useState(readPalette);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  // Bumping the epoch re-renders the inline pointer-area callback, which is
-  // ForceGraph's only public hook for flushing its throttled hit canvas.
-  const [, bumpHitAreaEpoch] = useState(0);
-  const [, setFontReady] = useState(0);
+  const [, setFontReady] = useState(false);
+  const [hasSettled, setHasSettled] = useState(false);
+  const [dragging, setDragging] = useState(false);
   // Restarting the layout reseeds leaf arrangements while hubs keep their ring.
   const graphData = useMemo(() => makeGraphData(layoutVersion), [layoutVersion]);
+
+  const getLabelBitmap = useCallback(
+    (label: string, isPattern: boolean, color: string, background: string, dpr: number) => {
+      const key = `${isPattern ? 1 : 0}|${dpr}|${color}|${background}|${label}`;
+      const cached = labelCache.current.get(key);
+      if (cached) return cached;
+      const bitmap = makeLabelBitmap(label, isPattern, color, background, dpr);
+      labelCache.current.set(key, bitmap);
+      return bitmap;
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
     void document.fonts?.ready
       .then(() => {
-        // Canvas label widths are measured with the loaded font; force one more
-        // graph frame so labels cannot keep fallback-font placement.
-        if (active) setFontReady((epoch) => epoch + 1);
+        if (!active) return;
+        // Font metrics and glyphs changed; rebuild every bitmap once.
+        labelCache.current.clear();
+        setFontReady(true);
       })
       .catch(() => {
-        // The graph still renders with the fallback stack if font loading fails.
+        if (active) setFontReady(true);
       });
     return () => {
       active = false;
@@ -264,6 +336,10 @@ export function TrendGraphCanvas({
     const frame = window.requestAnimationFrame(() => setPalette(readPalette()));
     return () => window.cancelAnimationFrame(frame);
   }, [theme]);
+
+  useEffect(() => {
+    labelCache.current.clear();
+  }, [palette]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -336,19 +412,14 @@ export function TrendGraphCanvas({
   const finishLayout = useCallback(() => {
     if (shouldFit.current) {
       shouldFit.current = false;
-      fitAll(reducedMotion ? 0 : 300);
+      fitAll(0);
     }
-  }, [fitAll, reducedMotion]);
+  }, [fitAll]);
 
-  /**
-   * ForceGraph's drag hit canvas is throttled to 800 ms. Re-rendering with a
-   * fresh pointer-area callback is the public way to flush it. Do that at
-   * pointer-down so a drag starts against the nodes currently on screen;
-   * clicks and hover use our own current-coordinate hit testing.
-   */
-  const refreshHitAreas = useCallback(() => {
-    bumpHitAreaEpoch((epoch) => epoch + 1);
-  }, []);
+  const handleEngineStop = useCallback(() => {
+    finishLayout();
+    setHasSettled(true);
+  }, [finishLayout]);
 
   const updateHovered = useCallback((id: string | null) => {
     if (hoveredIdRef.current === id) return;
@@ -401,10 +472,38 @@ export function TrendGraphCanvas({
     [graphData],
   );
 
-  function handlePointerDownCapture(event: ReactPointerEvent<HTMLDivElement>) {
+  const toGraphPoint = useCallback((clientX: number, clientY: number) => {
+    const container = containerRef.current;
+    const graph = graphRef.current;
+    if (!container || !graph) return null;
+    const rect = container.getBoundingClientRect();
+    return graph.screen2GraphCoords(clientX - rect.left, clientY - rect.top);
+  }, []);
+
+  const finishNodeDrag = useCallback(() => {
+    const drag = dragNode.current;
+    if (!drag) return false;
+    dragNode.current = null;
+    if (!drag.active) return false;
+    const { node } = drag;
+    setDragging(false);
+    // Pattern hubs are seeded as fixed points; free leaves return to the
+    // simulation. This mirrors ForceGraph's own drag release semantics.
+    if (drag.initialFx === undefined) node.fx = undefined;
+    else node.fx = node.x;
+    if (drag.initialFy === undefined) node.fy = undefined;
+    else node.fy = node.y;
+    graphRef.current?.d3ReheatSimulation();
+    return true;
+  }, []);
+
+  function handleMouseDownCapture(event: ReactMouseEvent<HTMLDivElement>) {
     if (event.button !== 0 || !isGraphSurface(event.target)) return;
-    // Flush before ForceGraph's mousedown/touchstart chooses its drag subject.
-    flushSync(refreshHitAreas);
+    if (findHitAt(event.clientX, event.clientY)) {
+      // A node drag owns this gesture; keep d3-zoom from panning the camera.
+      event.preventDefault();
+      event.stopPropagation();
+    }
   }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -412,12 +511,36 @@ export function TrendGraphCanvas({
       pointerStart.current = null;
       return;
     }
+    const hitId = findHitAt(event.clientX, event.clientY);
     pointerStart.current = {
       x: event.clientX,
       y: event.clientY,
-      hitId: findHitAt(event.clientX, event.clientY),
+      hitId,
       pointerType: event.pointerType,
     };
+
+    // Mouse/pen node drags are handled directly against live screen geometry.
+    // Touch keeps d3-zoom so pinch and two-finger pan still work.
+    if (event.pointerType !== "touch" && hitId) {
+      const node = graphData.nodes.find((candidate) => candidate.id === hitId);
+      const point = toGraphPoint(event.clientX, event.clientY);
+      if (node && point && typeof node.x === "number" && typeof node.y === "number") {
+        dragNode.current = {
+          node,
+          pointerId: event.pointerId,
+          offsetX: node.x - point.x,
+          offsetY: node.y - point.y,
+          active: false,
+          initialFx: node.fx,
+          initialFy: node.fy,
+        };
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is an enhancement; the drag still works without it.
+        }
+      }
+    }
     setGraphCursor("grabbing");
   }
 
@@ -430,10 +553,34 @@ export function TrendGraphCanvas({
     const start = pointerStart.current;
     const threshold = event.pointerType === "touch" ? 10 : 5;
     if (start) {
+      // A background press is already a camera pan; skip hit testing until it
+      // ends. Only node/label drags need pointer-follow work.
+      if (!start.hitId) {
+        updateHovered(null);
+        setGraphCursor("grabbing");
+        return;
+      }
       const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y) > threshold;
       if (moved) {
-        // A pan or node drag owns the gesture. Resolving nodes on every move
-        // would churn labels and React state under the pointer.
+        const drag = dragNode.current;
+        if (drag && drag.pointerId === event.pointerId) {
+          const point = toGraphPoint(event.clientX, event.clientY);
+          if (point) {
+            if (!drag.active) {
+              drag.active = true;
+              setDragging(true);
+            }
+            drag.node.x = point.x + drag.offsetX;
+            drag.node.y = point.y + drag.offsetY;
+            drag.node.fx = drag.node.x;
+            drag.node.fy = drag.node.y;
+          }
+          updateHovered(null);
+          setGraphCursor("grabbing");
+          return;
+        }
+        // A camera pan owns the gesture. Resolving nodes on every move would
+        // churn labels and React state under the pointer.
         updateHovered(null);
         setGraphCursor("grabbing");
         return;
@@ -447,6 +594,13 @@ export function TrendGraphCanvas({
   function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     const start = pointerStart.current;
     pointerStart.current = null;
+    const dragged = finishNodeDrag();
+    if (dragged) {
+      const hitId = findHitAt(event.clientX, event.clientY);
+      updateHovered(hitId);
+      setGraphCursor(hitId ? "pointer" : "grab");
+      return;
+    }
     if (!start) return;
     if (!isGraphSurface(event.target)) {
       setGraphCursor("");
@@ -471,27 +625,29 @@ export function TrendGraphCanvas({
   }
 
   function handlePointerCancel() {
+    finishNodeDrag();
     pointerStart.current = null;
     setGraphCursor("");
   }
 
   useEffect(() => {
     function releaseOutside(event: PointerEvent) {
+      // Pointer capture normally routes the release back here; this is the
+      // fallback for browsers that drop it, and for background pans.
+      finishNodeDrag();
       const target = event.target;
       if (target instanceof Node && containerRef.current?.contains(target)) return;
       pointerStart.current = null;
       updateHovered(null);
       setGraphCursor("");
     }
-    // Drags can end over the inspector; ForceGraph listens on window, so the
-    // local pointerup never arrives. Clear the click candidate there too.
     window.addEventListener("pointerup", releaseOutside);
     window.addEventListener("pointercancel", releaseOutside);
     return () => {
       window.removeEventListener("pointerup", releaseOutside);
       window.removeEventListener("pointercancel", releaseOutside);
     };
-  }, [setGraphCursor, updateHovered]);
+  }, [finishNodeDrag, setGraphCursor, updateHovered]);
 
   const colorFor = useCallback(
     (kind: GraphNode["kind"]) => {
@@ -585,6 +741,10 @@ export function TrendGraphCanvas({
         return;
       }
       const dpr = window.devicePixelRatio || 1;
+      if (labelCacheDpr.current !== dpr) {
+        labelCache.current.clear();
+        labelCacheDpr.current = dpr;
+      }
       context.save();
       // The graph paints in its own zoom transform. Labels are positioned in
       // screen space, so draw them with the same CSS-pixel transform the graph
@@ -632,10 +792,9 @@ export function TrendGraphCanvas({
         const selected = node.id === selectedId;
         const hovered = node.id === hoveredId;
         const fontSize = isPattern ? 12 : 11;
-        context.font = `${isPattern ? 500 : 400} ${fontSize}px "Inter Variable", "Inter", sans-serif`;
-        context.textBaseline = "middle";
-        context.textAlign = "center";
-        const textWidth = context.measureText(node.label).width;
+        const labelColor = selected || hovered ? palette.foreground : palette.muted;
+        const bitmap = getLabelBitmap(node.label, isPattern, labelColor, palette.background, dpr);
+        const textWidth = bitmap.textWidth;
         let labelX = point.x;
         let labelY = point.y + node.radius * zoom + 12;
 
@@ -699,18 +858,24 @@ export function TrendGraphCanvas({
           right: right + 2,
           bottom: bottom + 2,
         });
-        context.lineWidth = 3;
-        context.strokeStyle = palette.background;
-        context.lineJoin = "round";
-        context.strokeText(node.label, labelX, labelY);
-        context.fillStyle = selected || hovered ? palette.foreground : palette.muted;
-        context.fillText(node.label, labelX, labelY);
+        const drawX = Math.round((labelX - bitmap.width / 2) * dpr) / dpr;
+        const drawY = Math.round((labelY - bitmap.height / 2) * dpr) / dpr;
+        context.drawImage(bitmap.canvas, drawX, drawY, bitmap.width, bitmap.height);
         placed.push({ left, top, right, bottom });
       }
       labelHitAreas.current = hitAreas;
       context.restore();
     },
-    [activeIds, hoveredId, palette, selectedId, showContextLabels, size.height, size.width],
+    [
+      activeIds,
+      getLabelBitmap,
+      hoveredId,
+      palette,
+      selectedId,
+      showContextLabels,
+      size.height,
+      size.width,
+    ],
   );
 
   drawLabelsRef.current = drawLabels;
@@ -770,7 +935,7 @@ export function TrendGraphCanvas({
     <div
       ref={containerRef}
       className="absolute inset-0"
-      onPointerDownCapture={handlePointerDownCapture}
+      onMouseDownCapture={handleMouseDownCapture}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -786,39 +951,23 @@ export function TrendGraphCanvas({
             graphData={graphData}
             backgroundColor="rgba(0,0,0,0)"
             nodeCanvasObject={paintNodeAndLabels}
-            nodePointerAreaPaint={(raw, color, ctx) => {
-              const node = raw as NodePoint;
-              ctx.beginPath();
-              ctx.arc(node.x ?? 0, node.y ?? 0, node.radius + 9, 0, Math.PI * 2);
-              ctx.fillStyle = color;
-              ctx.fill();
-              // Labels are legitimate grab targets too. Convert the painted
-              // label box back into graph space for the shadow hit canvas.
-              const label = labelHitAreas.current.find((area) => area.id === node.id);
-              const graph = graphRef.current;
-              if (label && graph) {
-                const start = graph.screen2GraphCoords(label.left, label.top);
-                const end = graph.screen2GraphCoords(label.right, label.bottom);
-                ctx.fillRect(start.x, start.y, end.x - start.x, end.y - start.y);
-              }
-            }}
-            nodeLabel={() => ""}
             linkColor={linkColor}
             linkWidth={linkWidth}
             linkCurvature={(raw) => ((raw as LinkPoint).relation === "echoes" ? 0.14 : 0)}
-            linkHoverPrecision={8}
             onRenderFramePre={() => {
               frameNodes.current = [];
             }}
             onRenderFramePost={paintLabelFrame}
-            onEngineStop={finishLayout}
-            cooldownTicks={reducedMotion ? 0 : 80}
-            warmupTicks={reducedMotion ? 80 : 24}
+            onEngineStop={handleEngineStop}
+            cooldownTicks={reducedMotion || !hasSettled ? 0 : 80}
+            warmupTicks={reducedMotion ? 80 : 100}
             d3AlphaDecay={0.045}
             d3VelocityDecay={0.35}
             minZoom={0.35}
             maxZoom={2.5}
-            enableNodeDrag
+            autoPauseRedraw={!dragging}
+            enablePointerInteraction={false}
+            enableNodeDrag={false}
             enablePanInteraction
             enableZoomInteraction
           />
