@@ -467,7 +467,7 @@ export function TrendGraphCanvas({
     const graph = graphRef.current;
     if (!graph) return;
     const charge = graph.d3Force("charge") as { strength?: (value: number) => void } | undefined;
-    charge?.strength?.(-120);
+    charge?.strength?.(-260);
     const link = graph.d3Force("link") as
       | {
           distance?: (value: (link: LinkPoint) => number) => void;
@@ -475,13 +475,13 @@ export function TrendGraphCanvas({
         }
       | undefined;
     link?.distance?.((edge) =>
-      edge.relation === "spreads in" ? 108 : edge.relation === "uses" ? 86 : 74,
+      edge.relation === "spreads in" ? 152 : edge.relation === "uses" ? 126 : 104,
     );
-    link?.strength?.(0.18);
+    link?.strength?.(0.07);
     graph.d3Force(
       "collide",
       forceCollide<NodePoint>(
-        (node) => (node.radius ?? 6) + (node.kind === "pattern" ? 26 : 14),
+        (node) => (node.radius ?? 6) + (node.kind === "pattern" ? 34 : 18),
       ) as never,
     );
     // The six patterns are elastic landmarks, not fixed points. These weak
@@ -490,16 +490,16 @@ export function TrendGraphCanvas({
     graph.d3Force(
       "x",
       forceX<NodePoint>((node) => HUB_POSITIONS[node.id]?.x ?? 0).strength((node) =>
-        node.kind === "pattern" ? 0.06 : 0,
+        node.kind === "pattern" ? 0.04 : 0,
       ) as never,
     );
     graph.d3Force(
       "y",
       forceY<NodePoint>((node) => HUB_POSITIONS[node.id]?.y ?? 0).strength((node) =>
-        node.kind === "pattern" ? 0.06 : 0,
+        node.kind === "pattern" ? 0.04 : 0,
       ) as never,
     );
-    graph.d3Force("center", forceCenter<NodePoint>(0, 0).strength(0.03) as never);
+    graph.d3Force("center", forceCenter<NodePoint>(0, 0).strength(0.006) as never);
     graph.d3ReheatSimulation();
   }, [layoutVersion]);
 
@@ -1091,8 +1091,8 @@ export function TrendGraphCanvas({
             }}
             onRenderFramePost={paintLabelFrame}
             onEngineStop={handleEngineStop}
-            cooldownTicks={reducedMotion || !hasSettled ? 0 : 220}
-            warmupTicks={reducedMotion ? 80 : 120}
+            cooldownTicks={reducedMotion || !hasSettled ? 0 : 240}
+            warmupTicks={reducedMotion ? 80 : 180}
             d3AlphaDecay={0.018}
             d3VelocityDecay={0.32}
             minZoom={0.35}
