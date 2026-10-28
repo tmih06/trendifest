@@ -5,7 +5,7 @@
 
 export type RangeKey = "3m" | "12m" | "5y";
 export type TrendDirection = "up" | "down" | "flat";
-export type DataSource = "google" | "simulated";
+export type DataSource = "google";
 export type Confidence = "high" | "medium" | "low";
 
 export interface ForecastPoint {
@@ -147,6 +147,8 @@ export interface TrendingResult {
   source: DataSource;
   fetchedAt: string;
   items: TrendingItem[];
+  /** True when the feed is the last successful snapshot, not a fresh request. */
+  stale?: boolean;
   notice?: string;
 }
 

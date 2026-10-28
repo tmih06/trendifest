@@ -2,8 +2,6 @@ import type {
   Confidence,
   Forecast,
   ForecastPoint,
-  RangeKey,
-  SeriesPoint,
   TermInsight,
   TrendDirection,
 } from "../shared/types.ts";
@@ -266,72 +264,4 @@ export function buildInsight(
     related: [],
     regions: [],
   };
-}
-
-function hashSeed(input: string) {
-  let hash = 2166136261;
-  for (let index = 0; index < input.length; index += 1) {
-    hash ^= input.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function seededRandom(seed: number) {
-  let state = seed || 1;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let value = Math.imul(state ^ (state >>> 15), 1 | state);
-    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/**
- * Deterministic sample data used only when Google Trends cannot be reached.
- * The API marks it `simulated`, and the UI labels it, so it can never be
- * mistaken for live search interest.
- */
-export function simulateTrend(
-  terms: string[],
-  range: RangeKey,
-  now = Date.now(),
-): { points: SeriesPoint[]; resolution: "day" | "week" } {
-  const resolution = range === "3m" ? "day" : "week";
-  const count = range === "3m" ? 90 : range === "12m" ? 52 : 260;
-  const stepSeconds = resolution === "day" ? 86400 : 7 * 86400;
-  const end = Math.floor(now / 1000 / stepSeconds) * stepSeconds;
-
-  const series = terms.map((term, termIndex) => {
-    const random = seededRandom(hashSeed(`${term}:${termIndex}:${range}`));
-    const phase = random() * Math.PI * 2;
-    const base = 24 + random() * 34;
-    const slope = (random() - 0.35) * 0.22;
-    const seasonAmplitude = 4 + random() * 8;
-    const spikeIndex = Math.floor(count * (0.55 + random() * 0.3));
-    const spikeHeight = 8 + random() * 10;
-    const noise = Array.from({ length: count }, () => (random() - 0.5) * 9);
-
-    return Array.from({ length: count }, (_, index) => {
-      const seasonal = Math.sin(index / (range === "5y" ? 18 : 7) + phase) * seasonAmplitude;
-      const distance = Math.abs(index - spikeIndex);
-      const spike = distance < 3 ? (3 - distance) * spikeHeight : 0;
-      return (
-        Math.round(
-          clampInterest(base + slope * index + seasonal + (noise[index] ?? 0) + spike) * 10,
-        ) / 10
-      );
-    });
-  });
-
-  const points: SeriesPoint[] = Array.from({ length: count }, (_, index) => {
-    const time = end - (count - 1 - index) * stepSeconds;
-    return {
-      time,
-      date: new Date(time * 1000).toISOString(),
-      values: series.map((values) => values[index] ?? 0),
-    };
-  });
-
-  return { points, resolution };
 }

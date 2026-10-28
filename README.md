@@ -1,49 +1,11 @@
 # Trendifest
 
-A minimal trend analysis, forecasting, and monitoring prototype built on Google
-Trends search interest. Search a term, compare up to five terms, project the next
-few observations, and set thresholds that turn live movement into alerts.
+A minimal trend analysis, forecasting, and monitoring app built on Google Trends
+search interest. Search a term, compare up to five terms, project the next few
+observations, and monitor a watchlist with threshold alerts.
 
-> **Prototype branch:** the root route opens a fictional signal-graph study;
-> `#/overview` still reaches the Google Trends workspace. See
-> [Signal graph mock](#signal-graph-mock).
-
-## Signal graph mock
-
-The graph study explores the early-signal product idea without connecting to a
-social network or pretending to make real predictions. It contains six fictional
-pattern families connected to the concepts, sounds and communities that explain
-them. Read the
-[research feasibility note](docs/research/early-trend-intelligence.md) for the
-design constraints behind it.
-
-Open `http://localhost:5180/#/prototype/trend-graph` after `bun run dev`, or simply
-open the root. The graph is a real force-directed canvas built with
-`react-force-graph-2d` and `d3-force`, not a positioned illustration.
-
-- **Explore** — drag to rearrange, scroll or pinch to zoom, and select any node
-  or its label to inspect it. Selection never moves the camera; use the focus
-  control when you want to zoom to the selected neighborhood.
-- **Search and source filters** — narrow the network to a node or an input source.
-- **Browse signals** — a keyboard and screen-reader route through all 36 nodes.
-- **Inspector** — meaning, connections, anatomy, evidence and a local tracking
-  toggle. Shared nodes are larger; curved links mark direct echoes between
-  families.
-- **Theme toggle** — the canvas, labels and inspector follow the light/dark theme.
-
-Every pattern, creator, quote, source and score is simulated. State lives only in
-memory. No social account, media feed, database or prediction model is connected,
-and the Google Trends API is not used on this route.
-
-## Interface
-
-The workspace follows Obsidian's desktop geometry and public theme tokens: a
-38px tab/title bar, 44px ribbon, 240px explorer, 300px inspector, and a 22px
-status bar. UI text is 13px Inter; surfaces use `#1e1e1e` / `#262626` with
-`#363636` borders and the `#a78bfa` accent in dark mode. The graph uses filled
-accent hubs, hollow leaf notes, hairline links and quiet labels rather than
-cards or floating legends. The source notes and citations are in
-[the Obsidian design reference](docs/research/obsidian-design.md).
+Every number in the product comes from live Google Trends data or a cached live
+snapshot. There is no demo watchlist and no synthetic fallback.
 
 ## Stack
 
@@ -51,10 +13,9 @@ cards or floating legends. The source notes and citations are in
 - **Vite+** (`vite-plus`) for dev, build, formatting, linting, and type checks
 - **React 19 + TypeScript**
 - **Tailwind CSS 4** with shadcn-style semantic tokens and Radix Dialog
-- **react-force-graph-2d** and **d3-force** for the signal graph
 - **Recharts** for the interest and forecast charts
 - **TanStack Query** for caching, polling, and mutations
-- **Inter** (self-hosted via Fontsource), an Obsidian-style dark workspace, and Lucide icons
+- **Inter** (self-hosted via Fontsource), an Obsidian-inspired workspace, and Lucide icons
 
 ## Run it
 
@@ -64,22 +25,46 @@ bun run dev
 ```
 
 Open **http://localhost:5180**. The dev command starts the Bun API on port 8787
-and the Vite+ dev server with a `/api` proxy. Use `Ctrl+C` to stop both.
+and the Vite+ dev server with a `/api` proxy. No password is required in
+development. Use `Ctrl+C` to stop both.
 
 ```bash
 bun run check   # Vite+ format + lint + typecheck
-bun test        # forecast and alert unit tests
+bun test        # forecast, Google client, and alert tests
 bun run build   # typecheck and production client build
-bun run start   # serve dist + API on port 8787
 ```
 
-Set `PORT` to move the API (the dev proxy follows it). Set
-`TRENDIFEST_DATA_FILE` to use another watchlist store.
+## Run in production
+
+Production requires a password; the server exits without one.
+
+```bash
+bun run build
+TRENDIFEST_PASSWORD='choose-a-long-password' bun run start
+```
+
+The API and the client shell are protected by HTTP Basic authentication. The
+browser asks once and remembers the credential for the session. Serve the app
+behind HTTPS: Basic credentials are only as private as the transport. Only
+`/api/health` is public so a supervisor can probe the process.
+
+Environment variables:
+
+| Variable               | Default                          | Purpose                                                     |
+| ---------------------- | -------------------------------- | ----------------------------------------------------------- |
+| `PORT`                 | `8787`                           | API and production static server port                       |
+| `TRENDIFEST_PASSWORD`  | unset                            | Password gate; required when `NODE_ENV=production`          |
+| `TRENDIFEST_DATA_FILE` | `server/data/state.json`         | Watchlist and alert store                                   |
+| `TRENDIFEST_MONITOR`   | production: on; development: off | Set `1` to enable the background monitor, `0` to disable it |
+
+The monitor refreshes the watchlist every 15 minutes and appends threshold
+alerts to the store, so alerts keep accumulating while nobody has the app open.
+Alerts are delivered in-app; the MVP has no email or webhook delivery.
 
 ## What it does
 
-- **Overview** — a selected trend's interest history, a damped-trend forecast
-  with an 80% interval, watchlist movement, and recent alerts.
+- **Overview** — selected trend history, a damped-trend forecast with an 80%
+  interval, watchlist movement, recent alerts, and daily trending searches.
 - **Explore** — add up to five terms, compare them on Google's shared 0–100
   index, and read related queries and regional interest for a single term.
 - **Watchlist** — edit alert thresholds inline, remove a trend with undo, and
@@ -87,11 +72,21 @@ Set `PORT` to move the API (the dev proxy follows it). Set
 - **Alerts** — unread/all filters, mark-one or mark-all-read, and plain-language
   explanations of each threshold crossing.
 
-Data is pulled from Google Trends' unofficial explore and widget endpoints, the
-daily trending RSS feed, and autocomplete. Watchlist state lives in
-`server/data/state.json` (gitignored) and is written atomically. Alerts are
-derived only from live data, deduplicated by observed period, and never created
-from the demo fallback.
+A first run starts with an empty watchlist. Add terms from any page; the
+watchlist holds twelve.
+
+## Live data behavior
+
+Google Trends rate-limits unauthenticated clients aggressively, especially
+shared IPs. Data degrades in two honest stages:
+
+1. fresh live data;
+2. the last successful live snapshot, marked **Cached live data**;
+3. an explicit error with **Retry** when neither exists.
+
+A failed query enters a 90-second cooldown so an outage never becomes a request
+storm from every open tab. Cached snapshots remain visible during an outage and
+never enter the alert pipeline twice.
 
 ## Forecast method
 
@@ -105,36 +100,25 @@ Google returns a relative 0–100 index for each request; when several terms are
 compared, they share one normalization. The interface labels the scale on every
 chart and exposes the same series in a keyboard-reachable data table.
 
-## Live data and the sample fallback
-
-Google Trends rate-limits unauthenticated clients aggressively, especially
-shared IPs. The server caches a successful analysis for 12 minutes, keeps a
-90-second failure cooldown per query, and degrades in stages:
-
-1. fresh live data;
-2. the last live snapshot, marked **Cached live data**;
-3. deterministic sample data, marked **Sample data** in the header, banner, and
-   chart.
-
-The fallback exists so the workspace stays usable and reviewable when Google
-returns HTTP 429. It never feeds the alert pipeline. If you see sample data, use
-**Retry live data** after the cooldown or continue with another network.
-
 ## Layout
 
 ```
-server/          Bun API, Google Trends client, forecast engine, JSON store
+server/          Bun API, Google Trends client, forecast engine, auth, JSON store
 shared/          Wire types and country/range configuration
-src/components/  shadcn-style primitives, charts, graph and inspector
-src/pages/       Overview, Explore, Watchlist, Alerts, trend graph
+src/components/  shadcn-style primitives, charts, and layout
+src/pages/       Overview, Explore, Watchlist, Alerts
 src/hooks/       Hash routing, theme, debounce, TanStack Query hooks
-tests/           Forecast and alert derivation tests
+tests/           Forecast, Google client, and alert derivation tests
 scripts/dev.ts   Starts the API and Vite+ dev server together
 ```
 
 ## Limits
 
-This is a local, single-user prototype. It has no authentication, database,
-background worker, or production rate-limit budget. The Google Trends endpoints
-are unofficial and can change. Up to five terms can be compared in one request;
-the watchlist holds twelve trends.
+This is a single-user MVP. It has one shared password and no account model, so
+there is no per-user data separation and no login rate limiting. Use a long
+password and keep the server behind HTTPS. Watchlist state lives in one
+atomically written JSON file; there is no database or multi-instance
+coordination. The background monitor is one process on a fixed 15-minute
+interval, with no durable job queue. Google's endpoints are unofficial, can
+change, and have no SLA. Up to five terms can be compared in one request; the
+watchlist holds twelve.

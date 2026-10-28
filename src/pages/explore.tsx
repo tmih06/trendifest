@@ -262,9 +262,7 @@ export function ExplorePage() {
         description="Compare search interest across up to five terms and project where each one is heading."
         actions={
           <>
-            {analysis.data ? (
-              <SourceBadge source={analysis.data.source} stale={analysis.data.stale} />
-            ) : null}
+            {analysis.data ? <SourceBadge stale={analysis.data.stale} /> : null}
             <Button
               variant="outline"
               size="sm"
@@ -531,9 +529,8 @@ export function ExplorePage() {
               <Card>
                 <CardContent className="flex flex-col gap-2 py-5 text-[0.8125rem] text-muted-foreground">
                   <p>
-                    {analysis.data.source === "simulated"
-                      ? "Related queries and regional interest need live Google Trends data. Retry when the service is available."
-                      : "Google Trends did not return related queries or regional interest for this search."}
+                    Google Trends did not return related queries or regional interest for this
+                    search.
                   </p>
                 </CardContent>
               </Card>

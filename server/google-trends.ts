@@ -1,5 +1,4 @@
 import type {
-  DataSource,
   RangeKey,
   RelatedQuery,
   RegionInterest,
@@ -10,7 +9,7 @@ import type {
   TrendingResult,
 } from "../shared/types.ts";
 import { RANGE_OPTIONS } from "../shared/config.ts";
-import { buildInsight, simulateTrend } from "./forecast.ts";
+import { buildInsight } from "./forecast.ts";
 
 const BASE = "https://trends.google.com/trends/api";
 const USER_AGENT =
@@ -19,6 +18,17 @@ const ANALYSIS_TTL_MS = 12 * 60 * 1000;
 const TRENDING_TTL_MS = 8 * 60 * 1000;
 const FAILURE_COOLDOWN_MS = 90 * 1000;
 const MAX_TERMS = 5;
+
+/** A Google Trends outage is a retryable dependency failure, not a client bug. */
+export class TrendSourceError extends Error {
+  readonly status = 503;
+  readonly code = "upstream_unavailable";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "TrendSourceError";
+  }
+}
 
 interface ExploreWidget {
   id: string;
@@ -180,8 +190,6 @@ function assemble(
   range: RangeKey,
   points: SeriesPoint[],
   resolution: "day" | "week",
-  source: DataSource,
-  notice: string | undefined,
   related: RelatedQuery[],
   regions: RegionInterest[],
 ): TrendAnalysis {
@@ -204,18 +212,12 @@ function assemble(
 
   return {
     query: { terms, geo, range },
-    source,
+    source: "google",
     fetchedAt: new Date().toISOString(),
     resolution,
     points,
     insights,
-    notice,
   };
-}
-
-export function simulatedAnalysis(terms: string[], geo: string, range: RangeKey, notice: string) {
-  const { points, resolution } = simulateTrend(terms, range);
-  return assemble(terms, geo, range, points, resolution, "simulated", notice, [], []);
 }
 
 async function fetchLiveAnalysis(terms: string[], geo: string, range: RangeKey) {
@@ -253,17 +255,7 @@ async function fetchLiveAnalysis(terms: string[], geo: string, range: RangeKey) 
     ]);
   }
 
-  return assemble(
-    terms,
-    geo,
-    range,
-    time.points,
-    time.resolution,
-    "google",
-    undefined,
-    related,
-    regions,
-  );
+  return assemble(terms, geo, range, time.points, time.resolution, related, regions);
 }
 
 function cacheKey(terms: string[], geo: string, range: RangeKey) {
@@ -271,8 +263,10 @@ function cacheKey(terms: string[], geo: string, range: RangeKey) {
 }
 
 /**
- * Return a trend analysis, preferring fresh live data and degrading in stages:
- * fresh live → stale live (marked) → deterministic simulation (marked).
+ * Return live Google Trends analysis. A successful response is cached for 12
+ * minutes; if a request fails, the last successful snapshot may be reused for
+ * that query and is marked stale. There is no synthetic fallback: a dashboard
+ * built from invented interest would be worse than an explicit retry.
  *
  * Failures open a short cooldown per query so an outage or a 429 never turns
  * into a request storm from every open tab. The cache, not the client, is what
@@ -299,12 +293,7 @@ export async function getAnalysis(
         notice: "Google Trends is rate limiting; showing the last live snapshot.",
       };
     }
-    return simulatedAnalysis(
-      terms,
-      geo,
-      range,
-      "Google Trends is rate limiting; showing sample data until the next retry.",
-    );
+    throw new TrendSourceError("Google Trends is rate limiting requests. Try again in a minute.");
   }
 
   try {
@@ -321,12 +310,7 @@ export async function getAnalysis(
         notice: "Google Trends is unavailable; showing the last live snapshot.",
       };
     }
-    return simulatedAnalysis(
-      terms,
-      geo,
-      range,
-      "Google Trends is unavailable; showing deterministic sample data so the workspace still works.",
-    );
+    throw new TrendSourceError("Google Trends is unavailable right now. Try again in a minute.");
   }
 }
 
@@ -368,24 +352,11 @@ function parseRss(xml: string, geo: string): TrendingItem[] {
   });
 }
 
-const SAMPLE_TRENDING: Array<Omit<TrendingItem, "link">> = [
-  { title: "ai agents", traffic: "20K+", publishedAt: null },
-  { title: "open source models", traffic: "10K+", publishedAt: null },
-  { title: "electric vehicle sales", traffic: "5K+", publishedAt: null },
-  { title: "cold plunge", traffic: "2K+", publishedAt: null },
-  { title: "space weather", traffic: "1K+", publishedAt: null },
-];
-
-function sampleTrending(geo: string): TrendingItem[] {
-  return SAMPLE_TRENDING.map((item) => ({
-    ...item,
-    link: `https://trends.google.com/trends/explore?q=${encodeURIComponent(item.title)}&geo=${geo}&date=today%2012-m`,
-  }));
-}
-
 /**
  * Daily trending searches come from Google's RSS endpoint, not the retired
- * realtime JSON endpoint. Cache and cooldown mirror the analysis path.
+ * realtime JSON endpoint. Cache and cooldown mirror the analysis path. When no
+ * live snapshot exists, return an empty result with a notice rather than
+ * inventing searches.
  */
 export async function getTrending(geo: string): Promise<TrendingResult> {
   const cached = trendingCache.get(geo);
@@ -394,14 +365,18 @@ export async function getTrending(geo: string): Promise<TrendingResult> {
   const key = `trending:${geo}`;
   if ((failureUntil.get(key) ?? 0) > Date.now()) {
     if (cached) {
-      return { ...cached.value, notice: "Showing the last live trending snapshot." };
+      return {
+        ...cached.value,
+        stale: true,
+        notice: "Showing the last live trending snapshot.",
+      };
     }
     return {
       geo,
-      source: "simulated",
+      source: "google",
       fetchedAt: new Date().toISOString(),
-      items: sampleTrending(geo),
-      notice: "Google Trends is rate limiting; showing sample searches.",
+      items: [],
+      notice: "Google Trends is rate limiting; trending searches are unavailable.",
     };
   }
 
@@ -431,14 +406,18 @@ export async function getTrending(geo: string): Promise<TrendingResult> {
   } catch {
     failureUntil.set(key, Date.now() + FAILURE_COOLDOWN_MS);
     if (cached) {
-      return { ...cached.value, notice: "Showing the last live trending snapshot." };
+      return {
+        ...cached.value,
+        stale: true,
+        notice: "Showing the last live trending snapshot.",
+      };
     }
     return {
       geo,
-      source: "simulated",
+      source: "google",
       fetchedAt: new Date().toISOString(),
-      items: sampleTrending(geo),
-      notice: "Google Trends is unavailable; showing sample searches.",
+      items: [],
+      notice: "Google Trends is unavailable; trending searches are unavailable.",
     };
   }
 }

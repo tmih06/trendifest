@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { getAnalysis, getTrending } from "../server/google-trends.ts";
+import { getAnalysis, getTrending, TrendSourceError } from "../server/google-trends.ts";
 
 const fixtures = path.join(import.meta.dir, "fixtures");
 const originalFetch = globalThis.fetch;
@@ -71,17 +71,20 @@ describe("Google Trends client", () => {
     expect(trending.items[0]!.link).toContain("geo=US");
   });
 
-  test("marks the deterministic fallback when Google is unavailable", async () => {
+  test("fails honestly when Google is unavailable", async () => {
     globalThis.fetch = (async () => new Response("", { status: 429 })) as unknown as typeof fetch;
-    const analysis = await getAnalysis(["offline probe"], "US", "12m");
 
-    expect(analysis.source).toBe("simulated");
-    expect(analysis.notice).toContain("unavailable");
-    expect(analysis.insights[0]!.forecast.points).toHaveLength(6);
-    expect(analysis.insights[0]!.related).toHaveLength(0);
+    let failure: unknown;
+    try {
+      await getAnalysis(["offline probe"], "US", "12m");
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(TrendSourceError);
 
     const trending = await getTrending("GB");
-    expect(trending.source).toBe("simulated");
-    expect(trending.items[0]!.link).toContain("geo=GB");
+    expect(trending.source).toBe("google");
+    expect(trending.items).toHaveLength(0);
+    expect(trending.notice).toContain("unavailable");
   });
 });

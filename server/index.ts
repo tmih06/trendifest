@@ -2,8 +2,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ApiError, RangeKey } from "../shared/types.ts";
 import { isGeoCode, isRangeKey } from "../shared/config.ts";
-import { getAnalysis, parseTermList, suggest } from "./google-trends.ts";
-import { buildOverview } from "./overview.ts";
+import { AUTH_ENABLED, authorize } from "./auth.ts";
+import { getAnalysis, parseTermList, suggest, TrendSourceError } from "./google-trends.ts";
+import { buildOverview, refreshWatchlist } from "./overview.ts";
 import {
   addWatchlist,
   ApiFailure,
@@ -15,6 +16,13 @@ import {
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
 const PRODUCTION = process.env.NODE_ENV === "production";
+const MONITOR_INTERVAL_MS = 15 * 60 * 1000;
+
+if (PRODUCTION && !AUTH_ENABLED) {
+  console.error("TRENDIFEST_PASSWORD is required when NODE_ENV=production.");
+  console.error("Set it in the environment or a local .env file, then start again.");
+  process.exit(1);
+}
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -152,11 +160,19 @@ const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
 
+    // Health is intentionally public so a supervisor can probe the process;
+    // everything else, including the client shell, sits behind the password.
+    const unauthorized = url.pathname === "/api/health" ? null : authorize(request);
+    if (unauthorized) return unauthorized;
+
     if (url.pathname.startsWith("/api/")) {
       try {
         return await handleApi(request, url);
       } catch (error) {
         if (error instanceof ApiFailure) {
+          return apiError(error.status, error.message, error.code);
+        }
+        if (error instanceof TrendSourceError) {
           return apiError(error.status, error.message, error.code);
         }
         console.error(`API ${request.method} ${url.pathname} failed:`, error);
@@ -179,3 +195,30 @@ const server = Bun.serve({
 console.log(
   `Trendifest API listening on http://127.0.0.1:${server.port} (${PRODUCTION ? "production" : "development"})`,
 );
+console.log(AUTH_ENABLED ? "Password protection: on" : "Password protection: off (development)");
+
+const MONITOR =
+  process.env.TRENDIFEST_MONITOR === "1" || (PRODUCTION && process.env.TRENDIFEST_MONITOR !== "0");
+
+if (MONITOR) {
+  const refresh = async () => {
+    try {
+      const { created, summaries } = await refreshWatchlist("12m");
+      if (created.length > 0) {
+        console.log(`Monitor created ${created.length} alert(s) across ${summaries} trend(s).`);
+      }
+    } catch (error) {
+      // A Google outage must not take down the web process; the next interval
+      // retries after the client's own cooldown.
+      console.warn(
+        "Background monitor could not refresh:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  };
+
+  void refresh();
+  const timer = setInterval(refresh, MONITOR_INTERVAL_MS);
+  timer.unref();
+  console.log(`Background alert monitor: every ${MONITOR_INTERVAL_MS / 60_000} minutes`);
+}

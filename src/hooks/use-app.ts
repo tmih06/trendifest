@@ -17,7 +17,7 @@ function parseHash(): RouteState {
 }
 
 /**
- * Hash routing keeps the prototype deployable as static files under any host.
+ * Hash routing keeps the app deployable as static files under any host.
  * Query parameters travel in the hash, so a shared link carries its search but
  * never hits the server.
  */

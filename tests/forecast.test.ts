@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildForecast, buildInsight, simulateTrend } from "../server/forecast.ts";
+import { buildForecast, buildInsight } from "../server/forecast.ts";
 
 const weekly = 7 * 86400;
 const times = (count: number) =>
@@ -60,14 +60,5 @@ describe("forecast", () => {
     expect(insight.latestTime).toBe(at.at(-1)!);
     expect(insight.peak).toBe(43);
     expect(insight.changePct).toBeGreaterThan(0);
-  });
-
-  test("sample fallback is deterministic for the same controls", () => {
-    const first = simulateTrend(["ai", "nvidia"], "12m", 1_800_000_000_000);
-    const second = simulateTrend(["ai", "nvidia"], "12m", 1_800_000_000_000);
-    expect(first.points).toEqual(second.points);
-    expect(first.points).toHaveLength(52);
-    expect(first.resolution).toBe("week");
-    expect(first.points[0]!.values).toHaveLength(2);
   });
 });

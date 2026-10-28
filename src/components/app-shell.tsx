@@ -6,7 +6,6 @@ import {
   ExternalLink,
   LayoutDashboard,
   Moon,
-  Network,
   Radar,
   Sun,
 } from "lucide-react";
@@ -189,13 +188,6 @@ export function AppShell({ page, unread, theme, onToggleTheme, children }: AppSh
               <ActiveIcon className="size-3.5 text-muted-foreground" strokeWidth={1.75} />
               <span className="whitespace-nowrap">{PAGE_LABEL[page]}</span>
             </div>
-            <a
-              href="#/prototype/trend-graph"
-              className="flex h-[30px] shrink-0 items-center gap-1.5 rounded-t-[6px] px-2.5 text-[12px] text-muted-foreground/70 hover:bg-accent hover:text-muted-foreground"
-            >
-              <Network className="size-3.5" strokeWidth={1.75} />
-              Signal graph
-            </a>
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-1.5">
@@ -227,14 +219,6 @@ export function AppShell({ page, unread, theme, onToggleTheme, children }: AppSh
                 </a>
               );
             })}
-            <a
-              href="#/prototype/trend-graph"
-              aria-label="Signal graph"
-              title="Signal graph"
-              className="mt-1 grid size-8 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <Network className="size-[18px]" strokeWidth={1.75} />
-            </a>
           </nav>
 
           <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-muted lg:flex">
@@ -256,7 +240,7 @@ export function AppShell({ page, unread, theme, onToggleTheme, children }: AppSh
             </a>
             <div className="flex items-center gap-2 border-t border-border px-2 py-2 text-[11px] text-muted-foreground">
               <Database className="size-3.5 text-muted-foreground/70" strokeWidth={1.75} />
-              <span className="min-w-0 flex-1 truncate">Simulated workspace</span>
+              <span className="min-w-0 flex-1 truncate">Local workspace</span>
             </div>
           </aside>
 
@@ -277,7 +261,7 @@ export function AppShell({ page, unread, theme, onToggleTheme, children }: AppSh
         </div>
 
         <footer className="flex h-[22px] shrink-0 items-center justify-between gap-3 border-t border-border bg-background px-3 text-[11px] text-muted-foreground/70">
-          <span>Google Trends workspace · simulated</span>
+          <span>Google Trends workspace</span>
           <span className="tabular-nums">Local</span>
         </footer>
       </div>

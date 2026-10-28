@@ -81,6 +81,12 @@ export function OverviewPage() {
   const watchlist = data?.watchlist ?? [];
   const active = watchlist.find((item) => item.term === selectedTerm) ?? watchlist[0] ?? null;
   const alerts = data?.alerts ?? [];
+  const refreshError =
+    overview.isError && data
+      ? overview.error instanceof Error
+        ? overview.error.message
+        : "The trend service did not respond. Showing the last loaded dashboard."
+      : null;
 
   function handleRemove(item: WatchlistSummary) {
     remove.mutate(item.id, {
@@ -131,7 +137,7 @@ export function OverviewPage() {
         description="Search interest, forecasts, and threshold alerts for the trends you monitor."
         actions={
           <>
-            {data ? <SourceBadge source={data.source} stale={data.stale} /> : null}
+            {data ? <SourceBadge stale={data.stale} /> : null}
             <div className="hidden items-center text-xs text-muted-foreground lg:flex">
               {data ? (
                 <time dateTime={data.fetchedAt}>Updated {formatRelative(data.fetchedAt)}</time>
@@ -147,9 +153,9 @@ export function OverviewPage() {
         }
       />
 
-      {data?.notice ? (
+      {refreshError || data?.notice ? (
         <NoticeBanner
-          message={data.notice}
+          message={refreshError ?? data?.notice ?? ""}
           onRetry={() => overview.refetch()}
           retrying={overview.isFetching}
         />
@@ -372,14 +378,20 @@ export function OverviewPage() {
                     <CardTitle>Trending now</CardTitle>
                     <CardDescription>{geoName(geo)} · daily searches</CardDescription>
                   </div>
-                  <Badge variant={data.trending.source === "google" ? "outline" : "warning"}>
-                    {data.trending.source === "google" ? (
+                  <Badge variant={data.trending.items.length > 0 ? "outline" : "secondary"}>
+                    {data.trending.items.length > 0 ? (
                       <>
-                        <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
-                        Live
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "size-1.5 rounded-full",
+                            data.trending.stale ? "bg-muted-foreground" : "bg-success",
+                          )}
+                        />
+                        {data.trending.stale ? "Cached" : "Live"}
                       </>
                     ) : (
-                      "Sample"
+                      "Unavailable"
                     )}
                   </Badge>
                 </CardHeader>

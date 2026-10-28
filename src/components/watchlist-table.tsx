@@ -134,10 +134,6 @@ export function WatchlistTable({
     );
   }
 
-  const showRowSource =
-    items.some((item) => item.source === "simulated") &&
-    items.some((item) => item.source === "google");
-
   return (
     <div className={cn("overflow-x-auto overscroll-contain", className)}>
       <table className="w-full border-collapse text-left">
@@ -198,11 +194,6 @@ export function WatchlistTable({
                       </span>
                       <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         {geoName(item.geo)}
-                        {showRowSource && item.source === "simulated" ? (
-                          <Badge variant="warning" className="px-1.5 py-0">
-                            Sample
-                          </Badge>
-                        ) : null}
                       </span>
                     </button>
                   ) : (

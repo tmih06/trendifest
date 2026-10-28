@@ -25,6 +25,12 @@ export function AlertsPage() {
   const alerts = data?.alerts ?? [];
   const unread = data?.stats.unreadAlerts ?? 0;
   const unreadAlerts = alerts.filter((alert) => !alert.read);
+  const refreshError =
+    overview.isError && data
+      ? overview.error instanceof Error
+        ? overview.error.message
+        : "The trend service did not respond. Showing the last loaded alerts."
+      : null;
 
   function handleRead(id: string) {
     markRead.mutate(id, {
@@ -47,7 +53,7 @@ export function AlertsPage() {
         description="Threshold crossings and forecast signals from the trends you monitor."
         actions={
           <>
-            {data ? <SourceBadge source={data.source} stale={data.stale} /> : null}
+            {data ? <SourceBadge stale={data.stale} /> : null}
             <LiveToggle live={live} onChange={setLive} />
             <RefreshButton onClick={() => overview.refetch()} fetching={overview.isFetching} />
             <Button
@@ -63,9 +69,9 @@ export function AlertsPage() {
         }
       />
 
-      {data?.notice ? (
+      {refreshError || data?.notice ? (
         <NoticeBanner
-          message={data.notice}
+          message={refreshError ?? data?.notice ?? ""}
           onRetry={() => overview.refetch()}
           retrying={overview.isFetching}
         />
@@ -186,7 +192,8 @@ export function AlertsPage() {
       ) : null}
 
       <p className="text-xs leading-5 text-muted-foreground">
-        Alerts are derived from live Google Trends data only. Sample data never creates an alert.
+        Alerts are derived from live Google Trends data only. When live data is unavailable, no
+        alert is created.
       </p>
     </div>
   );

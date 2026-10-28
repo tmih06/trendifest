@@ -20,6 +20,12 @@ export function WatchlistPage() {
   const updateThreshold = useThresholdUpdate();
   const data = overview.data;
   const items = data?.watchlist ?? [];
+  const refreshError =
+    overview.isError && data
+      ? overview.error instanceof Error
+        ? overview.error.message
+        : "The trend service did not respond. Showing the last loaded watchlist."
+      : null;
 
   function handleRemove(item: WatchlistSummary) {
     remove.mutate(item.id, {
@@ -61,7 +67,7 @@ export function WatchlistPage() {
         description="Monitor search terms, set alert thresholds, and check the latest movement."
         actions={
           <>
-            {data ? <SourceBadge source={data.source} stale={data.stale} /> : null}
+            {data ? <SourceBadge stale={data.stale} /> : null}
             <LiveToggle live={live} onChange={setLive} />
             <RefreshButton onClick={() => overview.refetch()} fetching={overview.isFetching} />
             <Button size="sm" onClick={openAdd}>
@@ -72,9 +78,9 @@ export function WatchlistPage() {
         }
       />
 
-      {data?.notice ? (
+      {refreshError || data?.notice ? (
         <NoticeBanner
-          message={data.notice}
+          message={refreshError ?? data?.notice ?? ""}
           onRetry={() => overview.refetch()}
           retrying={overview.isFetching}
         />

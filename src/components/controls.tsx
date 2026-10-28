@@ -1,7 +1,7 @@
 import { Pause, Play, RefreshCw } from "lucide-react";
 import { useId } from "react";
 import { GEO_OPTIONS, RANGE_KEYS, RANGE_OPTIONS } from "../../shared/config.ts";
-import type { DataSource, RangeKey } from "../../shared/types.ts";
+import type { RangeKey } from "../../shared/types.ts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -136,11 +136,8 @@ export function LiveToggle({ live, onChange }: LiveToggleProps) {
   );
 }
 
-/** Explicit provenance for every data surface; sample data is never unlabeled. */
-export function SourceBadge({ source, stale }: { source: DataSource; stale?: boolean }) {
-  if (source === "simulated") {
-    return <Badge variant="warning">Sample data</Badge>;
-  }
+/** Explicit provenance for every live data surface. */
+export function SourceBadge({ stale }: { stale?: boolean }) {
   return (
     <Badge variant="outline">
       <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />

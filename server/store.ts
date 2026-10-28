@@ -38,27 +38,11 @@ function dataFile() {
 const MAX_WATCHLIST = 12;
 const MAX_ALERTS = 120;
 
-const SEED: Array<{ term: string; threshold: number }> = [
-  { term: "ai", threshold: 12 },
-  { term: "nvidia", threshold: 15 },
-  { term: "electric vehicle", threshold: 12 },
-];
-
 let cached: PersistedState | null = null;
 let writeChain: Promise<unknown> = Promise.resolve();
 
-function seedState(): PersistedState {
-  const now = new Date().toISOString();
-  return {
-    watchlist: SEED.map((entry, index) => ({
-      id: `seed-${index + 1}`,
-      term: entry.term,
-      geo: "US",
-      threshold: entry.threshold,
-      createdAt: now,
-    })),
-    alerts: [],
-  };
+function emptyState(): PersistedState {
+  return { watchlist: [], alerts: [] };
 }
 
 function isState(value: unknown): value is PersistedState {
@@ -76,15 +60,20 @@ async function load(): Promise<PersistedState> {
     if (!isState(parsed)) throw new Error("Unexpected state shape");
     // Rebuild instead of keeping the parsed object so fields from older state
     // files (such as the retired lastCheckAt) do not survive the next write.
-    cached = { watchlist: parsed.watchlist, alerts: parsed.alerts };
+    // Early builds seeded three demo trends; drop those IDs so upgrading does
+    // not leave a fresh MVP pretending the user chose them.
+    cached = {
+      watchlist: parsed.watchlist.filter((item) => !item.id.startsWith("seed-")),
+      alerts: parsed.alerts.filter((alert) => !alert.watchlistId.startsWith("seed-")),
+    };
   } catch (error) {
     const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
     if (!missing) {
-      // A corrupted file must not take the whole app down; reseeding loses only
-      // local watchlist state, and the file is replaced on the next mutation.
-      console.warn("Reseeding trendifest state:", error instanceof Error ? error.message : error);
+      // A corrupted file must not take the whole app down; starting empty loses
+      // only local watchlist state, and the file is replaced on the next mutation.
+      console.warn("Resetting trendifest state:", error instanceof Error ? error.message : error);
     }
-    cached = seedState();
+    cached = emptyState();
   }
 
   return cached;
@@ -221,10 +210,10 @@ function alertKindFor(
 }
 
 /**
- * Derive alerts from fresh live summaries. Only one alert per watchlist item,
- * kind, and observed period is stored, so polling the overview never inflates
- * the inbox. Simulated data is excluded by the caller: an outage must never
- * create an alert that looks real.
+ * Derive alerts from live summaries. Only one alert per watchlist item, kind,
+ * and observed period is stored, so polling the overview never inflates the
+ * inbox. The analysis client has no synthetic data source; an outage throws
+ * before it can reach this function.
  */
 export async function recordAlerts(summaries: WatchlistSummary[], range: RangeKey) {
   return mutate((state) => {
@@ -232,7 +221,6 @@ export async function recordAlerts(summaries: WatchlistSummary[], range: RangeKe
     const created: Alert[] = [];
 
     for (const summary of summaries) {
-      if (summary.source !== "google") continue;
       const candidate = alertKindFor(summary.insight, summary.threshold);
       if (!candidate) continue;
       const id = `${summary.id}:${candidate.kind}:${summary.insight.latestTime}`;

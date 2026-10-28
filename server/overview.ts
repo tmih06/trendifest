@@ -2,11 +2,10 @@ import type {
   Alert,
   Overview,
   RangeKey,
-  TrendAnalysis,
   WatchlistItem,
   WatchlistSummary,
 } from "../shared/types.ts";
-import { getAnalysis, getTrending, simulatedAnalysis } from "./google-trends.ts";
+import { getAnalysis, getTrending } from "./google-trends.ts";
 import { readState, recordAlerts } from "./store.ts";
 
 const TERMS_PER_REQUEST = 5;
@@ -28,24 +27,11 @@ async function buildSummaries(items: WatchlistItem[], range: RangeKey): Promise<
   for (const [geo, group] of groups) {
     for (let index = 0; index < group.length; index += TERMS_PER_REQUEST) {
       const chunk = group.slice(index, index + TERMS_PER_REQUEST);
-      let analysis: TrendAnalysis;
-
-      try {
-        analysis = await getAnalysis(
-          chunk.map((item) => item.term),
-          geo,
-          range,
-        );
-      } catch {
-        // getAnalysis already degrades, so reaching here means local data
-        // construction failed. Keep the remaining trends visible with sample data.
-        analysis = simulatedAnalysis(
-          chunk.map((item) => item.term),
-          geo,
-          range,
-          "This group could not be analyzed; showing sample data.",
-        );
-      }
+      const analysis = await getAnalysis(
+        chunk.map((item) => item.term),
+        geo,
+        range,
+      );
 
       if (analysis.notice) notices.push(analysis.notice);
       const byTerm = new Map(
@@ -72,6 +58,21 @@ async function buildSummaries(items: WatchlistItem[], range: RangeKey): Promise<
 }
 
 /**
+ * Refresh the watchlist outside a page request so alerts keep accumulating
+ * while nobody has the dashboard open. The monitor is started by the server;
+ * it returns created alerts for logging and never writes synthetic data.
+ */
+export async function refreshWatchlist(range: RangeKey = "12m") {
+  const state = await readState();
+  if (state.watchlist.length === 0) {
+    return { summaries: 0, created: [] as Alert[], notices: [] as string[] };
+  }
+  const { summaries, notices } = await buildSummaries(state.watchlist, range);
+  const created = await recordAlerts(summaries, range);
+  return { summaries: summaries.length, created, notices };
+}
+
+/**
  * Assemble the dashboard in one server round-trip: monitored trends, derived
  * alerts, and daily trending searches. Alerts are derived only from live
  * summaries so an outage cannot manufacture a signal.
@@ -83,7 +84,7 @@ export async function buildOverview(geo: string, range: RangeKey): Promise<Overv
     getTrending(geo),
   ]);
 
-  if (summaries.some((summary) => summary.source === "google")) {
+  if (summaries.length > 0) {
     await recordAlerts(summaries, range);
   }
 
@@ -102,11 +103,7 @@ export async function buildOverview(geo: string, range: RangeKey): Promise<Overv
     return Math.abs(item.insight.changePct) > Math.abs(best.insight.changePct) ? item : best;
   }, null);
 
-  const source = summaries.some((summary) => summary.source === "google")
-    ? "google"
-    : summaries.length > 0
-      ? "simulated"
-      : trending.source;
+  const source = "google";
 
   const notice = notices[0] ?? trending.notice;
   const stale = summaries.length > 0 && summaries.every((summary) => summary.stale === true);

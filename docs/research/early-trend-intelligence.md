@@ -1,6 +1,6 @@
 # Early-trend intelligence: feasibility and proposed design
 
-Research checked 2026-10-28. This is a research/design proposal, not implemented functionality. The current application remains the Google Trends prototype described in the README. Platform access, policies, prices, and model availability must be rechecked before integrating them. Policy observations below are engineering constraints, not legal advice.
+Research checked 2026-10-28. This is a research/design proposal, not implemented functionality. The current application is the Google Trends MVP described in the README. Platform access, policies, prices, and model availability must be rechecked before integrating them. Policy observations below are engineering constraints, not legal advice.
 
 ## 1. Decision
 
