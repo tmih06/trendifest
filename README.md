@@ -4,6 +4,31 @@ A minimal trend analysis, forecasting, and monitoring prototype built on Google
 Trends search interest. Search a term, compare up to five terms, project the next
 few observations, and set thresholds that turn live movement into alerts.
 
+> **Prototype branch:** the app opens with a separate, entirely fictional
+> trend-network study at `#/prototype/trend-network`; `#/overview` still reaches
+> the Google Trends workspace. See [Trend-network mock](#trend-network-mock).
+
+## Trend-network mock
+
+The trend-network study explores the early-signal product idea without connecting
+to a social network or pretending to make real predictions. It contains fictional
+patterns, creators, media, evidence links, and numerical scores. Read the
+[research feasibility note](docs/research/early-trend-intelligence.md) for the
+design constraints behind it.
+
+Open `http://localhost:5180/#/prototype/trend-network` after `bun run dev`, or use
+the links in the sidebar. The mock offers three layout studies, switchable with
+the development bar or `?variant=A|B|C` in the URL:
+
+- **Radar** — ranked candidates, a focused evidence graph, and an inspector.
+- **Canvas** — a wider graph with candidate and activity rails.
+- **Editorial** — a readable signal brief with its supporting graph.
+
+Try selecting graph nodes to inspect inferred relationships, scrubbing the pattern
+history, simulating a new remix, configuring a mock alert, monitoring a candidate,
+pausing a sample feed, and exporting a Markdown brief. All state is in memory and
+resets on reload. The Google Trends API is not used on this route.
+
 ## Stack
 
 - **Bun** for the runtime, server, scripts, and tests
