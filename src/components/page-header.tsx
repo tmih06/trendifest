@@ -18,7 +18,7 @@ export function PageHeader({ title, description, actions, className }: PageHeade
         <h1
           id="page-title"
           tabIndex={-1}
-          className="text-2xl font-semibold leading-tight tracking-[-0.02em] text-foreground"
+          className="text-[22px] font-semibold leading-tight text-foreground"
         >
           {title}
         </h1>

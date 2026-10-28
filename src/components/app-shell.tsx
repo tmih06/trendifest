@@ -1,4 +1,15 @@
-import { Bell, Compass, ExternalLink, LayoutDashboard, Moon, Radar, Sun } from "lucide-react";
+import {
+  Bell,
+  ChevronsUpDown,
+  Compass,
+  Database,
+  ExternalLink,
+  LayoutDashboard,
+  Moon,
+  Network,
+  Radar,
+  Sun,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import type { RoutePage } from "@/hooks/use-app";
 import type { Theme } from "@/hooks/use-app";
@@ -12,33 +23,31 @@ const NAV = [
   { page: "alerts", label: "Alerts", icon: Bell },
 ] as const;
 
-function Brand() {
+const PAGE_LABEL: Record<RoutePage, string> = {
+  overview: "Overview",
+  explore: "Explore",
+  watchlist: "Watchlist",
+  alerts: "Alerts",
+};
+
+function LogoGlyph() {
   return (
-    <a
-      href="#/overview"
-      className="flex w-fit items-center gap-2.5 rounded-md px-1 py-1"
-      aria-label="Trendifest overview"
-    >
-      <span className="grid size-8 place-items-center rounded-lg bg-foreground text-background">
-        <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4.5" fill="none">
-          <path
-            d="M4 16.5 9 11l4 3.5 7-7.5"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M15 7h5v5"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </span>
-      <span className="text-[0.9375rem] font-semibold tracking-[-0.01em]">Trendifest</span>
-    </a>
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="size-3.5" fill="none">
+      <path
+        d="M4 16.5 9 11l4 3.5 7-7.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15 7h5v5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -49,12 +58,13 @@ function ThemeButton({ theme, onToggle }: { theme: Theme; onToggle: () => void }
       size="icon-sm"
       onClick={onToggle}
       aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-      className="text-muted-foreground"
+      title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      className="size-7 rounded-[3px] text-muted-foreground hover:bg-accent hover:text-foreground"
     >
       {theme === "dark" ? (
-        <Sun aria-hidden="true" className="size-4" />
+        <Sun aria-hidden="true" className="size-3.5" />
       ) : (
-        <Moon aria-hidden="true" className="size-4" />
+        <Moon aria-hidden="true" className="size-3.5" />
       )}
     </Button>
   );
@@ -82,21 +92,21 @@ function NavLinks({
             href={`#/${item.page}`}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.8125rem] font-medium transition-colors duration-150",
+              "flex h-6 items-center gap-2 rounded-[3px] px-1.5 text-[12px] transition-colors",
               active
-                ? "bg-secondary font-semibold text-foreground"
+                ? "bg-accent text-foreground"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
               itemClassName,
             )}
           >
-            <Icon aria-hidden="true" className="size-4 shrink-0" />
+            <Icon aria-hidden="true" className="size-3.5 shrink-0" strokeWidth={1.75} />
             <span className="truncate">{item.label}</span>
             {item.page === "alerts" ? (
               <>
                 {unread > 0 ? (
                   <span
                     aria-hidden="true"
-                    className="numeric ml-auto rounded-full bg-foreground px-1.5 py-0.5 text-[0.625rem] font-semibold leading-4 text-background"
+                    className="numeric ml-auto rounded-[3px] bg-muted px-1 text-[10px] font-medium leading-4 text-muted-foreground"
                   >
                     {unread > 9 ? "9+" : unread}
                   </span>
@@ -122,11 +132,12 @@ interface AppShellProps {
 }
 
 /**
- * Two-pane application frame. Desktop keeps navigation in a sticky sidebar;
- * small screens get a compact header with the same anchors in one scrollable
- * row, so no destination disappears behind a hamburger.
+ * Obsidian-style workspace frame for the classic trend views: title bar,
+ * command ribbon, explorer sidebar, scrolling content and a quiet status bar.
+ * Below `lg`, the ribbon/sidebar collapse into a scrollable nav row.
  */
 export function AppShell({ page, unread, theme, onToggleTheme, children }: AppShellProps) {
+  const ActiveIcon = NAV.find((item) => item.page === page)?.icon ?? LayoutDashboard;
   const focusMain = () => {
     // The page heading is the reliable focus target; focusing the <main>
     // landmark itself behaves inconsistently across engines.
@@ -151,58 +162,124 @@ export function AppShell({ page, unread, theme, onToggleTheme, children }: AppSh
             focusMain();
           }
         }}
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:text-primary-foreground"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-[4px] focus:bg-primary focus:px-3 focus:py-1.5 focus:text-[12px] focus:text-primary-foreground"
       >
         Skip to content
       </a>
 
-      <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside className="sticky top-0 hidden h-dvh flex-col border-r border-border bg-muted/20 px-3 py-4 lg:flex">
-          <div className="px-1">
-            <Brand />
+      <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+        <header className="flex h-[38px] shrink-0 items-stretch border-b border-border bg-muted">
+          <a
+            href="#/overview"
+            aria-label="Trendifest overview"
+            className="grid w-11 shrink-0 place-items-center border-r border-border text-primary"
+          >
+            <span className="grid size-5 place-items-center rounded-[3px] bg-primary text-background">
+              <LogoGlyph />
+            </span>
+          </a>
+
+          <div className="hidden w-60 shrink-0 items-center gap-1 border-r border-border px-2.5 text-[12px] lg:flex">
+            <span className="truncate font-medium">trendifest</span>
+            <ChevronsUpDown className="size-3 text-muted-foreground/70" strokeWidth={1.75} />
           </div>
 
-          <NavLinks page={page} unread={unread} className="mt-6 flex flex-col gap-0.5" />
+          <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto px-2">
+            <div className="flex h-[30px] shrink-0 items-center gap-1.5 rounded-t-[6px] bg-background px-2.5 text-[12px] text-foreground">
+              <ActiveIcon className="size-3.5 text-muted-foreground" strokeWidth={1.75} />
+              <span className="whitespace-nowrap">{PAGE_LABEL[page]}</span>
+            </div>
+            <a
+              href="#/prototype/trend-graph"
+              className="flex h-[30px] shrink-0 items-center gap-1.5 rounded-t-[6px] px-2.5 text-[12px] text-muted-foreground/70 hover:bg-accent hover:text-muted-foreground"
+            >
+              <Network className="size-3.5" strokeWidth={1.75} />
+              Signal graph
+            </a>
+          </div>
 
-          <div className="mt-auto space-y-3 border-t border-border pt-3">
+          <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-1.5">
+            <ThemeButton theme={theme} onToggle={onToggleTheme} />
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1">
+          <nav
+            aria-label="Ribbon"
+            className="hidden w-11 shrink-0 flex-col items-center border-r border-border bg-muted py-2 lg:flex"
+          >
+            {NAV.map((item) => {
+              const active = item.page === page;
+              const Icon = item.icon;
+              return (
+                <a
+                  key={item.page}
+                  href={`#/${item.page}`}
+                  aria-label={item.label}
+                  aria-current={active ? "page" : undefined}
+                  title={item.label}
+                  className={cn(
+                    "grid size-8 place-items-center rounded-[4px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                    active && "bg-accent text-primary",
+                  )}
+                >
+                  <Icon className="size-[18px]" strokeWidth={1.75} />
+                </a>
+              );
+            })}
+            <a
+              href="#/prototype/trend-graph"
+              aria-label="Signal graph"
+              title="Signal graph"
+              className="mt-1 grid size-8 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Network className="size-[18px]" strokeWidth={1.75} />
+            </a>
+          </nav>
+
+          <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-muted lg:flex">
+            <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border px-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Explorer
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+              <NavLinks page={page} unread={unread} className="flex flex-col gap-0.5" />
+            </div>
             <a
               href="https://trends.google.com/trends/"
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
+              className="flex items-center gap-1.5 border-t border-border px-3 py-2 text-[11px] text-muted-foreground hover:text-foreground"
             >
-              Data from Google Trends
+              Google Trends
               <ExternalLink aria-hidden="true" className="size-3" />
               <span className="sr-only">(opens in a new tab)</span>
             </a>
-            <div className="flex items-center justify-between gap-2 px-1">
-              <p className="text-xs text-muted-foreground">Prototype workspace</p>
-              <ThemeButton theme={theme} onToggle={onToggleTheme} />
+            <div className="flex items-center gap-2 border-t border-border px-2 py-2 text-[11px] text-muted-foreground">
+              <Database className="size-3.5 text-muted-foreground/70" strokeWidth={1.75} />
+              <span className="min-w-0 flex-1 truncate">Simulated workspace</span>
             </div>
+          </aside>
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            <header className="border-b border-border lg:hidden">
+              <NavLinks
+                page={page}
+                unread={unread}
+                className="flex gap-0.5 overflow-x-auto px-2 py-1.5"
+                itemClassName="shrink-0 gap-1.5 px-2"
+              />
+            </header>
+
+            <main id="main" className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6">{children}</div>
+            </main>
           </div>
-        </aside>
-
-        <div className="flex min-w-0 flex-col">
-          <header className="border-b border-border lg:hidden">
-            <div className="flex items-center justify-between gap-2 px-4 py-3">
-              <Brand />
-              <ThemeButton theme={theme} onToggle={onToggleTheme} />
-            </div>
-            <NavLinks
-              page={page}
-              unread={unread}
-              className="flex gap-0.5 overflow-x-auto px-2 pb-2"
-              itemClassName="shrink-0 gap-2 px-2 py-1.5"
-            />
-          </header>
-
-          <main
-            id="main"
-            className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
-          >
-            {children}
-          </main>
         </div>
+
+        <footer className="flex h-[22px] shrink-0 items-center justify-between gap-3 border-t border-border bg-background px-3 text-[11px] text-muted-foreground/70">
+          <span>Google Trends workspace · simulated</span>
+          <span className="tabular-nums">Local</span>
+        </footer>
       </div>
     </>
   );

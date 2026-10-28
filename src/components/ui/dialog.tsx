@@ -14,7 +14,7 @@ function DialogOverlay({ className, ...props }: ComponentProps<typeof DialogPrim
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]",
+        "fixed inset-0 z-50 bg-black/50",
         "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 motion-reduce:animate-none",
         className,
       )}
@@ -40,7 +40,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-5 rounded-xl border border-border bg-popover p-6 text-popover-foreground shadow-lg",
+          "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[6px] border border-border bg-popover p-5 text-popover-foreground shadow-xl",
           "max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain",
           "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 motion-reduce:animate-none",
           className,
@@ -50,7 +50,7 @@ function DialogContent({
         {children}
         {showClose ? (
           <DialogPrimitive.Close
-            className="absolute right-4 top-4 grid size-8 place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+            className="absolute right-3 top-3 grid size-7 place-items-center rounded-[3px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
             aria-label="Close dialog"
           >
             <X aria-hidden="true" className="size-4" />

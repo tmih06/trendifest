@@ -92,7 +92,7 @@ export function useTheme() {
     initialized.current = true;
     document
       .getElementById("theme-color")
-      ?.setAttribute("content", theme === "dark" ? "#111111" : "#ffffff");
+      ?.setAttribute("content", theme === "dark" ? "#1e1e1e" : "#ffffff");
   }, [theme]);
 
   useEffect(() => {

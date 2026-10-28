@@ -63,16 +63,16 @@ interface GraphPalette {
 }
 
 const FALLBACK_PALETTE: GraphPalette = {
-  pattern: "oklch(0.55 0.19 265)",
-  concept: "oklch(0.5 0.009 260)",
-  sound: "oklch(0.55 0.12 305)",
-  community: "oklch(0.58 0.11 195)",
-  foreground: "oklch(0.16 0.006 260)",
-  muted: "oklch(0.5 0.009 260)",
-  background: "oklch(0.995 0 0)",
-  edge: "rgba(80, 84, 94, 0.42)",
-  edgeDim: "rgba(80, 84, 94, 0.09)",
-  edgeSelected: "rgba(67, 83, 210, 0.82)",
+  pattern: "#a78bfa",
+  concept: "#b3b3b3",
+  sound: "#a78bfa",
+  community: "#82aaff",
+  foreground: "#dadada",
+  muted: "#999999",
+  background: "#1e1e1e",
+  edge: "rgba(167, 139, 250, 0.20)",
+  edgeDim: "rgba(167, 139, 250, 0.055)",
+  edgeSelected: "rgba(167, 139, 250, 0.62)",
 };
 
 /** Six fixed hubs keep the canvas legible while leaf nodes still force-settle. */
@@ -84,9 +84,6 @@ const HUB_POSITIONS: Record<string, { x: number; y: number }> = {
   "frame-vacation": { x: 302, y: -118 },
   "corporate-lore": { x: 324, y: 158 },
 };
-
-/** Pattern hubs carry the ambient pulse; leaf nodes stay quiet. */
-const PULSE_NODES = GRAPH_NODES.filter((node) => node.kind === "pattern");
 
 /**
  * Seed every leaf around the hub(s) it belongs to. Shared community nodes land
@@ -145,18 +142,18 @@ function readPalette(): GraphPalette {
   if (typeof document === "undefined") return FALLBACK_PALETTE;
   const styles = getComputedStyle(document.documentElement);
   const token = (name: string) => styles.getPropertyValue(name).trim();
-  const pattern = token("--chart-1");
+  const pattern = token("--graph-node-focused") || "#a78bfa";
   return {
-    pattern: pattern || FALLBACK_PALETTE.pattern,
-    concept: token("--muted-foreground") || FALLBACK_PALETTE.concept,
-    sound: token("--chart-5") || FALLBACK_PALETTE.sound,
-    community: token("--chart-2") || FALLBACK_PALETTE.community,
-    foreground: token("--foreground") || FALLBACK_PALETTE.foreground,
-    muted: token("--muted-foreground") || FALLBACK_PALETTE.muted,
-    background: token("--background") || FALLBACK_PALETTE.background,
-    edge: resolveColor(token("--muted-foreground") || "#646672", 0.55),
-    edgeDim: resolveColor(token("--muted-foreground") || "#646672", 0.09),
-    edgeSelected: resolveColor(pattern || "#6c72d8", 0.82),
+    pattern,
+    concept: token("--graph-node") || FALLBACK_PALETTE.concept,
+    sound: token("--graph-node-focused") || FALLBACK_PALETTE.sound,
+    community: token("--graph-node-tag") || FALLBACK_PALETTE.community,
+    foreground: token("--text-normal") || FALLBACK_PALETTE.foreground,
+    muted: token("--graph-text") || FALLBACK_PALETTE.muted,
+    background: token("--background-primary") || FALLBACK_PALETTE.background,
+    edge: resolveColor(token("--graph-line") || "#a78bfa", 0.2),
+    edgeDim: resolveColor(token("--graph-line") || "#a78bfa", 0.055),
+    edgeSelected: resolveColor(token("--graph-line") || "#a78bfa", 0.62),
   };
 }
 
@@ -226,10 +223,6 @@ export function TrendGraphCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const frameNodes = useRef<NodePoint[]>([]);
   const labelHitAreas = useRef<LabelHitArea[]>([]);
-  const pulseRefs = useRef(new Map<string, HTMLSpanElement>());
-  const pulseLayerRef = useRef<HTMLDivElement>(null);
-  const pulsesHiddenRef = useRef(false);
-  const updatePulsesRef = useRef<() => void>(() => {});
   const pointerStart = useRef<{
     x: number;
     y: number;
@@ -247,8 +240,25 @@ export function TrendGraphCanvas({
   // Bumping the epoch re-renders the inline pointer-area callback, which is
   // ForceGraph's only public hook for flushing its throttled hit canvas.
   const [, bumpHitAreaEpoch] = useState(0);
+  const [, setFontReady] = useState(0);
   // Restarting the layout reseeds leaf arrangements while hubs keep their ring.
   const graphData = useMemo(() => makeGraphData(layoutVersion), [layoutVersion]);
+
+  useEffect(() => {
+    let active = true;
+    void document.fonts?.ready
+      .then(() => {
+        // Canvas label widths are measured with the loaded font; force one more
+        // graph frame so labels cannot keep fallback-font placement.
+        if (active) setFontReady((epoch) => epoch + 1);
+      })
+      .catch(() => {
+        // The graph still renders with the fallback stack if font loading fails.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setPalette(readPalette()));
@@ -354,23 +364,6 @@ export function TrendGraphCanvas({
   }, []);
 
   /**
-   * Animated halos are cheap while idle but add compositing work while the
-   * canvas is being redrawn. Hide them for the duration of a camera or node
-   * drag, then repaint them once the geometry has settled.
-   */
-  const hidePulses = useCallback(() => {
-    if (pulsesHiddenRef.current) return;
-    pulsesHiddenRef.current = true;
-    if (pulseLayerRef.current) pulseLayerRef.current.style.display = "none";
-  }, []);
-
-  const showPulses = useCallback(() => {
-    pulsesHiddenRef.current = false;
-    if (pulseLayerRef.current) pulseLayerRef.current.style.display = "";
-    updatePulsesRef.current();
-  }, []);
-
-  /**
    * Resolve the current node under a pointer from the last painted labels and
    * live node positions. Labels win because they are the larger, labelled
    * target users naturally aim at.
@@ -441,7 +434,6 @@ export function TrendGraphCanvas({
       if (moved) {
         // A pan or node drag owns the gesture. Resolving nodes on every move
         // would churn labels and React state under the pointer.
-        hidePulses();
         updateHovered(null);
         setGraphCursor("grabbing");
         return;
@@ -458,7 +450,6 @@ export function TrendGraphCanvas({
     if (!start) return;
     if (!isGraphSurface(event.target)) {
       setGraphCursor("");
-      showPulses();
       return;
     }
     const threshold = start.pointerType === "touch" ? 10 : 5;
@@ -467,13 +458,11 @@ export function TrendGraphCanvas({
       const hitId = findHitAt(event.clientX, event.clientY);
       updateHovered(hitId);
       setGraphCursor(hitId ? "pointer" : "grab");
-      showPulses();
       return;
     }
     onSelect(start.hitId);
     updateHovered(start.hitId);
     setGraphCursor(start.hitId ? "pointer" : "grab");
-    showPulses();
   }
 
   function handlePointerLeave() {
@@ -484,7 +473,6 @@ export function TrendGraphCanvas({
   function handlePointerCancel() {
     pointerStart.current = null;
     setGraphCursor("");
-    showPulses();
   }
 
   useEffect(() => {
@@ -494,7 +482,6 @@ export function TrendGraphCanvas({
       pointerStart.current = null;
       updateHovered(null);
       setGraphCursor("");
-      showPulses();
     }
     // Drags can end over the inspector; ForceGraph listens on window, so the
     // local pointerup never arrives. Clear the click candidate there too.
@@ -504,7 +491,7 @@ export function TrendGraphCanvas({
       window.removeEventListener("pointerup", releaseOutside);
       window.removeEventListener("pointercancel", releaseOutside);
     };
-  }, [setGraphCursor, showPulses, updateHovered]);
+  }, [setGraphCursor, updateHovered]);
 
   const colorFor = useCallback(
     (kind: GraphNode["kind"]) => {
@@ -527,36 +514,42 @@ export function TrendGraphCanvas({
       const active = activeIds.has(node.id);
       const emphasis = emphasisIds.has(node.id);
       const dim = !active;
+      const isPattern = node.kind === "pattern";
+      const kindColor = colorFor(node.kind);
       const radius = node.radius + (hovered ? 0.8 : 0);
 
       ctx.save();
       ctx.globalAlpha = dim ? 0.16 : 1;
 
+      // Selected notes glow; unfocused hubs stay flat like Obsidian notes.
       if (selected || hovered) {
         ctx.beginPath();
-        ctx.arc(x, y, radius + 5, 0, Math.PI * 2);
-        ctx.fillStyle = palette.background;
+        ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+        ctx.fillStyle = palette.pattern;
+        ctx.globalAlpha = dim ? 0.06 : 0.16;
         ctx.fill();
+        ctx.globalAlpha = dim ? 0.16 : 1;
       }
 
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = colorFor(node.kind);
+      ctx.fillStyle = isPattern || selected || hovered ? palette.pattern : palette.background;
       ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = palette.background;
+      ctx.lineWidth = isPattern ? 1.2 : 1.25;
+      ctx.strokeStyle =
+        selected || hovered ? palette.pattern : isPattern ? palette.background : kindColor;
       ctx.stroke();
 
       if (selected || hovered) {
         ctx.beginPath();
-        ctx.arc(x, y, radius + 5, 0, Math.PI * 2);
-        ctx.lineWidth = selected ? 2 : 1.4;
+        ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
+        ctx.lineWidth = 1;
         ctx.strokeStyle = selected ? palette.foreground : palette.muted;
         ctx.stroke();
       } else if (emphasis) {
         ctx.beginPath();
         ctx.arc(x, y, radius + 3.5, 0, Math.PI * 2);
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = 1.1;
         ctx.strokeStyle = palette.pattern;
         ctx.stroke();
       }
@@ -638,8 +631,8 @@ export function TrendGraphCanvas({
         const isPattern = node.kind === "pattern";
         const selected = node.id === selectedId;
         const hovered = node.id === hoveredId;
-        const fontSize = isPattern ? 12.5 : 10.5;
-        context.font = `${isPattern ? 600 : 500} ${fontSize}px "Geist Variable", ui-sans-serif, sans-serif`;
+        const fontSize = isPattern ? 12 : 11;
+        context.font = `${isPattern ? 500 : 400} ${fontSize}px "Inter Variable", "Inter", sans-serif`;
         context.textBaseline = "middle";
         context.textAlign = "center";
         const textWidth = context.measureText(node.label).width;
@@ -668,7 +661,7 @@ export function TrendGraphCanvas({
           labelY = point.y + directionY * distance;
         }
 
-        const inset = textWidth / 2 + 8;
+        const inset = textWidth / 2 + 12;
         const minX = inset;
         const maxX = size.width - inset;
         const maxY = size.height - (size.width < 640 ? 10 : 58);
@@ -706,11 +699,11 @@ export function TrendGraphCanvas({
           right: right + 2,
           bottom: bottom + 2,
         });
-        context.lineWidth = 3.5;
+        context.lineWidth = 3;
         context.strokeStyle = palette.background;
         context.lineJoin = "round";
         context.strokeText(node.label, labelX, labelY);
-        context.fillStyle = isPattern ? palette.foreground : palette.muted;
+        context.fillStyle = selected || hovered ? palette.foreground : palette.muted;
         context.fillText(node.label, labelX, labelY);
         placed.push({ left, top, right, bottom });
       }
@@ -723,28 +716,6 @@ export function TrendGraphCanvas({
   drawLabelsRef.current = drawLabels;
 
   /**
-   * The pulse rings are CSS-animated DOM elements, so the graph canvas does
-   * not redraw while idle. Only their screen positions follow the camera and
-   * layout frames; inactive patterns fade out so filtered graphs stay quiet.
-   */
-  const updatePulses = useCallback(() => {
-    if (pulsesHiddenRef.current) return;
-    const graph = graphRef.current;
-    if (!graph) return;
-    const zoom = Math.max(0.65, Math.min(1, graph.zoom() || 1));
-    for (const node of graphData.nodes) {
-      if (node.kind !== "pattern") continue;
-      const element = pulseRefs.current.get(node.id);
-      if (!element) continue;
-      element.style.opacity = activeIds.has(node.id) ? "1" : "0";
-      if (typeof node.x !== "number" || typeof node.y !== "number") continue;
-      const point = graph.graph2ScreenCoords(node.x, node.y);
-      element.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) scale(${zoom})`;
-    }
-  }, [activeIds, graphData]);
-  updatePulsesRef.current = updatePulses;
-
-  /**
    * Labels paint at the end of the graph's own frame, after links and nodes.
    * Keeping them on the same canvas avoids a second full-screen transparent
    * layer, which measured as the main source of dropped pan and drag frames.
@@ -752,7 +723,6 @@ export function TrendGraphCanvas({
    */
   const paintLabelFrame = useCallback((context: CanvasRenderingContext2D) => {
     drawLabelsRef.current(context);
-    updatePulsesRef.current();
   }, []);
 
   const linkColor = useCallback(
@@ -807,28 +777,6 @@ export function TrendGraphCanvas({
       onPointerLeave={handlePointerLeave}
       onPointerCancel={handlePointerCancel}
     >
-      <div
-        ref={pulseLayerRef}
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 overflow-hidden"
-      >
-        {PULSE_NODES.map((node, index) => (
-          <span
-            key={node.id}
-            ref={(element) => {
-              if (element) pulseRefs.current.set(node.id, element);
-              else pulseRefs.current.delete(node.id);
-            }}
-            className="graph-pulse"
-          >
-            <span
-              className="graph-pulse-ring"
-              style={{ animationDelay: `${(-index * 1.05).toFixed(2)}s` }}
-            />
-          </span>
-        ))}
-      </div>
-
       <div aria-hidden="true" className="absolute inset-0">
         {size.width > 0 && (
           <ForceGraph2D
@@ -864,8 +812,6 @@ export function TrendGraphCanvas({
             }}
             onRenderFramePost={paintLabelFrame}
             onEngineStop={finishLayout}
-            onZoom={hidePulses}
-            onZoomEnd={showPulses}
             cooldownTicks={reducedMotion ? 0 : 80}
             warmupTicks={reducedMotion ? 80 : 24}
             d3AlphaDecay={0.045}
@@ -879,12 +825,13 @@ export function TrendGraphCanvas({
         )}
       </div>
 
-      <div className="absolute bottom-3 right-3 z-30 flex items-center gap-0.5 rounded-lg border border-border/80 bg-background/90 p-0.5 shadow-sm backdrop-blur-sm max-sm:hidden">
+      <div className="absolute right-2 top-2 z-30 flex items-center gap-0.5 text-muted-foreground opacity-70 transition-opacity hover:opacity-100 max-sm:hidden">
         <Button
           variant="ghost"
           size="icon-sm"
           aria-label="Zoom out"
           title="Zoom out"
+          className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
           onClick={() => zoomBy(0.8)}
         >
           <Minus />
@@ -894,6 +841,7 @@ export function TrendGraphCanvas({
           size="icon-sm"
           aria-label="Zoom in"
           title="Zoom in"
+          className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
           onClick={() => zoomBy(1.25)}
         >
           <Plus />
@@ -903,6 +851,7 @@ export function TrendGraphCanvas({
           size="icon-sm"
           aria-label="Fit graph to view"
           title="Fit graph to view"
+          className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
           onClick={() => fitAll(reducedMotion ? 0 : 300)}
         >
           <Maximize2 />
@@ -913,6 +862,7 @@ export function TrendGraphCanvas({
             size="icon-sm"
             aria-label="Focus selected node"
             title="Focus selected node"
+            className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
             onClick={() => fitSelection(reducedMotion ? 0 : 350)}
           >
             <Crosshair />
@@ -923,6 +873,7 @@ export function TrendGraphCanvas({
           size="icon-sm"
           aria-label="Restart layout"
           title="Restart layout"
+          className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
           onClick={resetLayout}
         >
           <RotateCcw />

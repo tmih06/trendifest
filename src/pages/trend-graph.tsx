@@ -1,9 +1,25 @@
-import { ChevronRight, Info, ListTree, Moon, Search, Sun, Network, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  ChevronsUpDown,
+  Compass,
+  Database,
+  Info,
+  LayoutDashboard,
+  ListTree,
+  Moon,
+  Network,
+  Plus,
+  Radar,
+  Search,
+  Sun,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
 import { TrendGraphInspector } from "@/components/trend-graph-inspector";
 import { KindDot } from "@/components/trend-graph-ui";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,7 +48,436 @@ import {
 } from "./trend-graph.data";
 
 const KIND_ORDER: NodeKind[] = ["pattern", "concept", "sound", "community"];
+const KIND_GROUP_LABEL: Record<NodeKind, string> = {
+  pattern: "Patterns",
+  concept: "Concepts",
+  sound: "Sounds",
+  community: "Communities",
+};
 const EMPTY_IDS = new Set<string>();
+
+const RIBBON = [
+  { href: "#/prototype/trend-graph", label: "Signal graph", icon: Network, active: true },
+  { href: "#/overview", label: "Overview", icon: LayoutDashboard, active: false },
+  { href: "#/explore", label: "Explore", icon: Compass, active: false },
+  { href: "#/watchlist", label: "Watchlist", icon: Radar, active: false },
+  { href: "#/alerts", label: "Alerts", icon: Bell, active: false },
+] as const;
+
+function RailButton({
+  label,
+  onClick,
+  children,
+  active,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cn(
+        "grid size-8 place-items-center rounded-[4px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+        active && "bg-accent text-primary",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function GraphRibbon({
+  theme,
+  onToggleTheme,
+  onBrowse,
+  onAbout,
+}: {
+  theme: "light" | "dark";
+  onToggleTheme: () => void;
+  onBrowse: () => void;
+  onAbout: () => void;
+}) {
+  return (
+    <nav
+      aria-label="Ribbon"
+      className="hidden w-11 shrink-0 flex-col items-center border-r border-border bg-muted py-2 lg:flex"
+    >
+      <div className="flex flex-col items-center gap-1">
+        {RIBBON.map((item) => {
+          const Icon = item.icon;
+          return (
+            <a
+              key={item.href}
+              href={item.href}
+              aria-label={item.label}
+              aria-current={item.active ? "page" : undefined}
+              title={item.label}
+              className={cn(
+                "grid size-8 place-items-center rounded-[4px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                item.active && "bg-accent text-primary",
+              )}
+            >
+              <Icon className="size-[18px]" strokeWidth={1.75} />
+            </a>
+          );
+        })}
+        <RailButton label="Browse signals" onClick={onBrowse}>
+          <ListTree className="size-[18px]" strokeWidth={1.75} />
+        </RailButton>
+      </div>
+      <div className="mt-auto flex flex-col items-center gap-1">
+        <RailButton label="About this graph" onClick={onAbout}>
+          <Info className="size-[18px]" strokeWidth={1.75} />
+        </RailButton>
+        <RailButton
+          label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          onClick={onToggleTheme}
+        >
+          {theme === "dark" ? (
+            <Sun className="size-[18px]" strokeWidth={1.75} />
+          ) : (
+            <Moon className="size-[18px]" strokeWidth={1.75} />
+          )}
+        </RailButton>
+      </div>
+    </nav>
+  );
+}
+
+function ExplorerGroup({
+  title,
+  nodes,
+  defaultOpen,
+  selectedId,
+  onSelect,
+}: {
+  title: string;
+  nodes: (typeof GRAPH_NODES)[number][];
+  defaultOpen: boolean;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      className="group/explorer"
+    >
+      <summary className="flex h-6 cursor-pointer list-none items-center gap-1 rounded-[3px] px-1 text-[12px] font-medium text-muted-foreground hover:bg-accent [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          className="size-3 text-muted-foreground/70 transition-transform group-open/explorer:rotate-90"
+          strokeWidth={2}
+        />
+        <span className="truncate">{title}</span>
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/70">
+          {nodes.length}
+        </span>
+      </summary>
+      <div className="ml-[5px] border-l border-border pl-1">
+        {nodes.map((node) => {
+          const selected = node.id === selectedId;
+          return (
+            <button
+              key={node.id}
+              type="button"
+              onClick={() => onSelect(node.id)}
+              className={cn(
+                "flex h-6 w-full items-center gap-1.5 rounded-[3px] px-1.5 text-left text-[12px] transition-colors",
+                selected
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
+            >
+              <KindDot kind={node.kind} className="size-1.5" />
+              <span className="truncate">{node.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
+function GraphFilters({
+  searchRef,
+  query,
+  onQuery,
+  source,
+  onSource,
+}: {
+  searchRef: RefObject<HTMLInputElement | null>;
+  query: string;
+  onQuery: (value: string) => void;
+  source: Source | "all";
+  onSource: (value: Source | "all") => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/70"
+          aria-hidden="true"
+        />
+        <Input
+          ref={searchRef}
+          type="text"
+          inputMode="search"
+          autoComplete="off"
+          spellCheck={false}
+          value={query}
+          onChange={(event) => onQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              onQuery("");
+            }
+          }}
+          aria-label="Search signals"
+          placeholder="Search signals"
+          className="h-7 rounded-[4px] border-border bg-background pl-7 pr-7 text-[12px] text-foreground placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-0"
+        />
+        {query ? (
+          <button
+            type="button"
+            onClick={() => onQuery("")}
+            aria-label="Clear search"
+            className="absolute right-1 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded-[3px] text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <X className="size-3" aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
+      <Select
+        value={source}
+        onChange={(event) => onSource(event.target.value as Source | "all")}
+        aria-label="Filter by source"
+        className="h-7 rounded-[4px] border-border bg-background text-[12px] text-muted-foreground focus-visible:border-ring focus-visible:ring-0"
+      >
+        <option value="all">All sources</option>
+        {SOURCE_OPTIONS.map((item) => (
+          <option key={item} value={item}>
+            {item}
+          </option>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
+function GraphSidebar({
+  selectedId,
+  onSelect,
+  onBrowse,
+  onAbout,
+  searchRef,
+  query,
+  onQuery,
+  source,
+  onSource,
+}: {
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onBrowse: () => void;
+  onAbout: () => void;
+  searchRef: RefObject<HTMLInputElement | null>;
+  query: string;
+  onQuery: (value: string) => void;
+  source: Source | "all";
+  onSource: (value: Source | "all") => void;
+}) {
+  return (
+    <aside
+      aria-label="Signal explorer"
+      className="hidden w-60 shrink-0 flex-col border-r border-border bg-muted lg:flex"
+    >
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-2">
+        <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+          <ChevronDown className="size-3" strokeWidth={2} />
+          Explorer
+        </span>
+        <button
+          type="button"
+          onClick={onBrowse}
+          aria-label="Browse all signals"
+          title="Browse all signals"
+          className="grid size-6 place-items-center rounded-[3px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <ListTree className="size-3.5" strokeWidth={1.75} />
+        </button>
+      </div>
+
+      <div className="shrink-0 border-b border-border px-2 py-2">
+        <GraphFilters
+          searchRef={searchRef}
+          query={query}
+          onQuery={onQuery}
+          source={source}
+          onSource={onSource}
+        />
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+        <div className="space-y-0.5">
+          {KIND_ORDER.map((kind) => (
+            <ExplorerGroup
+              key={kind}
+              title={KIND_GROUP_LABEL[kind]}
+              nodes={GRAPH_NODES.filter((node) => node.kind === kind)}
+              defaultOpen={kind === "pattern"}
+              selectedId={selectedId}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onBrowse}
+          className="mt-2 flex h-6 w-full items-center gap-1.5 rounded-[3px] px-1.5 text-left text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <ListTree className="size-3.5" strokeWidth={1.75} />
+          Browse all signals
+        </button>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2 border-t border-border px-2 py-2 text-[11px] text-muted-foreground">
+        <Database className="size-3.5 text-muted-foreground/70" strokeWidth={1.75} />
+        <span className="min-w-0 flex-1 truncate">Simulated vault</span>
+        <button
+          type="button"
+          onClick={onAbout}
+          aria-label="About this graph"
+          title="About this graph"
+          className="grid size-6 place-items-center rounded-[3px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <Info className="size-3.5" strokeWidth={1.75} />
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function GraphTitleBar({
+  theme,
+  onToggleTheme,
+  onBrowse,
+  onAbout,
+  browseTriggerRef,
+  infoTriggerRef,
+}: {
+  theme: "light" | "dark";
+  onToggleTheme: () => void;
+  onBrowse: () => void;
+  onAbout: () => void;
+  browseTriggerRef: RefObject<HTMLButtonElement | null>;
+  infoTriggerRef: RefObject<HTMLButtonElement | null>;
+}) {
+  return (
+    <header className="flex h-[38px] shrink-0 items-stretch border-b border-border bg-muted text-foreground">
+      <div className="flex w-11 shrink-0 items-center justify-center border-r border-border">
+        <span className="grid size-5 place-items-center rounded-[3px] bg-primary text-background">
+          <Network className="size-3.5" strokeWidth={2.4} aria-hidden="true" />
+        </span>
+      </div>
+      <div className="hidden w-60 shrink-0 items-center gap-1 border-r border-border px-2.5 text-[12px] lg:flex">
+        <span className="truncate font-medium">trendifest</span>
+        <ChevronsUpDown className="size-3 text-muted-foreground/70" strokeWidth={1.75} />
+      </div>
+      <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto px-2">
+        <div className="flex h-[30px] shrink-0 items-center gap-1.5 rounded-t-[6px] bg-background px-2.5 text-[12px] text-foreground">
+          <Network
+            className="size-3.5 text-muted-foreground"
+            strokeWidth={1.75}
+            aria-hidden="true"
+          />
+          <span className="whitespace-nowrap">Signal graph</span>
+          <a
+            href="#/overview"
+            aria-label="Close Signal graph tab"
+            title="Close Signal graph tab"
+            className="grid size-4 place-items-center rounded-[2px] text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+          >
+            <X className="size-3" strokeWidth={2} />
+          </a>
+        </div>
+        <a
+          href="#/overview"
+          className="flex h-[30px] shrink-0 items-center gap-1.5 rounded-t-[6px] px-2.5 text-[12px] text-muted-foreground/70 hover:bg-accent hover:text-muted-foreground"
+        >
+          <LayoutDashboard className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+          Overview
+        </a>
+        <button
+          type="button"
+          ref={browseTriggerRef}
+          onClick={onBrowse}
+          aria-label="Browse all signals"
+          title="Browse all signals"
+          className="grid h-[30px] w-7 shrink-0 place-items-center self-end rounded-t-[6px] text-muted-foreground/70 hover:bg-accent hover:text-muted-foreground"
+        >
+          <Plus className="size-3.5" strokeWidth={2} />
+        </button>
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-1.5">
+        <button
+          type="button"
+          onClick={onBrowse}
+          aria-label="Browse all signals"
+          title="Browse all signals"
+          className="grid size-7 place-items-center rounded-[3px] text-muted-foreground hover:bg-accent hover:text-foreground sm:hidden"
+        >
+          <ListTree className="size-3.5" strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
+          ref={infoTriggerRef}
+          onClick={onAbout}
+          aria-label="About this graph"
+          title="About this graph"
+          className="grid size-7 place-items-center rounded-[3px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <Info className="size-3.5" strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleTheme}
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          className="grid size-7 place-items-center rounded-[3px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          {theme === "dark" ? (
+            <Sun className="size-3.5" strokeWidth={1.75} />
+          ) : (
+            <Moon className="size-3.5" strokeWidth={1.75} />
+          )}
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function GraphStatusBar({ summary, selectedLabel }: { summary: string; selectedLabel?: string }) {
+  return (
+    <footer className="flex h-[22px] shrink-0 items-center justify-between gap-3 border-t border-border bg-background px-3 text-[11px] text-muted-foreground/70">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
+          Simulated
+        </span>
+        <span className="hidden truncate sm:inline">{selectedLabel ?? "Force layout"}</span>
+      </div>
+      <div className="flex shrink-0 items-center gap-3 tabular-nums">
+        <span>{summary}</span>
+        <span className="hidden sm:inline">Local</span>
+      </div>
+    </footer>
+  );
+}
 
 function matchesForSource(source: Source | "all") {
   if (source === "all") return new Set(GRAPH_NODES.map((node) => node.id));
@@ -44,19 +489,6 @@ function matchesForSource(source: Source | "all") {
     if (link.relation !== "echoes" && patternIds.has(link.source)) ids.add(link.target);
   }
   return ids;
-}
-
-function GraphLegend() {
-  return (
-    <div className="pointer-events-none absolute bottom-3 left-3 z-20 flex max-w-[calc(100%-10rem)] flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border/70 bg-background/85 px-2.5 py-2 text-[10px] text-muted-foreground shadow-sm backdrop-blur-sm max-sm:hidden">
-      {KIND_ORDER.map((kind) => (
-        <span key={kind} className="inline-flex items-center gap-1.5">
-          <KindDot kind={kind} />
-          {KIND_LABEL[kind]}
-        </span>
-      ))}
-    </div>
-  );
 }
 
 function BrowseDialog({
@@ -190,6 +622,7 @@ export function TrendGraphPrototype() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [tracked, setTracked] = useState(new Set<string>());
   const searchRef = useRef<HTMLInputElement>(null);
+  const mobileSearchRef = useRef<HTMLInputElement>(null);
   const browseTriggerRef = useRef<HTMLButtonElement>(null);
   const infoTriggerRef = useRef<HTMLButtonElement>(null);
 
@@ -260,7 +693,7 @@ export function TrendGraphPrototype() {
         );
       if (event.key === "/" && !editing) {
         event.preventDefault();
-        searchRef.current?.focus();
+        focusSearch();
         return;
       }
       if (event.key !== "Escape" || editing) return;
@@ -274,6 +707,21 @@ export function TrendGraphPrototype() {
 
   function selectNode(id: string | null) {
     setSelectedId(id);
+  }
+
+  function updateQuery(value: string) {
+    setQuery(value);
+    if (selectedId) setSelectedId(null);
+  }
+
+  function updateSource(value: Source | "all") {
+    setSource(value);
+    if (selectedId) setSelectedId(null);
+  }
+
+  function focusSearch() {
+    const target = window.matchMedia("(min-width: 1024px)").matches ? searchRef : mobileSearchRef;
+    target.current?.focus();
   }
 
   /** The inspector's close button unmounts; return focus to the stable browse control. */
@@ -295,183 +743,116 @@ export function TrendGraphPrototype() {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <h1 className="sr-only">Signal graph</h1>
-      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/80 px-3 py-2.5 lg:h-14 lg:flex-nowrap lg:px-5 lg:py-0">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-foreground text-background">
-            <Network className="size-4" aria-hidden="true" />
-          </span>
-          <span className="truncate text-[15px] font-semibold tracking-[-0.03em]">
-            trendifest<span className="font-normal text-muted-foreground">.</span>
-          </span>
-          <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
-          <span className="hidden text-[12px] text-muted-foreground sm:block">Signal graph</span>
-        </div>
+      <GraphTitleBar
+        theme={theme}
+        onToggleTheme={toggle}
+        onBrowse={() => setBrowseOpen(true)}
+        onAbout={() => setAboutOpen(true)}
+        browseTriggerRef={browseTriggerRef}
+        infoTriggerRef={infoTriggerRef}
+      />
 
-        <div className="order-last flex w-full items-center gap-2 lg:order-none lg:ml-4 lg:w-auto lg:max-w-[420px] lg:flex-1">
-          <div className="relative min-w-0 flex-1">
-            <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
+      <div className="flex min-h-0 flex-1">
+        <GraphRibbon
+          theme={theme}
+          onToggleTheme={toggle}
+          onBrowse={() => setBrowseOpen(true)}
+          onAbout={() => setAboutOpen(true)}
+        />
+        <GraphSidebar
+          selectedId={selectedId}
+          onSelect={selectNode}
+          onBrowse={() => setBrowseOpen(true)}
+          onAbout={() => setAboutOpen(true)}
+          searchRef={searchRef}
+          query={query}
+          onQuery={updateQuery}
+          source={source}
+          onSource={updateSource}
+        />
+
+        <main id="main" className="flex min-w-0 flex-1 flex-col">
+          <div className="shrink-0 border-b border-border bg-muted px-2 py-1.5 lg:hidden">
+            <GraphFilters
+              searchRef={mobileSearchRef}
+              query={query}
+              onQuery={updateQuery}
+              source={source}
+              onSource={updateSource}
             />
-            <Input
-              ref={searchRef}
-              type="text"
-              inputMode="search"
-              autoComplete="off"
-              spellCheck={false}
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                if (selectedId) setSelectedId(null);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.stopPropagation();
-                  setQuery("");
-                }
-              }}
-              aria-label="Search signals"
-              placeholder="Search"
-              className="h-8 border-transparent bg-muted/50 pl-8 pr-8 text-base md:text-[13px]"
-            />
-            {query && (
-              <button
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-                className="absolute right-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <X className="size-3.5" aria-hidden="true" />
-              </button>
-            )}
           </div>
-          <div className="w-[132px] shrink-0">
-            <Select
-              value={source}
-              onChange={(event) => {
-                setSource(event.target.value as Source | "all");
-                if (selectedId) setSelectedId(null);
-              }}
-              aria-label="Filter by source"
-              className="h-8 text-base md:text-[12px]"
+
+          <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_300px]">
+            <section
+              aria-label="Interactive relationship graph"
+              aria-describedby="graph-description"
+              className="relative min-h-0 flex-1 overflow-hidden bg-background"
             >
-              <option value="all">All sources</option>
-              {SOURCE_OPTIONS.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </Select>
+              <p id="graph-description" className="sr-only">
+                A force-directed network of {PATTERNS.length} patterns connected by concepts, sounds
+                and communities. The canvas is visual. Use Browse all signals to move through every
+                node with the keyboard.
+              </p>
+
+              <TrendGraphCanvas
+                theme={theme}
+                selectedId={selectedId}
+                activeIds={activeIds}
+                emphasisIds={emphasizedIds}
+                showContextLabels={showContextLabels}
+                onSelect={selectNode}
+              />
+
+              {normalizedQuery && matches.length === 0 && (
+                <div className="absolute inset-0 z-20 grid place-items-center px-5">
+                  <div className="pointer-events-auto w-full max-w-[280px] rounded-[6px] border border-border bg-muted p-4 text-center shadow-lg">
+                    <p className="text-[13px] font-medium">No signals match “{query.trim()}”</p>
+                    <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                      Try a broader concept, sound or community.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 h-7 rounded-[4px] border-border bg-secondary text-[12px] text-foreground hover:bg-accent"
+                      onClick={() => setQuery("")}
+                    >
+                      Clear search
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <p className="sr-only" role="status" aria-live="polite">
+                {selected
+                  ? `${KIND_LABEL[selected.kind]} selected: ${selected.label}`
+                  : normalizedQuery
+                    ? `${matches.length} matching signals`
+                    : ""}
+              </p>
+            </section>
+
+            <aside
+              aria-label="Signal inspector"
+              className={cn(
+                "min-h-0 overflow-hidden bg-muted lg:flex lg:flex-col lg:border-l lg:border-border",
+                selected
+                  ? "flex max-h-[45dvh] shrink-0 flex-col border-t border-border lg:max-h-none"
+                  : "hidden lg:flex",
+              )}
+            >
+              <TrendGraphInspector
+                selected={selected}
+                onSelect={selectNode}
+                onClose={closeInspector}
+                tracked={trackedSelected}
+                onToggleTracked={toggleTracked}
+              />
+            </aside>
           </div>
-        </div>
+        </main>
+      </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
-          <Badge variant="outline" className="mr-1 hidden sm:inline-flex">
-            Simulated
-          </Badge>
-          <Button
-            ref={browseTriggerRef}
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 px-2 text-muted-foreground"
-            onClick={() => setBrowseOpen(true)}
-            aria-label="Browse all signals"
-            title="Browse all signals"
-          >
-            <ListTree />
-            <span className="hidden lg:inline">Browse</span>
-          </Button>
-          <Button
-            ref={infoTriggerRef}
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground"
-            onClick={() => setAboutOpen(true)}
-            aria-label="About this graph"
-            title="About this graph"
-          >
-            <Info />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground"
-            onClick={toggle}
-            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          >
-            {theme === "dark" ? <Sun /> : <Moon />}
-          </Button>
-        </div>
-      </header>
-
-      <main className="grid min-h-0 flex-1 grid-rows-[minmax(0,1.1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-1">
-        <section
-          aria-label="Interactive relationship graph"
-          aria-describedby="graph-description"
-          className="relative min-h-0 overflow-hidden border-b border-border/70 lg:border-b-0"
-          style={{
-            backgroundColor: "var(--background)",
-            backgroundImage: "radial-gradient(circle, var(--border) 1px, transparent 1px)",
-            backgroundSize: "22px 22px",
-          }}
-        >
-          <p id="graph-description" className="sr-only">
-            A force-directed network of {PATTERNS.length} patterns connected by concepts, sounds and
-            communities. The canvas is visual. Use Browse all signals to move through every node
-            with the keyboard.
-          </p>
-          <span className="pointer-events-none absolute left-4 top-3 z-20 flex items-center gap-2 text-[11px] text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-chart-1" aria-hidden="true" />
-            {summary}
-          </span>
-
-          <TrendGraphCanvas
-            theme={theme}
-            selectedId={selectedId}
-            activeIds={activeIds}
-            emphasisIds={emphasizedIds}
-            showContextLabels={showContextLabels}
-            onSelect={selectNode}
-          />
-
-          <GraphLegend />
-
-          {normalizedQuery && matches.length === 0 && (
-            <div className="absolute inset-0 z-20 grid place-items-center px-5">
-              <div className="pointer-events-auto w-full max-w-xs rounded-xl border border-border bg-background/95 p-4 text-center shadow-lg backdrop-blur-sm">
-                <p className="text-[13px] font-medium">No signals match “{query.trim()}”</p>
-                <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                  Try a broader concept, sound or community.
-                </p>
-                <Button variant="outline" size="sm" className="mt-3" onClick={() => setQuery("")}>
-                  Clear search
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <p className="sr-only" role="status" aria-live="polite">
-            {selected
-              ? `${KIND_LABEL[selected.kind]} selected: ${selected.label}`
-              : normalizedQuery
-                ? `${matches.length} matching signals`
-                : ""}
-          </p>
-        </section>
-
-        <aside
-          aria-label="Signal inspector"
-          className="min-h-0 overflow-hidden bg-card lg:border-l lg:border-border/80"
-        >
-          <TrendGraphInspector
-            selected={selected}
-            onSelect={selectNode}
-            onClose={closeInspector}
-            tracked={trackedSelected}
-            onToggleTracked={toggleTracked}
-          />
-        </aside>
-      </main>
+      <GraphStatusBar summary={summary} selectedLabel={selected?.label} />
 
       <BrowseDialog
         open={browseOpen}

@@ -24,8 +24,6 @@ open the root. The graph is a real force-directed canvas built with
 - **Explore** — drag to rearrange, scroll or pinch to zoom, and select any node
   or its label to inspect it. Selection never moves the camera; use the focus
   control when you want to zoom to the selected neighborhood.
-- **Ambient pulse** — pattern hubs carry a slow, soft pulse while the graph is
-  idle. It pauses during pans, zooms and node drags.
 - **Search and source filters** — narrow the network to a node or an input source.
 - **Browse signals** — a keyboard and screen-reader route through all 36 nodes.
 - **Inspector** — meaning, connections, anatomy, evidence and a local tracking
@@ -37,6 +35,16 @@ Every pattern, creator, quote, source and score is simulated. State lives only i
 memory. No social account, media feed, database or prediction model is connected,
 and the Google Trends API is not used on this route.
 
+## Interface
+
+The workspace follows Obsidian's desktop geometry and public theme tokens: a
+38px tab/title bar, 44px ribbon, 240px explorer, 300px inspector, and a 22px
+status bar. UI text is 13px Inter; surfaces use `#1e1e1e` / `#262626` with
+`#363636` borders and the `#a78bfa` accent in dark mode. The graph uses filled
+accent hubs, hollow leaf notes, hairline links and quiet labels rather than
+cards or floating legends. The source notes and citations are in
+[the Obsidian design reference](docs/research/obsidian-design.md).
+
 ## Stack
 
 - **Bun** for the runtime, server, scripts, and tests
@@ -46,7 +54,7 @@ and the Google Trends API is not used on this route.
 - **react-force-graph-2d** and **d3-force** for the signal graph
 - **Recharts** for the interest and forecast charts
 - **TanStack Query** for caching, polling, and mutations
-- **Geist** (self-hosted via Fontsource) and Lucide icons
+- **Inter** (self-hosted via Fontsource), an Obsidian-style dark workspace, and Lucide icons
 
 ## Run it
 
