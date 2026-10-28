@@ -21,9 +21,9 @@ Open `http://localhost:5180/#/prototype/trend-graph` after `bun run dev`, or sim
 open the root. The graph is a real force-directed canvas built with
 `react-force-graph-2d` and `d3-force`, not a positioned illustration.
 
-- **Explore** — drag to rearrange, scroll or pinch to zoom, and select any node to
-  inspect it. Selection never moves the camera; use the focus control when you
-  want to zoom to the selected neighborhood.
+- **Explore** — drag to rearrange, scroll or pinch to zoom, and select any node
+  or its label to inspect it. Selection never moves the camera; use the focus
+  control when you want to zoom to the selected neighborhood.
 - **Search and source filters** — narrow the network to a node or an input source.
 - **Browse signals** — a keyboard and screen-reader route through all 36 nodes.
 - **Inspector** — meaning, connections, anatomy, evidence and a local tracking

@@ -1,6 +1,14 @@
 import { forceCollide } from "d3-force";
 import { Crosshair, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { flushSync } from "react-dom";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { Button } from "@/components/ui/button";
 import type { Theme } from "@/hooks/use-app";
@@ -25,6 +33,21 @@ type LinkPoint = GraphLink & {
   target: string | number | NodePoint;
 };
 type CanvasGraph = { nodes: NodePoint[]; links: GraphLink[] };
+
+interface LabelHitArea {
+  id: string;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+const INTERACTIVE_TARGET = "button, a, input, select, textarea, [role='dialog']";
+
+/** Pointer events over graph chrome must not become graph clicks. */
+function isGraphSurface(target: EventTarget | null): boolean {
+  return !(target instanceof Element && target.closest(INTERACTIVE_TARGET));
+}
 
 interface GraphPalette {
   pattern: string;
@@ -199,12 +222,24 @@ export function TrendGraphCanvas({
   const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const frameNodes = useRef<NodePoint[]>([]);
+  const labelHitAreas = useRef<LabelHitArea[]>([]);
+  const pointerStart = useRef<{
+    x: number;
+    y: number;
+    hitId: string | null;
+    pointerType: string;
+  } | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
+  const cursorRef = useRef("");
   const shouldFit = useRef(true);
   const reducedMotion = useReducedMotion();
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [palette, setPalette] = useState(readPalette);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Bumping the epoch re-renders the inline pointer-area callback, which is
+  // ForceGraph's only public hook for flushing its throttled hit canvas.
+  const [, bumpHitAreaEpoch] = useState(0);
   // Restarting the layout reseeds leaf arrangements while hubs keep their ring.
   const graphData = useMemo(() => makeGraphData(layoutVersion), [layoutVersion]);
 
@@ -218,6 +253,8 @@ export function TrendGraphCanvas({
     if (!element) return;
     const measure = () => {
       const rect = element.getBoundingClientRect();
+      // ForceGraph can replace its canvas when the measured size changes.
+      cursorRef.current = "";
       setSize({
         width: Math.max(1, Math.round(rect.width)),
         height: Math.max(1, Math.round(rect.height)),
@@ -285,6 +322,159 @@ export function TrendGraphCanvas({
       fitAll(reducedMotion ? 0 : 300);
     }
   }, [fitAll, reducedMotion]);
+
+  /**
+   * ForceGraph's drag hit canvas is throttled to 800 ms. Re-rendering with a
+   * fresh pointer-area callback is the public way to flush it. Do that at
+   * pointer-down so a drag starts against the nodes currently on screen;
+   * clicks and hover use our own current-coordinate hit testing.
+   */
+  const refreshHitAreas = useCallback(() => {
+    bumpHitAreaEpoch((epoch) => epoch + 1);
+  }, []);
+
+  const updateHovered = useCallback((id: string | null) => {
+    if (hoveredIdRef.current === id) return;
+    hoveredIdRef.current = id;
+    setHoveredId(id);
+  }, []);
+
+  const setGraphCursor = useCallback((cursor: string) => {
+    if (cursorRef.current === cursor) return;
+    cursorRef.current = cursor;
+    const canvas = containerRef.current?.querySelector("canvas");
+    if (canvas instanceof HTMLCanvasElement) canvas.style.cursor = cursor;
+  }, []);
+
+  /**
+   * Resolve the current node under a pointer from the last painted labels and
+   * live node positions. Labels win because they are the larger, labelled
+   * target users naturally aim at.
+   */
+  const findHitAt = useCallback(
+    (clientX: number, clientY: number): string | null => {
+      const container = containerRef.current;
+      const graph = graphRef.current;
+      if (!container || !graph) return null;
+      const rect = container.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      for (const area of labelHitAreas.current) {
+        if (x >= area.left && x <= area.right && y >= area.top && y <= area.bottom) {
+          return area.id;
+        }
+      }
+
+      const zoom = graph.zoom() || 1;
+      let closest: string | null = null;
+      let closestDistance = Number.POSITIVE_INFINITY;
+      for (const node of graphData.nodes) {
+        if (typeof node.x !== "number" || typeof node.y !== "number") continue;
+        const point = graph.graph2ScreenCoords(node.x, node.y);
+        const radius = (node.radius ?? 5) * zoom + (node.kind === "pattern" ? 14 : 11);
+        const distance = Math.hypot(x - point.x, y - point.y);
+        if (distance <= radius && distance < closestDistance) {
+          closest = node.id;
+          closestDistance = distance;
+        }
+      }
+      return closest;
+    },
+    [graphData],
+  );
+
+  function handlePointerDownCapture(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !isGraphSurface(event.target)) return;
+    // Flush before ForceGraph's mousedown/touchstart chooses its drag subject.
+    flushSync(refreshHitAreas);
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !isGraphSurface(event.target)) {
+      pointerStart.current = null;
+      return;
+    }
+    pointerStart.current = {
+      x: event.clientX,
+      y: event.clientY,
+      hitId: findHitAt(event.clientX, event.clientY),
+      pointerType: event.pointerType,
+    };
+    setGraphCursor("grabbing");
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!isGraphSurface(event.target)) {
+      updateHovered(null);
+      setGraphCursor("");
+      return;
+    }
+    const start = pointerStart.current;
+    const threshold = event.pointerType === "touch" ? 10 : 5;
+    if (start) {
+      const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y) > threshold;
+      if (moved) {
+        // A pan or node drag owns the gesture. Resolving nodes on every move
+        // would churn labels and React state under the pointer.
+        updateHovered(null);
+        setGraphCursor("grabbing");
+        return;
+      }
+    }
+    const hitId = findHitAt(event.clientX, event.clientY);
+    updateHovered(hitId);
+    setGraphCursor(hitId ? "pointer" : "grab");
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    const start = pointerStart.current;
+    pointerStart.current = null;
+    if (!start) return;
+    if (!isGraphSurface(event.target)) {
+      setGraphCursor("");
+      return;
+    }
+    const threshold = start.pointerType === "touch" ? 10 : 5;
+    const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+    if (moved > threshold) {
+      const hitId = findHitAt(event.clientX, event.clientY);
+      updateHovered(hitId);
+      setGraphCursor(hitId ? "pointer" : "grab");
+      return;
+    }
+    onSelect(start.hitId);
+    updateHovered(start.hitId);
+    setGraphCursor(start.hitId ? "pointer" : "grab");
+  }
+
+  function handlePointerLeave() {
+    updateHovered(null);
+    setGraphCursor("");
+  }
+
+  function handlePointerCancel() {
+    pointerStart.current = null;
+    setGraphCursor("");
+  }
+
+  useEffect(() => {
+    function releaseOutside(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Node && containerRef.current?.contains(target)) return;
+      pointerStart.current = null;
+      updateHovered(null);
+      setGraphCursor("");
+    }
+    // Drags can end over the inspector; ForceGraph listens on window, so the
+    // local pointerup never arrives. Clear the click candidate there too.
+    window.addEventListener("pointerup", releaseOutside);
+    window.addEventListener("pointercancel", releaseOutside);
+    return () => {
+      window.removeEventListener("pointerup", releaseOutside);
+      window.removeEventListener("pointercancel", releaseOutside);
+    };
+  }, [setGraphCursor, updateHovered]);
 
   const colorFor = useCallback(
     (kind: GraphNode["kind"]) => {
@@ -367,7 +557,10 @@ export function TrendGraphCanvas({
   const drawLabels = useCallback(
     (context: CanvasRenderingContext2D) => {
       const graph = graphRef.current;
-      if (!graph || !size.width || !size.height) return;
+      if (!graph || !size.width || !size.height) {
+        labelHitAreas.current = [];
+        return;
+      }
       const dpr = window.devicePixelRatio || 1;
       context.save();
       // The graph paints in its own zoom transform. Labels are positioned in
@@ -384,6 +577,7 @@ export function TrendGraphCanvas({
         }),
       );
       const placed: { left: number; top: number; right: number; bottom: number }[] = [];
+      const hitAreas: LabelHitArea[] = [];
       const labels = frameNodes.current
         .filter((node) => {
           if (!activeIds.has(node.id) && node.id !== hoveredId) return false;
@@ -475,6 +669,13 @@ export function TrendGraphCanvas({
         );
         if (collides && !selected && !hovered && !isPattern) continue;
 
+        hitAreas.push({
+          id: node.id,
+          left: left - 2,
+          top: top - 2,
+          right: right + 2,
+          bottom: bottom + 2,
+        });
         context.lineWidth = 3.5;
         context.strokeStyle = palette.background;
         context.lineJoin = "round";
@@ -483,6 +684,7 @@ export function TrendGraphCanvas({
         context.fillText(node.label, labelX, labelY);
         placed.push({ left, top, right, bottom });
       }
+      labelHitAreas.current = hitAreas;
       context.restore();
     },
     [activeIds, hoveredId, palette, selectedId, showContextLabels, size.height, size.width],
@@ -542,7 +744,16 @@ export function TrendGraphCanvas({
   }
 
   return (
-    <div ref={containerRef} className="absolute inset-0">
+    <div
+      ref={containerRef}
+      className="absolute inset-0"
+      onPointerDownCapture={handlePointerDownCapture}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
+      onPointerCancel={handlePointerCancel}
+    >
       <div aria-hidden="true" className="absolute inset-0">
         {size.width > 0 && (
           <ForceGraph2D
@@ -558,6 +769,15 @@ export function TrendGraphCanvas({
               ctx.arc(node.x ?? 0, node.y ?? 0, node.radius + 9, 0, Math.PI * 2);
               ctx.fillStyle = color;
               ctx.fill();
+              // Labels are legitimate grab targets too. Convert the painted
+              // label box back into graph space for the shadow hit canvas.
+              const label = labelHitAreas.current.find((area) => area.id === node.id);
+              const graph = graphRef.current;
+              if (label && graph) {
+                const start = graph.screen2GraphCoords(label.left, label.top);
+                const end = graph.screen2GraphCoords(label.right, label.bottom);
+                ctx.fillRect(start.x, start.y, end.x - start.x, end.y - start.y);
+              }
             }}
             nodeLabel={() => ""}
             linkColor={linkColor}
@@ -568,12 +788,6 @@ export function TrendGraphCanvas({
               frameNodes.current = [];
             }}
             onRenderFramePost={paintLabelFrame}
-            onNodeHover={(raw) => setHoveredId(raw ? String(raw.id) : null)}
-            onNodeClick={(raw) => {
-              const node = raw as NodePoint;
-              if (node?.id) onSelect(node.id);
-            }}
-            onBackgroundClick={() => onSelect(null)}
             onEngineStop={finishLayout}
             cooldownTicks={reducedMotion ? 0 : 80}
             warmupTicks={reducedMotion ? 80 : 24}
@@ -584,7 +798,6 @@ export function TrendGraphCanvas({
             enableNodeDrag
             enablePanInteraction
             enableZoomInteraction
-            showPointerCursor
           />
         )}
       </div>
