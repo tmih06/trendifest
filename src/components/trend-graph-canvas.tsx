@@ -1,4 +1,4 @@
-import { forceCollide } from "d3-force";
+import { forceCenter, forceCollide, forceX, forceY } from "d3-force";
 import { Crosshair, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
 import {
   useCallback,
@@ -231,7 +231,7 @@ function makeGraphData(layoutVersion = 0): CanvasGraph {
     nodes: GRAPH_NODES.map((node, index) => {
       if (node.kind === "pattern") {
         const hub = HUB_POSITIONS[node.id]!;
-        return { ...node, x: hub.x, y: hub.y, fx: hub.x, fy: hub.y };
+        return { ...node, x: hub.x, y: hub.y };
       }
       const base = LEAF_SEEDS.get(node.id) ?? { x: 0, y: 0 };
       const angle = index * 2.399963229728653 + layoutVersion * 0.83;
@@ -286,8 +286,6 @@ export function TrendGraphCanvas({
     offsetX: number;
     offsetY: number;
     active: boolean;
-    initialFx?: number;
-    initialFy?: number;
   } | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
   const cursorRef = useRef("");
@@ -360,23 +358,77 @@ export function TrendGraphCanvas({
   }, []);
 
   useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const container = element;
+    function onWheel(event: WheelEvent) {
+      if (!isGraphSurface(event.target)) return;
+      const graph = graphRef.current;
+      if (!graph) return;
+      event.preventDefault();
+
+      const rect = container.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const current = graph.zoom() || 1;
+      const delta =
+        event.deltaMode === 1
+          ? event.deltaY * 16
+          : event.deltaMode === 2
+            ? event.deltaY * 400
+            : event.deltaY;
+      const target = Math.min(2.5, Math.max(0.35, current * Math.exp(-delta * 0.0015)));
+      if (Math.abs(target - current) < 0.0005) return;
+
+      // Zoom around the cursor and ease both scale and center together. d3's
+      // raw wheel handler changes scale in one step, which reads as a jump.
+      const anchor = graph.screen2GraphCoords(x, y);
+      const centerX = anchor.x - (x - rect.width / 2) / target;
+      const centerY = anchor.y - (y - rect.height / 2) / target;
+      graph.zoom(target, 120);
+      graph.centerAt(centerX, centerY, 120);
+    }
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, []);
+
+  useEffect(() => {
     const graph = graphRef.current;
     if (!graph) return;
     const charge = graph.d3Force("charge") as { strength?: (value: number) => void } | undefined;
-    charge?.strength?.(-150);
+    charge?.strength?.(-120);
     const link = graph.d3Force("link") as
-      | { distance?: (value: (link: LinkPoint) => number) => void }
+      | {
+          distance?: (value: (link: LinkPoint) => number) => void;
+          strength?: (value: number) => void;
+        }
       | undefined;
     link?.distance?.((edge) =>
       edge.relation === "spreads in" ? 108 : edge.relation === "uses" ? 86 : 74,
     );
+    link?.strength?.(0.18);
     graph.d3Force(
       "collide",
       forceCollide<NodePoint>(
         (node) => (node.radius ?? 6) + (node.kind === "pattern" ? 26 : 14),
       ) as never,
     );
-    graph.d3Force("center", null);
+    // The six patterns are elastic landmarks, not fixed points. These weak
+    // springs let them drift and pull back after a drag while the graph still
+    // keeps its ring composition.
+    graph.d3Force(
+      "x",
+      forceX<NodePoint>((node) => HUB_POSITIONS[node.id]?.x ?? 0).strength((node) =>
+        node.kind === "pattern" ? 0.06 : 0,
+      ) as never,
+    );
+    graph.d3Force(
+      "y",
+      forceY<NodePoint>((node) => HUB_POSITIONS[node.id]?.y ?? 0).strength((node) =>
+        node.kind === "pattern" ? 0.06 : 0,
+      ) as never,
+    );
+    graph.d3Force("center", forceCenter<NodePoint>(0, 0).strength(0.03) as never);
     graph.d3ReheatSimulation();
   }, [layoutVersion]);
 
@@ -487,12 +539,10 @@ export function TrendGraphCanvas({
     if (!drag.active) return false;
     const { node } = drag;
     setDragging(false);
-    // Pattern hubs are seeded as fixed points; free leaves return to the
-    // simulation. This mirrors ForceGraph's own drag release semantics.
-    if (drag.initialFx === undefined) node.fx = undefined;
-    else node.fx = node.x;
-    if (drag.initialFy === undefined) node.fy = undefined;
-    else node.fy = node.y;
+    // Let the force layout reclaim the node; it should drift back rather than
+    // sticking to the drop point.
+    node.fx = undefined;
+    node.fy = undefined;
     graphRef.current?.d3ReheatSimulation();
     return true;
   }, []);
@@ -531,8 +581,6 @@ export function TrendGraphCanvas({
           offsetX: node.x - point.x,
           offsetY: node.y - point.y,
           active: false,
-          initialFx: node.fx,
-          initialFy: node.fy,
         };
         try {
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -569,6 +617,7 @@ export function TrendGraphCanvas({
             if (!drag.active) {
               drag.active = true;
               setDragging(true);
+              graphRef.current?.d3ReheatSimulation();
             }
             drag.node.x = point.x + drag.offsetX;
             drag.node.y = point.y + drag.offsetY;
@@ -959,17 +1008,17 @@ export function TrendGraphCanvas({
             }}
             onRenderFramePost={paintLabelFrame}
             onEngineStop={handleEngineStop}
-            cooldownTicks={reducedMotion || !hasSettled ? 0 : 80}
-            warmupTicks={reducedMotion ? 80 : 100}
-            d3AlphaDecay={0.045}
-            d3VelocityDecay={0.35}
+            cooldownTicks={reducedMotion || !hasSettled ? 0 : 220}
+            warmupTicks={reducedMotion ? 80 : 120}
+            d3AlphaDecay={0.018}
+            d3VelocityDecay={0.32}
             minZoom={0.35}
             maxZoom={2.5}
             autoPauseRedraw={!dragging}
             enablePointerInteraction={false}
             enableNodeDrag={false}
             enablePanInteraction
-            enableZoomInteraction
+            enableZoomInteraction={false}
           />
         )}
       </div>
