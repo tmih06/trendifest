@@ -6,6 +6,7 @@ import {
   fetchAnalysis,
   fetchOverview,
   fetchSuggestions,
+  fetchWatchlistItems,
   patchWatchlistThreshold,
   readAlerts,
 } from "@/lib/api";
@@ -28,6 +29,14 @@ export function useAnalysis(terms: string[], geo: string, range: RangeKey) {
   });
 }
 
+export function useWatchlist() {
+  return useQuery({
+    queryKey: ["watchlist"],
+    queryFn: fetchWatchlistItems,
+    staleTime: 30_000,
+  });
+}
+
 export function useSuggestions(query: string) {
   return useQuery({
     queryKey: ["suggest", query],
@@ -43,7 +52,10 @@ export function useAddWatchlist() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: createWatchlistItem,
-    onSuccess: () => client.invalidateQueries({ queryKey: ["overview"] }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["overview"] });
+      void client.invalidateQueries({ queryKey: ["watchlist"] });
+    },
   });
 }
 
@@ -51,7 +63,10 @@ export function useRemoveWatchlist() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: deleteWatchlistItem,
-    onSuccess: () => client.invalidateQueries({ queryKey: ["overview"] }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["overview"] });
+      void client.invalidateQueries({ queryKey: ["watchlist"] });
+    },
   });
 }
 

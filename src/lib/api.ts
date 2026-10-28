@@ -60,6 +60,11 @@ export function fetchOverview(geo: string, range: RangeKey) {
   return request<Overview>(`/api/overview?${query({ geo, range })}`);
 }
 
+export async function fetchWatchlistItems() {
+  const result = await request<{ items: WatchlistItem[] }>("/api/watchlist");
+  return result.items;
+}
+
 export function fetchAnalysis(terms: string[], geo: string, range: RangeKey) {
   return request<TrendAnalysis>(`/api/analyze?${query({ terms: terms.join(","), geo, range })}`);
 }

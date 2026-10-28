@@ -6,6 +6,7 @@ import {
   ExternalLink,
   LayoutDashboard,
   Moon,
+  Network,
   Radar,
   Sun,
 } from "lucide-react";
@@ -188,6 +189,13 @@ export function AppShell({ page, unread, theme, onToggleTheme, children }: AppSh
               <ActiveIcon className="size-3.5 text-muted-foreground" strokeWidth={1.75} />
               <span className="whitespace-nowrap">{PAGE_LABEL[page]}</span>
             </div>
+            <a
+              href="#/graph"
+              className="flex h-[30px] shrink-0 items-center gap-1.5 rounded-t-[6px] px-2.5 text-[12px] text-muted-foreground/70 hover:bg-accent hover:text-muted-foreground"
+            >
+              <Network className="size-3.5" strokeWidth={1.75} />
+              Related graph
+            </a>
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-1.5">
@@ -219,6 +227,14 @@ export function AppShell({ page, unread, theme, onToggleTheme, children }: AppSh
                 </a>
               );
             })}
+            <a
+              href="#/graph"
+              aria-label="Related graph"
+              title="Related graph"
+              className="mt-1 grid size-8 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Network className="size-[18px]" strokeWidth={1.75} />
+            </a>
           </nav>
 
           <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-muted lg:flex">

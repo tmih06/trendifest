@@ -9,6 +9,7 @@ import {
   addWatchlist,
   ApiFailure,
   markAlertsRead,
+  readState,
   removeWatchlist,
   updateThreshold,
 } from "./store.ts";
@@ -91,6 +92,11 @@ async function handleApi(request: Request, url: URL) {
       // Suggestions are a convenience; a blocked upstream must not block typing.
       return json({ suggestions: [] });
     }
+  }
+
+  if (url.pathname === "/api/watchlist" && request.method === "GET") {
+    const state = await readState();
+    return json({ items: state.watchlist });
   }
 
   if (url.pathname === "/api/watchlist" && request.method === "POST") {

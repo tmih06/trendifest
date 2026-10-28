@@ -1,8 +1,9 @@
 # Trendifest
 
 A minimal trend analysis, forecasting, and monitoring app built on Google Trends
-search interest. Search a term, compare up to five terms, project the next few
-observations, and monitor a watchlist with threshold alerts.
+search interest. The root opens a live related-query graph; the workspace behind
+it compares up to five terms, projects the next observations, and monitors a
+watchlist with threshold alerts.
 
 Every number in the product comes from live Google Trends data or a cached live
 snapshot. There is no demo watchlist and no synthetic fallback.
@@ -14,6 +15,7 @@ snapshot. There is no demo watchlist and no synthetic fallback.
 - **React 19 + TypeScript**
 - **Tailwind CSS 4** with shadcn-style semantic tokens and Radix Dialog
 - **Recharts** for the interest and forecast charts
+- **react-force-graph-2d** and **d3-force** for the live related-query graph
 - **TanStack Query** for caching, polling, and mutations
 - **Inter** (self-hosted via Fontsource), an Obsidian-inspired workspace, and Lucide icons
 
@@ -24,9 +26,10 @@ bun install
 bun run dev
 ```
 
-Open **http://localhost:5180**. The dev command starts the Bun API on port 8787
-and the Vite+ dev server with a `/api` proxy. No password is required in
-development. Use `Ctrl+C` to stop both.
+Open **http://localhost:5180**. The root is the related graph; the dashboard is
+at `#/overview`. The dev command starts the Bun API on port 8787 and the Vite+
+dev server with a `/api` proxy. No password is required in development. Use
+`Ctrl+C` to stop both.
 
 ```bash
 bun run check   # Vite+ format + lint + typecheck
@@ -63,6 +66,11 @@ Alerts are delivered in-app; the MVP has no email or webhook delivery.
 
 ## What it does
 
+- **Related graph** — choose a watched term and see Google's top and rising
+  related queries as a force-directed network. Queries connect to the center
+  because Google returned them together; a second kind of edge joins labels
+  where one query literally contains the other. Select a node for its real
+  value, open it in Explore, or monitor it with a 15% threshold.
 - **Overview** — selected trend history, a damped-trend forecast with an 80%
   interval, watchlist movement, recent alerts, and daily trending searches.
 - **Explore** — add up to five terms, compare them on Google's shared 0–100
@@ -72,8 +80,8 @@ Alerts are delivered in-app; the MVP has no email or webhook delivery.
 - **Alerts** — unread/all filters, mark-one or mark-all-read, and plain-language
   explanations of each threshold crossing.
 
-A first run starts with an empty watchlist. Add terms from any page; the
-watchlist holds twelve.
+A first run starts with an empty watchlist and an empty graph. Add a term from
+the graph or any workspace page; the watchlist holds twelve.
 
 ## Live data behavior
 
@@ -87,6 +95,19 @@ shared IPs. Data degrades in two honest stages:
 A failed query enters a 90-second cooldown so an outage never becomes a request
 storm from every open tab. Cached snapshots remain visible during an outage and
 never enter the alert pipeline twice.
+
+## Related graph data
+
+The graph makes one single-term Google Trends request per selected term, because
+Google only returns related queries for single-term requests. Top-query values
+are a relative 0–100 score; rising-query values are growth percentages, not
+search volume. A center-to-query edge means Google returned that query as
+related. A curved query-to-query edge means one label literally contains the
+other. Nothing else is inferred.
+
+Country comes from the watchlist item; range comes from the graph controls.
+Changing either resets the selection and fetches a fresh neighborhood. When no
+related queries come back, the graph says so instead of manufacturing nodes.
 
 ## Forecast method
 
@@ -105,10 +126,10 @@ chart and exposes the same series in a keyboard-reachable data table.
 ```
 server/          Bun API, Google Trends client, forecast engine, auth, JSON store
 shared/          Wire types and country/range configuration
-src/components/  shadcn-style primitives, charts, and layout
-src/pages/       Overview, Explore, Watchlist, Alerts
+src/components/  shadcn-style primitives, charts, graph canvas, and inspector
+src/pages/       Related graph, Overview, Explore, Watchlist, Alerts
 src/hooks/       Hash routing, theme, debounce, TanStack Query hooks
-tests/           Forecast, Google client, and alert derivation tests
+tests/           Forecast, Google client, alerts, and overview tests
 scripts/dev.ts   Starts the API and Vite+ dev server together
 ```
 

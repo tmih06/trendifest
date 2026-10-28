@@ -3,7 +3,9 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Forecast, TermInsight, WatchlistSummary } from "../shared/types.ts";
+import { getAnalysis } from "../server/google-trends.ts";
 import { buildOverview, refreshWatchlist } from "../server/overview.ts";
+import { buildRelatedGraph, connectionsFor } from "../src/pages/trend-graph.data.ts";
 import * as store from "../server/store.ts";
 
 let directory = "";
@@ -141,5 +143,19 @@ describe("alerts", () => {
     const refreshed = await refreshWatchlist("12m");
     expect(refreshed.summaries).toBe(1);
     expect(overview.stats.unreadAlerts).toBeGreaterThanOrEqual(0);
+  });
+
+  test("builds a live related-query graph", async () => {
+    const analysis = await getAnalysis(["ai"], "US", "12m");
+    const graph = buildRelatedGraph(analysis);
+
+    expect(graph.geo).toBe("US");
+    expect(graph.nodes[0]?.kind).toBe("term");
+    expect(graph.nodes.some((node) => node.kind === "top")).toBe(true);
+    expect(graph.nodes.some((node) => node.kind === "rising")).toBe(true);
+    expect(graph.links.some((link) => link.relation === "related")).toBe(true);
+    expect(graph.links.some((link) => link.relation === "rising")).toBe(true);
+    expect(new Set(graph.nodes.map((node) => node.id)).size).toBe(graph.nodes.length);
+    expect(connectionsFor(graph.seedId, graph)).toHaveLength(graph.nodes.length - 1);
   });
 });
