@@ -198,7 +198,6 @@ export function TrendGraphCanvas({
 }: TrendGraphCanvasProps) {
   const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
-  const labelCanvasRef = useRef<HTMLCanvasElement>(null);
   const frameNodes = useRef<NodePoint[]>([]);
   const shouldFit = useRef(true);
   const reducedMotion = useReducedMotion();
@@ -348,153 +347,158 @@ export function TrendGraphCanvas({
   );
 
   /**
-   * Labels live on a separate transparent canvas. That keeps them above every
-   * node, lets us clear stale frames, and keeps their screen size stable while
-   * the force graph zooms. Colliding labels are skipped except for the active
-   * selection.
+   * Keep the node renderer identity tied to the label-only toggle as well, so
+   * ForceGraph repaints labels when context-label visibility changes without
+   * any node or link property changing.
    */
-  const drawLabelsRef = useRef<() => void>(() => {});
-  const drawLabels = useCallback(() => {
-    const graph = graphRef.current;
-    const canvas = labelCanvasRef.current;
-    if (!graph || !canvas || !size.width || !size.height) return;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const dpr = window.devicePixelRatio || 1;
-    const pixelWidth = Math.round(size.width * dpr);
-    const pixelHeight = Math.round(size.height * dpr);
-    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-      canvas.width = pixelWidth;
-      canvas.height = pixelHeight;
-    }
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    context.clearRect(0, 0, size.width, size.height);
-    context.globalAlpha = 1;
+  const paintNodeAndLabels = useCallback(
+    (raw: object, context: CanvasRenderingContext2D) => {
+      paintNode(raw, context);
+    },
+    [paintNode, showContextLabels],
+  );
 
-    const zoom = graph.zoom() || 1;
-    const positions = new Map(
-      frameNodes.current.map((node) => {
-        const point = graph.graph2ScreenCoords(node.x ?? 0, node.y ?? 0);
-        return [node.id, point];
-      }),
-    );
-    const placed: { left: number; top: number; right: number; bottom: number }[] = [];
-    const labels = frameNodes.current
-      .filter((node) => {
-        if (!activeIds.has(node.id) && node.id !== hoveredId) return false;
-        return (
-          node.id === selectedId ||
-          node.id === hoveredId ||
-          node.kind === "pattern" ||
-          node.degree > 2 ||
-          showContextLabels ||
-          zoom > 2.2
-        );
-      })
-      .toSorted((a, b) => {
-        const priority = (node: NodePoint) =>
-          node.id === selectedId || node.id === hoveredId
-            ? 3
-            : node.kind === "pattern"
-              ? 2
-              : node.degree > 2
-                ? 1.5
-                : 1;
-        return priority(b) - priority(a);
-      });
+  /**
+   * Labels paint over the graph in screen space, so their size stays stable
+   * while the force graph zooms. Colliding labels are skipped except for the
+   * active selection.
+   */
+  const drawLabelsRef = useRef<(context: CanvasRenderingContext2D) => void>(() => {});
+  const drawLabels = useCallback(
+    (context: CanvasRenderingContext2D) => {
+      const graph = graphRef.current;
+      if (!graph || !size.width || !size.height) return;
+      const dpr = window.devicePixelRatio || 1;
+      context.save();
+      // The graph paints in its own zoom transform. Labels are positioned in
+      // screen space, so draw them with the same CSS-pixel transform the graph
+      // starts with and restore the graph's transform afterwards.
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.globalAlpha = 1;
 
-    for (const node of labels) {
-      const point = positions.get(node.id);
-      if (!point) continue;
-      const isPattern = node.kind === "pattern";
-      const selected = node.id === selectedId;
-      const hovered = node.id === hoveredId;
-      const fontSize = isPattern ? 12.5 : 10.5;
-      context.font = `${isPattern ? 600 : 500} ${fontSize}px "Geist Variable", ui-sans-serif, sans-serif`;
-      context.textBaseline = "middle";
-      context.textAlign = "center";
-      const textWidth = context.measureText(node.label).width;
-      let labelX = point.x;
-      let labelY = point.y + node.radius * zoom + 12;
-
-      if (!isPattern) {
-        const parents = (PARENT_PATTERNS.get(node.id) ?? [])
-          .map((id) => positions.get(id))
-          .filter((parent): parent is { x: number; y: number } => Boolean(parent));
-        let directionX = 1;
-        let directionY = 0;
-        if (parents.length) {
-          const centerX = parents.reduce((sum, parent) => sum + parent.x, 0) / parents.length;
-          const centerY = parents.reduce((sum, parent) => sum + parent.y, 0) / parents.length;
-          const dx = point.x - centerX;
-          const dy = point.y - centerY;
-          const length = Math.hypot(dx, dy);
-          if (length > 1) {
-            directionX = dx / length;
-            directionY = dy / length;
-          }
-        }
-        const distance = node.radius * zoom + 7 + textWidth / 2;
-        labelX = point.x + directionX * distance;
-        labelY = point.y + directionY * distance;
-      }
-
-      const inset = textWidth / 2 + 8;
-      const minX = inset;
-      const maxX = size.width - inset;
-      const maxY = size.height - (size.width < 640 ? 10 : 58);
-      if (minX > maxX) continue;
-      labelX = Math.min(Math.max(labelX, minX), maxX);
-      labelY = Math.min(Math.max(labelY, fontSize / 2 + 8), maxY);
-
-      const pad = 3;
-      const left = labelX - textWidth / 2 - pad;
-      const right = labelX + textWidth / 2 + pad;
-      const top = labelY - fontSize / 2 - pad * 0.5;
-      const bottom = labelY + fontSize / 2 + pad * 0.5;
-
-      if (!isPattern && !selected && !hovered) {
-        const coversHub = frameNodes.current.some((other) => {
-          if (other.kind !== "pattern") return false;
-          const hub = positions.get(other.id);
-          if (!hub) return false;
-          const nearestX = Math.max(left, Math.min(hub.x, right));
-          const nearestY = Math.max(top, Math.min(hub.y, bottom));
-          return Math.hypot(hub.x - nearestX, hub.y - nearestY) < other.radius * zoom + 2;
-        });
-        if (coversHub) continue;
-      }
-
-      const collides = placed.some(
-        (box) => left < box.right && right > box.left && top < box.bottom && bottom > box.top,
+      const zoom = graph.zoom() || 1;
+      const positions = new Map(
+        frameNodes.current.map((node) => {
+          const point = graph.graph2ScreenCoords(node.x ?? 0, node.y ?? 0);
+          return [node.id, point];
+        }),
       );
-      if (collides && !selected && !hovered && !isPattern) continue;
+      const placed: { left: number; top: number; right: number; bottom: number }[] = [];
+      const labels = frameNodes.current
+        .filter((node) => {
+          if (!activeIds.has(node.id) && node.id !== hoveredId) return false;
+          return (
+            node.id === selectedId ||
+            node.id === hoveredId ||
+            node.kind === "pattern" ||
+            node.degree > 2 ||
+            showContextLabels ||
+            zoom > 2.2
+          );
+        })
+        .toSorted((a, b) => {
+          const priority = (node: NodePoint) =>
+            node.id === selectedId || node.id === hoveredId
+              ? 3
+              : node.kind === "pattern"
+                ? 2
+                : node.degree > 2
+                  ? 1.5
+                  : 1;
+          return priority(b) - priority(a);
+        });
 
-      context.lineWidth = 3.5;
-      context.strokeStyle = palette.background;
-      context.lineJoin = "round";
-      context.strokeText(node.label, labelX, labelY);
-      context.fillStyle = isPattern ? palette.foreground : palette.muted;
-      context.fillText(node.label, labelX, labelY);
-      placed.push({ left, top, right, bottom });
-    }
-  }, [activeIds, hoveredId, palette, selectedId, showContextLabels, size.height, size.width]);
+      for (const node of labels) {
+        const point = positions.get(node.id);
+        if (!point) continue;
+        const isPattern = node.kind === "pattern";
+        const selected = node.id === selectedId;
+        const hovered = node.id === hoveredId;
+        const fontSize = isPattern ? 12.5 : 10.5;
+        context.font = `${isPattern ? 600 : 500} ${fontSize}px "Geist Variable", ui-sans-serif, sans-serif`;
+        context.textBaseline = "middle";
+        context.textAlign = "center";
+        const textWidth = context.measureText(node.label).width;
+        let labelX = point.x;
+        let labelY = point.y + node.radius * zoom + 12;
+
+        if (!isPattern) {
+          const parents = (PARENT_PATTERNS.get(node.id) ?? [])
+            .map((id) => positions.get(id))
+            .filter((parent): parent is { x: number; y: number } => Boolean(parent));
+          let directionX = 1;
+          let directionY = 0;
+          if (parents.length) {
+            const centerX = parents.reduce((sum, parent) => sum + parent.x, 0) / parents.length;
+            const centerY = parents.reduce((sum, parent) => sum + parent.y, 0) / parents.length;
+            const dx = point.x - centerX;
+            const dy = point.y - centerY;
+            const length = Math.hypot(dx, dy);
+            if (length > 1) {
+              directionX = dx / length;
+              directionY = dy / length;
+            }
+          }
+          const distance = node.radius * zoom + 7 + textWidth / 2;
+          labelX = point.x + directionX * distance;
+          labelY = point.y + directionY * distance;
+        }
+
+        const inset = textWidth / 2 + 8;
+        const minX = inset;
+        const maxX = size.width - inset;
+        const maxY = size.height - (size.width < 640 ? 10 : 58);
+        if (minX > maxX) continue;
+        labelX = Math.min(Math.max(labelX, minX), maxX);
+        labelY = Math.min(Math.max(labelY, fontSize / 2 + 8), maxY);
+
+        const pad = 3;
+        const left = labelX - textWidth / 2 - pad;
+        const right = labelX + textWidth / 2 + pad;
+        const top = labelY - fontSize / 2 - pad * 0.5;
+        const bottom = labelY + fontSize / 2 + pad * 0.5;
+
+        if (!isPattern && !selected && !hovered) {
+          const coversHub = frameNodes.current.some((other) => {
+            if (other.kind !== "pattern") return false;
+            const hub = positions.get(other.id);
+            if (!hub) return false;
+            const nearestX = Math.max(left, Math.min(hub.x, right));
+            const nearestY = Math.max(top, Math.min(hub.y, bottom));
+            return Math.hypot(hub.x - nearestX, hub.y - nearestY) < other.radius * zoom + 2;
+          });
+          if (coversHub) continue;
+        }
+
+        const collides = placed.some(
+          (box) => left < box.right && right > box.left && top < box.bottom && bottom > box.top,
+        );
+        if (collides && !selected && !hovered && !isPattern) continue;
+
+        context.lineWidth = 3.5;
+        context.strokeStyle = palette.background;
+        context.lineJoin = "round";
+        context.strokeText(node.label, labelX, labelY);
+        context.fillStyle = isPattern ? palette.foreground : palette.muted;
+        context.fillText(node.label, labelX, labelY);
+        placed.push({ left, top, right, bottom });
+      }
+      context.restore();
+    },
+    [activeIds, hoveredId, palette, selectedId, showContextLabels, size.height, size.width],
+  );
 
   drawLabelsRef.current = drawLabels;
 
   /**
-   * Draw labels after the engine paints a frame, and once after any state-only
-   * change (search, selection, theme). A stable frame callback reads the latest
-   * closure through the ref so React updates cannot leave stale labels behind.
+   * Labels paint at the end of the graph's own frame, after links and nodes.
+   * Keeping them on the same canvas avoids a second full-screen transparent
+   * layer, which measured as the main source of dropped pan and drag frames.
+   * The stable callback reads the latest label closure through the ref.
    */
-  const paintLabelFrame = useCallback(() => {
-    drawLabelsRef.current();
+  const paintLabelFrame = useCallback((context: CanvasRenderingContext2D) => {
+    drawLabelsRef.current(context);
   }, []);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(paintLabelFrame);
-    return () => window.cancelAnimationFrame(frame);
-  }, [drawLabels, paintLabelFrame]);
 
   const linkColor = useCallback(
     (raw: object) => {
@@ -512,7 +516,6 @@ export function TrendGraphCanvas({
     },
     [activeIds, palette, selectedId],
   );
-
   const linkWidth = useCallback(
     (raw: object) => {
       const link = raw as LinkPoint;
@@ -548,7 +551,7 @@ export function TrendGraphCanvas({
             height={size.height}
             graphData={graphData}
             backgroundColor="rgba(0,0,0,0)"
-            nodeCanvasObject={paintNode}
+            nodeCanvasObject={paintNodeAndLabels}
             nodePointerAreaPaint={(raw, color, ctx) => {
               const node = raw as NodePoint;
               ctx.beginPath();
@@ -585,12 +588,6 @@ export function TrendGraphCanvas({
           />
         )}
       </div>
-
-      <canvas
-        ref={labelCanvasRef}
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-      />
 
       <div className="absolute bottom-3 right-3 z-30 flex items-center gap-0.5 rounded-lg border border-border/80 bg-background/90 p-0.5 shadow-sm backdrop-blur-sm max-sm:hidden">
         <Button
