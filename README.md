@@ -4,30 +4,35 @@ A minimal trend analysis, forecasting, and monitoring prototype built on Google
 Trends search interest. Search a term, compare up to five terms, project the next
 few observations, and set thresholds that turn live movement into alerts.
 
-> **Prototype branch:** the app opens with a separate, entirely fictional
-> trend-network study at `#/prototype/trend-network`; `#/overview` still reaches
-> the Google Trends workspace. See [Trend-network mock](#trend-network-mock).
+> **Prototype branch:** the root route opens a fictional signal-graph study;
+> `#/overview` still reaches the Google Trends workspace. See
+> [Signal graph mock](#signal-graph-mock).
 
-## Trend-network mock
+## Signal graph mock
 
-The trend-network study explores the early-signal product idea without connecting
-to a social network or pretending to make real predictions. It contains fictional
-patterns, creators, media, evidence links, and numerical scores. Read the
+The graph study explores the early-signal product idea without connecting to a
+social network or pretending to make real predictions. It contains six fictional
+pattern families connected to the concepts, sounds and communities that explain
+them. Read the
 [research feasibility note](docs/research/early-trend-intelligence.md) for the
 design constraints behind it.
 
-Open `http://localhost:5180/#/prototype/trend-network` after `bun run dev`, or use
-the links in the sidebar. The mock offers three layout studies, switchable with
-the development bar or `?variant=A|B|C` in the URL:
+Open `http://localhost:5180/#/prototype/trend-graph` after `bun run dev`, or simply
+open the root. The graph is a real force-directed canvas built with
+`react-force-graph-2d` and `d3-force`, not a positioned illustration.
 
-- **Radar** — ranked candidates, a focused evidence graph, and an inspector.
-- **Canvas** — a wider graph with candidate and activity rails.
-- **Editorial** — a readable signal brief with its supporting graph.
+- **Explore** — drag to rearrange, scroll or pinch to zoom, and select any node to
+  inspect it. Selecting a pattern also zooms to its local cluster.
+- **Search and source filters** — narrow the network to a node or an input source.
+- **Browse signals** — a keyboard and screen-reader route through all 36 nodes.
+- **Inspector** — meaning, connections, anatomy, evidence and a local tracking
+  toggle. Shared nodes are larger; curved links mark direct echoes between
+  families.
+- **Theme toggle** — the canvas, labels and inspector follow the light/dark theme.
 
-Try selecting graph nodes to inspect inferred relationships, scrubbing the pattern
-history, simulating a new remix, configuring a mock alert, monitoring a candidate,
-pausing a sample feed, and exporting a Markdown brief. All state is in memory and
-resets on reload. The Google Trends API is not used on this route.
+Every pattern, creator, quote, source and score is simulated. State lives only in
+memory. No social account, media feed, database or prediction model is connected,
+and the Google Trends API is not used on this route.
 
 ## Stack
 
@@ -35,6 +40,7 @@ resets on reload. The Google Trends API is not used on this route.
 - **Vite+** (`vite-plus`) for dev, build, formatting, linting, and type checks
 - **React 19 + TypeScript**
 - **Tailwind CSS 4** with shadcn-style semantic tokens and Radix Dialog
+- **react-force-graph-2d** and **d3-force** for the signal graph
 - **Recharts** for the interest and forecast charts
 - **TanStack Query** for caching, polling, and mutations
 - **Geist** (self-hosted via Fontsource) and Lucide icons
@@ -108,8 +114,8 @@ returns HTTP 429. It never feeds the alert pipeline. If you see sample data, use
 ```
 server/          Bun API, Google Trends client, forecast engine, JSON store
 shared/          Wire types and country/range configuration
-src/components/  shadcn-style primitives, charts, product components
-src/pages/       Overview, Explore, Watchlist, Alerts
+src/components/  shadcn-style primitives, charts, graph and inspector
+src/pages/       Overview, Explore, Watchlist, Alerts, trend graph
 src/hooks/       Hash routing, theme, debounce, TanStack Query hooks
 tests/           Forecast and alert derivation tests
 scripts/dev.ts   Starts the API and Vite+ dev server together

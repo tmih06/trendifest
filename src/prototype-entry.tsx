@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import App from "./App";
-import { TrendNetworkPrototype } from "./pages/trend-network-prototype";
+import { TrendGraphPrototype } from "./pages/trend-graph";
 
-/** Keep the old Google workspace reachable while this branch opens the mock by default. */
+/** Root opens the graph study; the classic Google Trends workspace stays at #/overview. */
 export default function PrototypeEntry() {
   const [hash, setHash] = useState(() => window.location.hash);
   useEffect(() => {
@@ -10,9 +10,5 @@ export default function PrototypeEntry() {
     window.addEventListener("hashchange", update);
     return () => window.removeEventListener("hashchange", update);
   }, []);
-  return !hash || hash.startsWith("#/prototype/trend-network") ? (
-    <TrendNetworkPrototype />
-  ) : (
-    <App />
-  );
+  return !hash || hash.startsWith("#/prototype/trend-graph") ? <TrendGraphPrototype /> : <App />;
 }
