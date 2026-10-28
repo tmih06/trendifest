@@ -287,6 +287,12 @@ export function TrendGraphCanvas({
     offsetY: number;
     active: boolean;
   } | null>(null);
+  const wheelZoom = useRef<{
+    target: number;
+    anchor: { screenX: number; screenY: number; graphX: number; graphY: number };
+    raf: number;
+    lastFrame: number;
+  } | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
   const cursorRef = useRef("");
   const shouldFit = useRef(true);
@@ -361,6 +367,40 @@ export function TrendGraphCanvas({
     const element = containerRef.current;
     if (!element) return;
     const container = element;
+
+    // A wheel gesture can contain dozens of events. Accumulate one target and
+    // drive a single camera loop; restarting a tween per event makes them
+    // fight each other and reads as stutter.
+    function tick(time: number) {
+      const graph = graphRef.current;
+      const state = wheelZoom.current;
+      if (!graph || !state) {
+        wheelZoom.current = null;
+        return;
+      }
+      const current = graph.zoom() || 1;
+      const dt = state.lastFrame ? Math.min(50, Math.max(1, time - state.lastFrame)) : 16;
+      state.lastFrame = time;
+      const ease = 1 - Math.exp(-dt / 55);
+      const next =
+        Math.abs(state.target - current) < 0.0004
+          ? state.target
+          : current + (state.target - current) * ease;
+
+      const rect = container.getBoundingClientRect();
+      const centerX = state.anchor.graphX - (state.anchor.screenX - rect.width / 2) / next;
+      const centerY = state.anchor.graphY - (state.anchor.screenY - rect.height / 2) / next;
+      graph.zoom(next, 0);
+      graph.centerAt(centerX, centerY, 0);
+
+      if (Math.abs(state.target - next) < 0.0007) {
+        state.raf = 0;
+        wheelZoom.current = null;
+        return;
+      }
+      state.raf = window.requestAnimationFrame(tick);
+    }
+
     function onWheel(event: WheelEvent) {
       if (!isGraphSurface(event.target)) return;
       const graph = graphRef.current;
@@ -368,28 +408,54 @@ export function TrendGraphCanvas({
       event.preventDefault();
 
       const rect = container.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const current = graph.zoom() || 1;
+      const screenX = event.clientX - rect.left;
+      const screenY = event.clientY - rect.top;
       const delta =
         event.deltaMode === 1
           ? event.deltaY * 16
           : event.deltaMode === 2
             ? event.deltaY * 400
             : event.deltaY;
-      const target = Math.min(2.5, Math.max(0.35, current * Math.exp(-delta * 0.0015)));
-      if (Math.abs(target - current) < 0.0005) return;
+      const factor = Math.exp(-delta * 0.0015);
+      if (!Number.isFinite(factor) || factor === 1) return;
 
-      // Zoom around the cursor and ease both scale and center together. d3's
-      // raw wheel handler changes scale in one step, which reads as a jump.
-      const anchor = graph.screen2GraphCoords(x, y);
-      const centerX = anchor.x - (x - rect.width / 2) / target;
-      const centerY = anchor.y - (y - rect.height / 2) / target;
-      graph.zoom(target, 120);
-      graph.centerAt(centerX, centerY, 120);
+      let state = wheelZoom.current;
+      if (!state) {
+        const current = graph.zoom() || 1;
+        const anchor = graph.screen2GraphCoords(screenX, screenY);
+        state = {
+          target: current,
+          anchor: {
+            screenX,
+            screenY,
+            graphX: anchor.x,
+            graphY: anchor.y,
+          },
+          raf: 0,
+          lastFrame: 0,
+        };
+        wheelZoom.current = state;
+      } else if (Math.hypot(screenX - state.anchor.screenX, screenY - state.anchor.screenY) > 8) {
+        const anchor = graph.screen2GraphCoords(screenX, screenY);
+        state.anchor = {
+          screenX,
+          screenY,
+          graphX: anchor.x,
+          graphY: anchor.y,
+        };
+      }
+
+      state.target = Math.min(2.5, Math.max(0.35, state.target * factor));
+      if (!state.raf) state.raf = window.requestAnimationFrame(tick);
     }
+
     container.addEventListener("wheel", onWheel, { passive: false });
-    return () => container.removeEventListener("wheel", onWheel);
+    return () => {
+      container.removeEventListener("wheel", onWheel);
+      const state = wheelZoom.current;
+      if (state?.raf) window.cancelAnimationFrame(state.raf);
+      wheelZoom.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -479,6 +545,12 @@ export function TrendGraphCanvas({
     setHoveredId(id);
   }, []);
 
+  const stopWheelZoom = useCallback(() => {
+    const state = wheelZoom.current;
+    if (state?.raf) window.cancelAnimationFrame(state.raf);
+    wheelZoom.current = null;
+  }, []);
+
   const setGraphCursor = useCallback((cursor: string) => {
     if (cursorRef.current === cursor) return;
     cursorRef.current = cursor;
@@ -561,6 +633,7 @@ export function TrendGraphCanvas({
       pointerStart.current = null;
       return;
     }
+    stopWheelZoom();
     const hitId = findHitAt(event.clientX, event.clientY);
     pointerStart.current = {
       x: event.clientX,
@@ -970,12 +1043,14 @@ export function TrendGraphCanvas({
   );
 
   function zoomBy(factor: number) {
+    stopWheelZoom();
     const graph = graphRef.current;
     if (!graph) return;
     graph.zoom(graph.zoom() * factor, reducedMotion ? 0 : 250);
   }
 
   function resetLayout() {
+    stopWheelZoom();
     shouldFit.current = true;
     setLayoutVersion((version) => version + 1);
   }
