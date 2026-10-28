@@ -51,6 +51,11 @@ interface LabelBitmap {
 
 const LABEL_FONT_FAMILY = '"Inter Variable", "Inter", sans-serif';
 
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
 /**
  * Labels repeat every frame. Rasterize the halo and glyphs once per role,
  * color and DPR; the frame loop then only draws the bitmap.
@@ -875,6 +880,8 @@ export function TrendGraphCanvas({
       context.globalAlpha = 1;
 
       const zoom = graph.zoom() || 1;
+      const leafFade = smoothstep(2, 2.4, zoom);
+      const patternFade = smoothstep(1.2, 1.7, zoom);
       const positions = new Map(
         frameNodes.current.map((node) => {
           const point = graph.graph2ScreenCoords(node.x ?? 0, node.y ?? 0);
@@ -886,14 +893,8 @@ export function TrendGraphCanvas({
       const labels = frameNodes.current
         .filter((node) => {
           if (!activeIds.has(node.id) && node.id !== hoveredId) return false;
-          return (
-            node.id === selectedId ||
-            node.id === hoveredId ||
-            node.kind === "pattern" ||
-            node.degree > 2 ||
-            showContextLabels ||
-            zoom > 2.2
-          );
+          if (node.id === selectedId || node.id === hoveredId || showContextLabels) return true;
+          return node.kind === "pattern" ? patternFade > 0.01 : leafFade > 0.01;
         })
         .toSorted((a, b) => {
           const priority = (node: NodePoint) =>
@@ -913,6 +914,9 @@ export function TrendGraphCanvas({
         const isPattern = node.kind === "pattern";
         const selected = node.id === selectedId;
         const hovered = node.id === hoveredId;
+        const fade =
+          selected || hovered || showContextLabels ? 1 : isPattern ? patternFade : leafFade;
+        if (fade < 0.02) continue;
         const fontSize = isPattern ? 12 : 11;
         const labelColor = selected || hovered ? palette.foreground : palette.muted;
         const bitmap = getLabelBitmap(node.label, isPattern, labelColor, palette.background, dpr);
@@ -973,16 +977,20 @@ export function TrendGraphCanvas({
         );
         if (collides && !selected && !hovered && !isPattern) continue;
 
-        hitAreas.push({
-          id: node.id,
-          left: left - 2,
-          top: top - 2,
-          right: right + 2,
-          bottom: bottom + 2,
-        });
+        if (fade >= 0.3) {
+          hitAreas.push({
+            id: node.id,
+            left: left - 2,
+            top: top - 2,
+            right: right + 2,
+            bottom: bottom + 2,
+          });
+        }
         const drawX = Math.round((labelX - bitmap.width / 2) * dpr) / dpr;
         const drawY = Math.round((labelY - bitmap.height / 2) * dpr) / dpr;
+        context.globalAlpha = fade;
         context.drawImage(bitmap.canvas, drawX, drawY, bitmap.width, bitmap.height);
+        context.globalAlpha = 1;
         placed.push({ left, top, right, bottom });
       }
       labelHitAreas.current = hitAreas;
