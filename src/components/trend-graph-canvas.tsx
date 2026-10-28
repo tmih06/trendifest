@@ -85,6 +85,9 @@ const HUB_POSITIONS: Record<string, { x: number; y: number }> = {
   "corporate-lore": { x: 324, y: 158 },
 };
 
+/** Pattern hubs carry the ambient pulse; leaf nodes stay quiet. */
+const PULSE_NODES = GRAPH_NODES.filter((node) => node.kind === "pattern");
+
 /**
  * Seed every leaf around the hub(s) it belongs to. Shared community nodes land
  * between their patterns, which gives the force layout its bridges from the
@@ -223,6 +226,10 @@ export function TrendGraphCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const frameNodes = useRef<NodePoint[]>([]);
   const labelHitAreas = useRef<LabelHitArea[]>([]);
+  const pulseRefs = useRef(new Map<string, HTMLSpanElement>());
+  const pulseLayerRef = useRef<HTMLDivElement>(null);
+  const pulsesHiddenRef = useRef(false);
+  const updatePulsesRef = useRef<() => void>(() => {});
   const pointerStart = useRef<{
     x: number;
     y: number;
@@ -347,6 +354,23 @@ export function TrendGraphCanvas({
   }, []);
 
   /**
+   * Animated halos are cheap while idle but add compositing work while the
+   * canvas is being redrawn. Hide them for the duration of a camera or node
+   * drag, then repaint them once the geometry has settled.
+   */
+  const hidePulses = useCallback(() => {
+    if (pulsesHiddenRef.current) return;
+    pulsesHiddenRef.current = true;
+    if (pulseLayerRef.current) pulseLayerRef.current.style.display = "none";
+  }, []);
+
+  const showPulses = useCallback(() => {
+    pulsesHiddenRef.current = false;
+    if (pulseLayerRef.current) pulseLayerRef.current.style.display = "";
+    updatePulsesRef.current();
+  }, []);
+
+  /**
    * Resolve the current node under a pointer from the last painted labels and
    * live node positions. Labels win because they are the larger, labelled
    * target users naturally aim at.
@@ -417,6 +441,7 @@ export function TrendGraphCanvas({
       if (moved) {
         // A pan or node drag owns the gesture. Resolving nodes on every move
         // would churn labels and React state under the pointer.
+        hidePulses();
         updateHovered(null);
         setGraphCursor("grabbing");
         return;
@@ -433,6 +458,7 @@ export function TrendGraphCanvas({
     if (!start) return;
     if (!isGraphSurface(event.target)) {
       setGraphCursor("");
+      showPulses();
       return;
     }
     const threshold = start.pointerType === "touch" ? 10 : 5;
@@ -441,11 +467,13 @@ export function TrendGraphCanvas({
       const hitId = findHitAt(event.clientX, event.clientY);
       updateHovered(hitId);
       setGraphCursor(hitId ? "pointer" : "grab");
+      showPulses();
       return;
     }
     onSelect(start.hitId);
     updateHovered(start.hitId);
     setGraphCursor(start.hitId ? "pointer" : "grab");
+    showPulses();
   }
 
   function handlePointerLeave() {
@@ -456,6 +484,7 @@ export function TrendGraphCanvas({
   function handlePointerCancel() {
     pointerStart.current = null;
     setGraphCursor("");
+    showPulses();
   }
 
   useEffect(() => {
@@ -465,6 +494,7 @@ export function TrendGraphCanvas({
       pointerStart.current = null;
       updateHovered(null);
       setGraphCursor("");
+      showPulses();
     }
     // Drags can end over the inspector; ForceGraph listens on window, so the
     // local pointerup never arrives. Clear the click candidate there too.
@@ -474,7 +504,7 @@ export function TrendGraphCanvas({
       window.removeEventListener("pointerup", releaseOutside);
       window.removeEventListener("pointercancel", releaseOutside);
     };
-  }, [setGraphCursor, updateHovered]);
+  }, [setGraphCursor, showPulses, updateHovered]);
 
   const colorFor = useCallback(
     (kind: GraphNode["kind"]) => {
@@ -693,6 +723,28 @@ export function TrendGraphCanvas({
   drawLabelsRef.current = drawLabels;
 
   /**
+   * The pulse rings are CSS-animated DOM elements, so the graph canvas does
+   * not redraw while idle. Only their screen positions follow the camera and
+   * layout frames; inactive patterns fade out so filtered graphs stay quiet.
+   */
+  const updatePulses = useCallback(() => {
+    if (pulsesHiddenRef.current) return;
+    const graph = graphRef.current;
+    if (!graph) return;
+    const zoom = Math.max(0.65, Math.min(1, graph.zoom() || 1));
+    for (const node of graphData.nodes) {
+      if (node.kind !== "pattern") continue;
+      const element = pulseRefs.current.get(node.id);
+      if (!element) continue;
+      element.style.opacity = activeIds.has(node.id) ? "1" : "0";
+      if (typeof node.x !== "number" || typeof node.y !== "number") continue;
+      const point = graph.graph2ScreenCoords(node.x, node.y);
+      element.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) scale(${zoom})`;
+    }
+  }, [activeIds, graphData]);
+  updatePulsesRef.current = updatePulses;
+
+  /**
    * Labels paint at the end of the graph's own frame, after links and nodes.
    * Keeping them on the same canvas avoids a second full-screen transparent
    * layer, which measured as the main source of dropped pan and drag frames.
@@ -700,6 +752,7 @@ export function TrendGraphCanvas({
    */
   const paintLabelFrame = useCallback((context: CanvasRenderingContext2D) => {
     drawLabelsRef.current(context);
+    updatePulsesRef.current();
   }, []);
 
   const linkColor = useCallback(
@@ -754,6 +807,28 @@ export function TrendGraphCanvas({
       onPointerLeave={handlePointerLeave}
       onPointerCancel={handlePointerCancel}
     >
+      <div
+        ref={pulseLayerRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+      >
+        {PULSE_NODES.map((node, index) => (
+          <span
+            key={node.id}
+            ref={(element) => {
+              if (element) pulseRefs.current.set(node.id, element);
+              else pulseRefs.current.delete(node.id);
+            }}
+            className="graph-pulse"
+          >
+            <span
+              className="graph-pulse-ring"
+              style={{ animationDelay: `${(-index * 1.05).toFixed(2)}s` }}
+            />
+          </span>
+        ))}
+      </div>
+
       <div aria-hidden="true" className="absolute inset-0">
         {size.width > 0 && (
           <ForceGraph2D
@@ -789,6 +864,8 @@ export function TrendGraphCanvas({
             }}
             onRenderFramePost={paintLabelFrame}
             onEngineStop={finishLayout}
+            onZoom={hidePulses}
+            onZoomEnd={showPulses}
             cooldownTicks={reducedMotion ? 0 : 80}
             warmupTicks={reducedMotion ? 80 : 24}
             d3AlphaDecay={0.045}
