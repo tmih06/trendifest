@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "../lib/cn.ts";
 
 /**
@@ -10,15 +11,14 @@ export function Sidebar({
   children,
   footer,
   collapsed = false,
-  className,
 }: {
   children: ReactNode;
   footer?: ReactNode;
+  /** Icon rail: the shell column narrows and rows shrink to squares. */
   collapsed?: boolean;
-  className?: string;
 }) {
   return (
-    <div className={cn("od-sidebar", className)} data-collapsed={collapsed ? "" : undefined}>
+    <div className="od-sidebar" data-collapsed={collapsed ? "" : undefined}>
       <div className="od-sidebar-scroll">
         <nav aria-label="Primary" className="flex flex-col">
           {children}
@@ -29,28 +29,48 @@ export function Sidebar({
   );
 }
 
-/** A tracked-uppercase group of navigation rows. The label is hidden in the rail. */
+/** Foldable navigation group; the icon rail always keeps its rows reachable. */
 export function SidebarSection({
   label,
   children,
   collapsed = false,
-  className,
 }: {
   label: string;
   children: ReactNode;
   collapsed?: boolean;
-  className?: string;
 }) {
+  const [folded, setFolded] = useState(false);
+  const contentId = useId();
+  const open = collapsed || !folded;
   return (
-    <div className={cn("od-sidebar-section", className)}>
+    <div className="od-sidebar-section">
       {collapsed ? (
-        <span className="sr-only">{label}</span>
+        // Keep the header's height in the rail: collapsing must narrow the
+        // column, never move the rows above or below it.
+        <div aria-hidden="true" className="mb-0.5 h-6" />
       ) : (
-        <div className="mx-2.5 mb-0.5 flex h-6 items-center px-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={contentId}
+          onClick={() => setFolded(!folded)}
+          className="mx-2.5 mb-0.5 flex min-h-6 items-center justify-between gap-2 rounded px-2 text-fg-3 hover:text-fg"
+        >
           <span className="label-caps truncate">{label}</span>
-        </div>
+          <ChevronDown
+            aria-hidden="true"
+            className={cn(
+              "size-3 transition-transform motion-reduce:transition-none",
+              !open && "-rotate-90",
+            )}
+          />
+        </button>
       )}
-      <div className="flex flex-col gap-px">{children}</div>
+      <div id={contentId} className="od-section-content" data-open={open} inert={!open}>
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex flex-col gap-px">{children}</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -68,8 +88,6 @@ export function SidebarItem({
   count,
   collapsed = false,
   title,
-  disabled = false,
-  className,
 }: {
   icon: ReactNode;
   children: ReactNode;
@@ -79,33 +97,34 @@ export function SidebarItem({
   count?: number;
   collapsed?: boolean;
   title?: string;
-  disabled?: boolean;
-  className?: string;
 }) {
   const label = title ?? (typeof children === "string" ? children : undefined);
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
       aria-pressed={active}
       aria-label={collapsed ? label : undefined}
       title={collapsed ? label : title}
       className={cn(
-        "group relative isolate flex items-center rounded-md text-left text-[12.5px] transition-[background-color,color] duration-150 ease-out motion-reduce:transition-none",
+        "group relative isolate flex items-center overflow-hidden rounded-md text-left text-[12.5px] transition-[background-color,color] duration-150 ease-out motion-reduce:transition-none",
         "[&>svg]:size-[15px] [&>svg]:shrink-0 [&>svg]:transition-colors",
-        collapsed
-          ? "mx-auto h-8 w-8 justify-center"
-          : "mx-2.5 h-7 w-[calc(100%-1.25rem)] gap-2.5 px-2",
+        // One geometry in both states: the icon keeps the same inset while the
+        // rail clips the label, so collapsing never slides it sideways.
+        "mx-2.5 h-7 w-[calc(100%-1.25rem)] gap-2.5 px-2",
         active
           ? "bg-chrome-active font-medium text-fg [&>svg]:text-fg"
           : "text-fg-2 hover:bg-chrome-hover hover:text-fg [&>svg]:text-fg-3 hover:[&>svg]:text-fg-2",
-        disabled && "pointer-events-none opacity-40",
-        className,
       )}
     >
       {icon}
-      <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>{children}</span>
+      <span
+        className={
+          collapsed ? "w-0 flex-none overflow-hidden opacity-0" : "min-w-0 flex-1 truncate"
+        }
+      >
+        {children}
+      </span>
       {!collapsed && count !== undefined && (
         <span
           className={cn(

@@ -178,6 +178,10 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
            (SELECT p.body FROM members m JOIN posts p ON p.id = m.post_id
              WHERE m.cluster_id = a.cluster_id AND length(p.body) >= 25
              ORDER BY length(p.body) DESC LIMIT 1) AS label,
+           (SELECT p.kind FROM members m JOIN posts p ON p.id = m.post_id
+             WHERE m.cluster_id = a.cluster_id
+             ORDER BY (jsonb_array_length(p.media) > 0) DESC, p.published_at DESC
+             LIMIT 1) AS kind,
            (SELECT count(*)::int FROM members m WHERE m.cluster_id = a.cluster_id
               AND jsonb_array_length(m.media) > 0) AS media_count
     FROM agg a

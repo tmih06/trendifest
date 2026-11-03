@@ -6,7 +6,7 @@ import {
   forceSimulation,
   forceX,
   forceY,
-  type ForceLink,
+  type Simulation,
 } from "d3-force";
 import { Crosshair, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
 import {
@@ -15,11 +15,9 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Button } from "@trendifest/opendesk";
-import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import type { Theme } from "@/hooks/use-app";
 import { connectionsFor, endpointId, type GraphLink, type GraphNode } from "@/lib/graph";
 
@@ -31,7 +29,7 @@ type NodePoint = GraphNode & {
   fx?: number;
   fy?: number;
 };
-type LinkPoint = GraphLink & {
+type LinkPoint = Omit<GraphLink, "source" | "target"> & {
   source: string | number | NodePoint;
   target: string | number | NodePoint;
 };
@@ -46,6 +44,42 @@ interface LabelHitArea {
   bottom: number;
 }
 
+/**
+ * The camera is the graph point at the viewport centre and a uniform scale.
+ * Every gesture writes this one object; drawing derives the canvas transform
+ * from it, so pan, zoom, fit and the controls cannot disagree.
+ */
+interface Camera {
+  x: number;
+  y: number;
+  k: number;
+}
+
+const MIN_ZOOM = 0.04;
+const MAX_ZOOM = 8;
+/** Relaxation is finite: 100 ticks or two seconds, whichever comes first. */
+const MAX_RELAX_TICKS = 100;
+const MAX_RELAX_MS = 2_000;
+
+/** Camera → screen mapping in CSS pixels, matching the d3-zoom transform. */
+function graphToScreen(camera: Camera, width: number, height: number, x: number, y: number) {
+  return {
+    x: (x - camera.x) * camera.k + width / 2,
+    y: (y - camera.y) * camera.k + height / 2,
+  };
+}
+
+function screenToGraph(camera: Camera, width: number, height: number, x: number, y: number) {
+  return {
+    x: camera.x + (x - width / 2) / camera.k,
+    y: camera.y + (y - height / 2) / camera.k,
+  };
+}
+
+function clampZoom(k: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, k));
+}
+
 interface LabelBitmap {
   canvas: HTMLCanvasElement;
   width: number;
@@ -58,6 +92,63 @@ const LABEL_FONT_FAMILY = '"Geist Variable", "Geist", ui-sans-serif, sans-serif'
 function smoothstep(edge0: number, edge1: number, value: number) {
   const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
+}
+
+type NodeShape = "circle" | "square" | "triangle" | "diamond" | "pentagon";
+
+/** Content type decides shape; the visual vocabulary is also in the legend. */
+function shapeFor(media: string | undefined): NodeShape {
+  if (media === "image") return "square";
+  if (media === "video") return "triangle";
+  if (media === "audio") return "diamond";
+  if (media === "link") return "pentagon";
+  return "circle";
+}
+
+/**
+ * Build one node outline. Polygons get optically rounded corners: each vertex
+ * is replaced by a short quadratic curve, so the square and triangle still read
+ * as their shape instead of losing their silhouette to a large radius.
+ */
+function nodePath(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  shape: NodeShape,
+) {
+  context.beginPath();
+  if (shape === "circle") {
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    return;
+  }
+  const sides = shape === "square" ? 4 : shape === "triangle" ? 3 : shape === "diamond" ? 4 : 5;
+  const rotation = shape === "triangle" ? -Math.PI / 2 : shape === "square" ? Math.PI / 4 : 0;
+  const points = Array.from({ length: sides }, (_, index) => {
+    const angle = rotation + (index / sides) * Math.PI * 2;
+    return { x: x + Math.cos(angle) * radius, y: y + Math.sin(angle) * radius };
+  });
+  const corner = Math.min(radius * 0.35, 2.2);
+  const mix = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+    const t = Math.min(0.5, corner / length);
+    return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+  };
+  let first = mix(points[0]!, points[1]!);
+  context.moveTo(first.x, first.y);
+  for (let index = 1; index <= sides; index += 1) {
+    const vertex = points[index % sides]!;
+    const previous = points[(index - 1) % sides]!;
+    const incoming = mix(vertex, previous);
+    const outgoing = mix(vertex, points[(index + 1) % sides]!);
+    context.lineTo(incoming.x, incoming.y);
+    context.quadraticCurveTo(vertex.x, vertex.y, outgoing.x, outgoing.y);
+    if (index === sides) first = outgoing;
+  }
+  // Wrap back to the first corner so the start edge is closed smoothly.
+  const vertex = points[0]!;
+  context.quadraticCurveTo(vertex.x, vertex.y, first.x, first.y);
+  context.closePath();
 }
 
 /**
@@ -181,6 +272,25 @@ function resolveColor(color: string, alpha = 1): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha * (a / 255)})`;
 }
 
+/** Blend two CSS colors in sRGB; used for the connection-count ramp. */
+function mixColor(from: string, to: string, amount: number): string {
+  colorProbe ??= document.createElement("canvas").getContext("2d", {
+    willReadFrequently: true,
+  });
+  const channels = (color: string) => {
+    if (!colorProbe) return [128, 128, 128, 255];
+    colorProbe.clearRect(0, 0, 1, 1);
+    colorProbe.fillStyle = color;
+    colorProbe.fillRect(0, 0, 1, 1);
+    return [...colorProbe.getImageData(0, 0, 1, 1).data];
+  };
+  const [r1, g1, b1, a1] = channels(from);
+  const [r2, g2, b2, a2] = channels(to);
+  const t = Math.min(1, Math.max(0, amount));
+  const value = (start: number, end: number) => Math.round(start + (end - start) * t);
+  return `rgba(${value(r1!, r2!)}, ${value(g1!, g2!)}, ${value(b1!, b2!)}, ${((a1! + (a2! - a1!) * t) / 255).toFixed(3)})`;
+}
+
 function readPalette(): GraphPalette {
   if (typeof document === "undefined") return FALLBACK_PALETTE;
   const styles = getComputedStyle(document.documentElement);
@@ -216,7 +326,11 @@ function isSimilarityLink(link: object): boolean {
 }
 
 function useReducedMotion() {
-  const [reduced, setReduced] = useState(false);
+  // The first paint must already respect the preference; a false default would
+  // animate one settle before the media query's effect runs.
+  const [reduced, setReduced] = useState(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReduced(media.matches);
@@ -271,9 +385,9 @@ function makeGraphData(
       );
     })
   ) {
-    // Keep the graph object identity as well as coordinates. A new graphData
-    // object reheats the library even when only scores or labels changed.
-    // Collision padding reserves room for the bounded score-radius changes.
+    // Keep the graph object identity as well as coordinates, so a refresh that
+    // only changes scores or labels does not restart the layout. Collision
+    // padding reserves room for the bounded score-radius changes.
     for (const node of sourceNodes) Object.assign(oldNodes.get(node.id)!, node);
     for (const link of sourceLinks) oldLinks.get(link.id)!.similarity = link.similarity;
     return previous;
@@ -295,8 +409,14 @@ function makeGraphData(
   };
 
   const forces = layoutForces();
-  const simulation = forceSimulation<NodePoint>(graph.nodes).stop();
-  for (const [name, force] of Object.entries(forces)) simulation.force(name, force as never);
+  const simulation = forceSimulation<NodePoint>(graph.nodes)
+    .force("charge", forces.charge)
+    .force("link", forces.link)
+    .force("collide", forces.collide)
+    .force("x", forces.x)
+    .force("y", forces.y)
+    .force("center", forces.center)
+    .stop();
   forces.link.links(graph.links);
   simulation.alphaDecay(0.035).velocityDecay(0.5).tick(300);
   simulation.stop();
@@ -332,9 +452,9 @@ interface TrendGraphCanvasProps {
 }
 
 /**
- * Force graph: canvas rendering, d3 simulation, pan/zoom, node dragging and
- * selection. The canvas is visual; the ranked pattern list is the keyboard and
- * screen-reader path through the same nodes.
+ * Trend graph: native canvas rendering, d3-force layout, camera pan/zoom,
+ * node dragging and selection. The canvas is visual; the ranked pattern list
+ * is the keyboard and screen-reader path through the same nodes.
  */
 export function TrendGraphCanvas({
   theme,
@@ -348,9 +468,22 @@ export function TrendGraphCanvas({
   autoFitSelection = true,
   onSelect,
 }: TrendGraphCanvasProps) {
-  const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
-  const frameNodes = useRef<NodePoint[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** The camera is owned by refs because gestures update it every frame. */
+  const cameraRef = useRef<Camera>({ x: 0, y: 0, k: 1 });
+  const paintRef = useRef<() => void>(() => {});
+  const drawFrame = useRef(0);
+  const simulationRef = useRef<Simulation<NodePoint, LinkPoint> | null>(null);
+  const relaxation = useRef<number | null>(null);
+  /** Live pointers, so a second touch can become a pinch instead of a pan. */
+  const activePointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{
+    distance: number;
+    k: number;
+    graphX: number;
+    graphY: number;
+  } | null>(null);
   const labelHitAreas = useRef<LabelHitArea[]>([]);
   const labelCache = useRef(new Map<string, LabelBitmap>());
   const labelCacheDpr = useRef(0);
@@ -401,16 +534,22 @@ export function TrendGraphCanvas({
     toScale: number;
     duration: number;
   } | null>(null);
+  const sizeRef = useRef({ width: 0, height: 0 });
   const hoveredIdRef = useRef<string | null>(null);
   const cursorRef = useRef("");
+  /** A fresh layout frames itself once its relaxation ends; drags leave the camera alone. */
   const shouldFit = useRef(true);
   const reducedMotion = useReducedMotion();
+  /** Media changes must not rebuild a settled simulation. */
+  const reducedMotionRef = useRef(reducedMotion);
+  useEffect(() => {
+    reducedMotionRef.current = reducedMotion;
+  }, [reducedMotion]);
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [palette, setPalette] = useState(readPalette);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [, setFontReady] = useState(false);
-  const [dragging, setDragging] = useState(false);
+  const [fontReady, setFontReady] = useState(false);
   const previousLayout = useRef<{ version: number; data: CanvasGraph } | null>(null);
   const graphData = useMemo(() => {
     const previous = previousLayout.current;
@@ -423,6 +562,10 @@ export function TrendGraphCanvas({
     previousLayout.current = { version: layoutVersion, data };
     return data;
   }, [nodes, links, layoutVersion]);
+  const nodeIndex = useMemo(
+    () => new Map(graphData.nodes.map((node) => [node.id, node])),
+    [graphData.nodes],
+  );
   const parentHubs = useMemo(() => {
     const parents = new Map<string, string[]>();
     for (const link of graphData.links) {
@@ -443,6 +586,14 @@ export function TrendGraphCanvas({
     shouldFit.current = true;
   }, [layoutVersion]);
 
+  const requestPaint = useCallback(() => {
+    if (drawFrame.current) return;
+    drawFrame.current = window.requestAnimationFrame(() => {
+      drawFrame.current = 0;
+      paintRef.current();
+    });
+  }, []);
+
   const stopWheelZoom = useCallback(() => {
     const state = wheelZoom.current;
     if (state?.raf) window.cancelAnimationFrame(state.raf);
@@ -461,33 +612,37 @@ export function TrendGraphCanvas({
 
   const animateCameraTo = useCallback(
     (x: number, y: number, scale: number, duration = 600) => {
-      const graph = graphRef.current;
-      if (!graph) return;
       stopWheelZoom();
       stopCameraAnimation();
-      const center = graph.centerAt();
+      if (duration <= 0) {
+        cameraRef.current = { x, y, k: clampZoom(scale) };
+        requestPaint();
+        return;
+      }
+      const camera = cameraRef.current;
       const animation = {
         raf: 0,
         start: performance.now(),
-        fromX: center.x,
-        fromY: center.y,
-        fromScale: graph.zoom() || 1,
+        fromX: camera.x,
+        fromY: camera.y,
+        fromScale: camera.k,
         toX: x,
         toY: y,
-        toScale: scale,
+        toScale: clampZoom(scale),
         duration,
       };
       cameraAnimation.current = animation;
 
       const tick = (now: number) => {
         if (cameraAnimation.current !== animation) return;
-        const progress = Math.min(1, (now - animation.start) / animation.duration);
+        const progress = Math.min(1, (now - animation.start) / Math.max(1, animation.duration));
         const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
-        const nextScale = animation.fromScale + (animation.toScale - animation.fromScale) * eased;
-        const nextX = animation.fromX + (animation.toX - animation.fromX) * eased;
-        const nextY = animation.fromY + (animation.toY - animation.fromY) * eased;
-        graph.zoom(nextScale, 0);
-        graph.centerAt(nextX, nextY, 0);
+        cameraRef.current = {
+          k: animation.fromScale + (animation.toScale - animation.fromScale) * eased,
+          x: animation.fromX + (animation.toX - animation.fromX) * eased,
+          y: animation.fromY + (animation.toY - animation.fromY) * eased,
+        };
+        paintRef.current();
         if (progress < 1) {
           animation.raf = window.requestAnimationFrame(tick);
         } else {
@@ -496,13 +651,18 @@ export function TrendGraphCanvas({
       };
       animation.raf = window.requestAnimationFrame(tick);
     },
-    [stopCameraAnimation, stopWheelZoom],
+    [requestPaint, stopCameraAnimation, stopWheelZoom],
   );
 
   useEffect(
     () => () => {
       stopCameraAnimation();
       stopWheelZoom();
+      if (drawFrame.current) window.cancelAnimationFrame(drawFrame.current);
+      drawFrame.current = 0;
+      const frame = relaxation.current;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      relaxation.current = null;
     },
     [stopCameraAnimation, stopWheelZoom],
   );
@@ -511,24 +671,38 @@ export function TrendGraphCanvas({
     /** Track the pointer, not graph coordinates, so glide feels the same at every zoom. */
     function trackPan(event: PointerEvent) {
       const gesture = panGesture.current;
-      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      if (!gesture || gesture.pointerId !== event.pointerId || pinch.current) return;
       const elapsed = event.timeStamp - gesture.time;
       if (elapsed <= 0) return;
+      const dx = event.clientX - gesture.x;
+      const dy = event.clientY - gesture.y;
       const blend = 1 - Math.exp(-elapsed / 30);
-      gesture.vx += ((event.clientX - gesture.x) / elapsed - gesture.vx) * blend;
-      gesture.vy += ((event.clientY - gesture.y) / elapsed - gesture.vy) * blend;
+      gesture.vx += (dx / elapsed - gesture.vx) * blend;
+      gesture.vy += (dy / elapsed - gesture.vy) * blend;
       gesture.x = event.clientX;
       gesture.y = event.clientY;
       gesture.time = event.timeStamp;
       gesture.moved ||= Math.hypot(gesture.x - gesture.startX, gesture.y - gesture.startY) > 10;
+      if (dx || dy) {
+        const camera = cameraRef.current;
+        cameraRef.current = {
+          ...camera,
+          x: camera.x - dx / camera.k,
+          y: camera.y - dy / camera.k,
+        };
+        requestPaint();
+      }
     }
 
     /** Release velocity decays exponentially; a held, cancelled or tiny drag never flings. */
     function releasePan(event: PointerEvent) {
+      // Gesture bookkeeping belongs to the React pointer handlers, which run
+      // after this capture listener; momentum only reads the velocity here.
       const gesture = panGesture.current;
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       panGesture.current = null;
       if (reducedMotion || !gesture.moved || event.timeStamp - gesture.time > 80) return;
+      if (pinch.current) return;
       const speed = Math.hypot(gesture.vx, gesture.vy);
       if (speed < 0.05) return;
       const limit = Math.min(1, 2.5 / speed);
@@ -540,15 +714,19 @@ export function TrendGraphCanvas({
       };
       panMomentum.current = momentum;
       const tick = (now: number) => {
-        const graph = graphRef.current;
-        if (!graph || panMomentum.current !== momentum) return;
+        if (panMomentum.current !== momentum) return;
         const elapsed = Math.max(0, now - momentum.time);
         momentum.time = now;
         // 280ms time constant: frame-rate-independent friction, no spring or rebound.
         const decay = Math.exp(-elapsed / 280);
-        const travel = (280 * (1 - decay)) / (graph.zoom() || 1);
-        const center = graph.centerAt();
-        graph.centerAt(center.x - momentum.vx * travel, center.y - momentum.vy * travel, 0);
+        const camera = cameraRef.current;
+        const travel = 280 * (1 - decay);
+        cameraRef.current = {
+          ...camera,
+          x: camera.x - (momentum.vx * travel) / camera.k,
+          y: camera.y - (momentum.vy * travel) / camera.k,
+        };
+        paintRef.current();
         momentum.vx *= decay;
         momentum.vy *= decay;
         if (Math.hypot(momentum.vx, momentum.vy) < 0.02) {
@@ -625,8 +803,6 @@ export function TrendGraphCanvas({
     if (!element) return;
     const measure = () => {
       const rect = element.getBoundingClientRect();
-      // ForceGraph can replace its canvas when the measured size changes.
-      cursorRef.current = "";
       setSize({
         width: Math.max(1, Math.round(rect.width)),
         height: Math.max(1, Math.round(rect.height)),
@@ -647,26 +823,22 @@ export function TrendGraphCanvas({
     // drive a single camera loop; restarting a tween per event makes them
     // fight each other and reads as stutter.
     function tick(time: number) {
-      const graph = graphRef.current;
       const state = wheelZoom.current;
-      if (!graph || !state) {
-        wheelZoom.current = null;
-        return;
-      }
-      const current = graph.zoom() || 1;
+      if (!state) return;
+      const camera = cameraRef.current;
       const dt = state.lastFrame ? Math.min(50, Math.max(1, time - state.lastFrame)) : 16;
       state.lastFrame = time;
       const ease = 1 - Math.exp(-dt / 55);
       const next =
-        Math.abs(state.target - current) < 0.0004
+        Math.abs(state.target - camera.k) < 0.0004
           ? state.target
-          : current + (state.target - current) * ease;
+          : camera.k + (state.target - camera.k) * ease;
 
-      const rect = container.getBoundingClientRect();
-      const centerX = state.anchor.graphX - (state.anchor.screenX - rect.width / 2) / next;
-      const centerY = state.anchor.graphY - (state.anchor.screenY - rect.height / 2) / next;
-      graph.zoom(next, 0);
-      graph.centerAt(centerX, centerY, 0);
+      const { width, height } = sizeRef.current;
+      const centerX = state.anchor.graphX - (state.anchor.screenX - width / 2) / next;
+      const centerY = state.anchor.graphY - (state.anchor.screenY - height / 2) / next;
+      cameraRef.current = { x: centerX, y: centerY, k: next };
+      paintRef.current();
 
       if (Math.abs(state.target - next) < 0.0007) {
         state.raf = 0;
@@ -678,12 +850,11 @@ export function TrendGraphCanvas({
 
     function onWheel(event: WheelEvent) {
       if (!isGraphSurface(event.target)) return;
-      const graph = graphRef.current;
-      if (!graph) return;
       event.preventDefault();
       stopCameraAnimation();
 
       const rect = container.getBoundingClientRect();
+      const { width, height } = sizeRef.current;
       const screenX = event.clientX - rect.left;
       const screenY = event.clientY - rect.top;
       const delta =
@@ -692,15 +863,17 @@ export function TrendGraphCanvas({
           : event.deltaMode === 2
             ? event.deltaY * 400
             : event.deltaY;
-      const factor = Math.exp(-delta * 0.0015);
+      // One wheel notch (about 100px) moves roughly 1.6x; the accumulated
+      // target below is eased into, so the larger step never snaps.
+      const factor = Math.exp(-delta * 0.0045);
       if (!Number.isFinite(factor) || factor === 1) return;
 
       let state = wheelZoom.current;
       if (!state) {
-        const current = graph.zoom() || 1;
-        const anchor = graph.screen2GraphCoords(screenX, screenY);
+        const camera = cameraRef.current;
+        const anchor = screenToGraph(camera, width, height, screenX, screenY);
         state = {
-          target: current,
+          target: camera.k,
           anchor: {
             screenX,
             screenY,
@@ -712,7 +885,7 @@ export function TrendGraphCanvas({
         };
         wheelZoom.current = state;
       } else if (Math.hypot(screenX - state.anchor.screenX, screenY - state.anchor.screenY) > 8) {
-        const anchor = graph.screen2GraphCoords(screenX, screenY);
+        const anchor = screenToGraph(cameraRef.current, width, height, screenX, screenY);
         state.anchor = {
           screenX,
           screenY,
@@ -721,7 +894,7 @@ export function TrendGraphCanvas({
         };
       }
 
-      state.target = Math.min(2.5, Math.max(0.35, state.target * factor));
+      state.target = clampZoom(state.target * factor);
       if (!state.raf) state.raf = window.requestAnimationFrame(tick);
     }
 
@@ -734,29 +907,48 @@ export function TrendGraphCanvas({
     };
   }, [stopCameraAnimation]);
 
-  const mountedGraph = size.width > 0;
-  useEffect(() => {
-    const graph = graphRef.current;
-    if (!graph) return;
-    const forces = layoutForces();
-    // Keep the library-owned link force: it binds endpoints when its deferred
-    // graph-data update runs, which can happen after this React effect.
-    const link = graph.d3Force("link") as unknown as ForceLink<NodePoint, LinkPoint>;
-    link.distance((raw) => (isSimilarityLink(raw) ? 80 : 90)).strength(0.3);
-    for (const [name, force] of Object.entries(forces)) {
-      if (name !== "link") graph.d3Force(name, force as never);
-    }
-    graph.d3ReheatSimulation();
-  }, [graphData, mountedGraph]);
-
   const compact = size.width < 700 || size.height < 560;
+  const nodesRef = useRef(graphData.nodes);
+  useEffect(() => {
+    nodesRef.current = graphData.nodes;
+    sizeRef.current = size;
+  }, [graphData.nodes, size]);
 
+  /**
+   * Frame every node with the same padding the previous engine used. Reads
+   * live positions and viewport through refs, so resizing or a data refresh
+   * never restarts the layout just because this callback changed identity.
+   */
   const fitAll = useCallback(
     (duration: number) => {
-      stopCameraAnimation();
-      graphRef.current?.zoomToFit(duration, compact ? 44 : 92);
+      const { width: viewWidth, height: viewHeight } = sizeRef.current;
+      const nodes = nodesRef.current;
+      if (!viewWidth || !viewHeight || !nodes.length) return;
+      const padding = viewWidth < 700 || viewHeight < 560 ? 44 : 92;
+      let minX = Number.POSITIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      let maxY = Number.NEGATIVE_INFINITY;
+      for (const node of nodes) {
+        if (typeof node.x !== "number" || typeof node.y !== "number") continue;
+        const radius = node.radius ?? 4;
+        minX = Math.min(minX, node.x - radius);
+        minY = Math.min(minY, node.y - radius);
+        maxX = Math.max(maxX, node.x + radius);
+        maxY = Math.max(maxY, node.y + radius);
+      }
+      if (!Number.isFinite(minX)) return;
+      const width = Math.max(1, maxX - minX);
+      const height = Math.max(1, maxY - minY);
+      const k = clampZoom(
+        Math.min(
+          Math.max(1e-12, (viewWidth - padding * 2) / width),
+          Math.max(1e-12, (viewHeight - padding * 2) / height),
+        ),
+      );
+      animateCameraTo((minX + maxX) / 2, (minY + maxY) / 2, k, duration);
     },
-    [compact, stopCameraAnimation],
+    [animateCameraTo],
   );
 
   // Resize the camera, not the simulation, when the sidebar, inspector or
@@ -773,8 +965,6 @@ export function TrendGraphCanvas({
   const fitSelectionCamera = useCallback(
     (duration: number) => {
       if (!selectedId || !size.width || !size.height) return;
-      const graph = graphRef.current;
-      if (!graph) return;
       const byId = new Map(graphData.nodes.map((node) => [node.id, node]));
       const selected = byId.get(selectedId);
       if (!selected) return;
@@ -812,9 +1002,11 @@ export function TrendGraphCanvas({
       const availableHeight = Math.max(1, size.height - bottomInset - padding * 2);
       const bboxWidth = Math.max(1, maxX - minX);
       const bboxHeight = Math.max(1, maxY - minY);
+      // "Just enough": a single node and its neighbours would otherwise fill
+      // the viewport at the maximum zoom, losing the surrounding context.
       const scale = Math.min(
-        2.5,
-        Math.max(0.35, Math.min(availableWidth / bboxWidth, availableHeight / bboxHeight)),
+        2.2,
+        clampZoom(Math.min(availableWidth / bboxWidth, availableHeight / bboxHeight)),
       );
       const targetX = (minX + maxX) / 2;
       const targetScreenY = (size.height - bottomInset) / 2;
@@ -829,16 +1021,99 @@ export function TrendGraphCanvas({
     fitSelectionCamera(620);
   }, [autoFitSelection, fitSelectionCamera, selectedId]);
 
-  const finishLayout = useCallback(() => {
-    if (shouldFit.current) {
-      shouldFit.current = false;
-      fitAll(0);
-    }
-  }, [fitAll]);
+  /**
+   * The layout ticks only while it is asked to: a rebuild relaxes for at most
+   * two seconds, and a node drag keeps it warm until the node is released.
+   * No animation frame survives a settled graph.
+   */
+  const runRelaxation = useCallback((mode: "settle" | "drag") => {
+    const simulation = simulationRef.current;
+    if (!simulation) return;
+    const previous = relaxation.current;
+    if (previous !== null) window.cancelAnimationFrame(previous);
+    const startedAt = performance.now();
+    let ticks = 0;
+    const step = (now: number) => {
+      relaxation.current = null;
+      if (simulationRef.current !== simulation) return;
+      if (mode === "drag" && !dragNode.current?.active) {
+        // The drag ended between frames; settle handles the rest.
+        return;
+      }
+      simulation.tick();
+      ticks += 1;
+      paintRef.current();
+      if (
+        mode === "settle" &&
+        (ticks >= MAX_RELAX_TICKS ||
+          now - startedAt >= MAX_RELAX_MS ||
+          simulation.alpha() < simulation.alphaMin())
+      ) {
+        // The layout is at rest; nothing more is scheduled.
+        if (shouldFit.current) {
+          shouldFit.current = false;
+          fitAll(0);
+        }
+        return;
+      }
+      relaxation.current = window.requestAnimationFrame(step);
+    };
+    relaxation.current = window.requestAnimationFrame(step);
+  }, []);
 
-  const handleEngineStop = useCallback(() => {
-    finishLayout();
-  }, [finishLayout]);
+  const stopRelaxation = useCallback(() => {
+    const frame = relaxation.current;
+    if (frame !== null) window.cancelAnimationFrame(frame);
+    relaxation.current = null;
+  }, []);
+
+  const mountedGraph = size.width > 0;
+  useEffect(() => {
+    if (!mountedGraph) return;
+    const simulation = forceSimulation<NodePoint, LinkPoint>(graphData.nodes)
+      .alphaDecay(0.035)
+      .velocityDecay(0.5)
+      .stop();
+    const forces = layoutForces();
+    simulation
+      .force("charge", forces.charge)
+      .force("link", forces.link)
+      .force("collide", forces.collide)
+      .force("x", forces.x)
+      .force("y", forces.y)
+      .force("center", forces.center);
+    // Resolving endpoints through the link force keeps the nodes' own ids in
+    // place, which the hit tests and label placement rely on.
+    forces.link.links(graphData.links);
+    simulationRef.current = simulation;
+    if (reducedMotionRef.current) {
+      // Reduced motion keeps the pre-settled layout untouched.
+      if (shouldFit.current) {
+        shouldFit.current = false;
+        fitAll(0);
+      }
+      requestPaint();
+    } else {
+      // Frame the pre-settled spiral immediately so the first paint is not a
+      // cropped close-up; the settled layout is framed again when it comes to
+      // rest. A data refresh leaves the user's camera alone.
+      if (shouldFit.current) fitAll(0);
+      simulation.alpha(1);
+      runRelaxation("settle");
+    }
+    return () => {
+      stopRelaxation();
+      simulation.stop();
+      if (simulationRef.current === simulation) simulationRef.current = null;
+    };
+  }, [fitAll, graphData, mountedGraph, runRelaxation, stopRelaxation]);
+
+  const reheat = useCallback(() => {
+    const simulation = simulationRef.current;
+    if (!simulation || reducedMotionRef.current) return;
+    simulation.alphaTarget(0).alpha(1);
+    runRelaxation("settle");
+  }, [runRelaxation]);
 
   const updateHovered = useCallback((id: string | null) => {
     if (hoveredIdRef.current === id) return;
@@ -849,8 +1124,7 @@ export function TrendGraphCanvas({
   const setGraphCursor = useCallback((cursor: string) => {
     if (cursorRef.current === cursor) return;
     cursorRef.current = cursor;
-    const canvas = containerRef.current?.querySelector("canvas");
-    if (canvas instanceof HTMLCanvasElement) canvas.style.cursor = cursor;
+    if (canvasRef.current) canvasRef.current.style.cursor = cursor;
   }, []);
 
   /**
@@ -861,11 +1135,13 @@ export function TrendGraphCanvas({
   const findHitAt = useCallback(
     (clientX: number, clientY: number): string | null => {
       const container = containerRef.current;
-      const graph = graphRef.current;
-      if (!container || !graph) return null;
+      if (!container) return null;
       const rect = container.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
+      // Paint measures in rounded CSS pixels, so hit testing must use the same
+      // viewport instead of the fractional layout box.
+      const { width, height } = sizeRef.current;
 
       for (const area of labelHitAreas.current) {
         if (x >= area.left && x <= area.right && y >= area.top && y <= area.bottom) {
@@ -873,13 +1149,13 @@ export function TrendGraphCanvas({
         }
       }
 
-      const zoom = graph.zoom() || 1;
+      const camera = cameraRef.current;
       let closest: string | null = null;
       let closestDistance = Number.POSITIVE_INFINITY;
       for (const node of graphData.nodes) {
         if (typeof node.x !== "number" || typeof node.y !== "number") continue;
-        const point = graph.graph2ScreenCoords(node.x, node.y);
-        const radius = (node.radius ?? 5) * zoom + (node.hub ? 14 : 11);
+        const point = graphToScreen(camera, width, height, node.x, node.y);
+        const radius = (node.radius ?? 5) * camera.k + (node.hub ? 14 : 11);
         const distance = Math.hypot(x - point.x, y - point.y);
         if (distance <= radius && distance < closestDistance) {
           closest = node.id;
@@ -893,10 +1169,10 @@ export function TrendGraphCanvas({
 
   const toGraphPoint = useCallback((clientX: number, clientY: number) => {
     const container = containerRef.current;
-    const graph = graphRef.current;
-    if (!container || !graph) return null;
+    if (!container) return null;
     const rect = container.getBoundingClientRect();
-    return graph.screen2GraphCoords(clientX - rect.left, clientY - rect.top);
+    const { width, height } = sizeRef.current;
+    return screenToGraph(cameraRef.current, width, height, clientX - rect.left, clientY - rect.top);
   }, []);
 
   const finishNodeDrag = useCallback(() => {
@@ -905,22 +1181,55 @@ export function TrendGraphCanvas({
     dragNode.current = null;
     if (!drag.active) return false;
     const { node } = drag;
-    setDragging(false);
     // Let the force layout reclaim the node; it should drift back rather than
     // sticking to the drop point.
     node.fx = undefined;
     node.fy = undefined;
-    graphRef.current?.d3ReheatSimulation();
+    // The drag held the layout warm; release it back to its resting target.
+    const simulation = simulationRef.current;
+    if (simulation) simulation.alphaTarget(0);
+    reheat();
     return true;
-  }, []);
+  }, [reheat]);
 
-  function handleMouseDownCapture(event: ReactMouseEvent<HTMLDivElement>) {
-    if (event.button !== 0 || !isGraphSurface(event.target)) return;
-    if (findHitAt(event.clientX, event.clientY)) {
-      // A node drag owns this gesture; keep d3-zoom from panning the camera.
-      event.preventDefault();
-      event.stopPropagation();
+  /** Interrupt camera motion whenever a direct gesture starts. */
+  function beginPointer(event: ReactPointerEvent<HTMLDivElement>) {
+    stopWheelZoom();
+    stopCameraAnimation();
+    activePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is an enhancement; the handlers still receive moves.
     }
+  }
+
+  /**
+   * Two touches become a pinch around their midpoint. The first finger's press
+   * already armed a pan; the pinch takes over and cancels it.
+   */
+  function beginPinch() {
+    const [first, second] = [...activePointers.current.values()];
+    if (!first || !second) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const { width, height } = sizeRef.current;
+    const midpointX = (first.x + second.x) / 2 - rect.left;
+    const midpointY = (first.y + second.y) / 2 - rect.top;
+    const camera = cameraRef.current;
+    const anchor = screenToGraph(camera, width, height, midpointX, midpointY);
+    pinch.current = {
+      distance: Math.max(1, Math.hypot(first.x - second.x, first.y - second.y)),
+      k: camera.k,
+      graphX: anchor.x,
+      graphY: anchor.y,
+    };
+    panGesture.current = null;
+    pointerStart.current = null;
+    // A pen drag already fixed a node; release that fix before the pinch owns
+    // the gesture or the node would stay pinned.
+    finishNodeDrag();
   }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -928,8 +1237,11 @@ export function TrendGraphCanvas({
       pointerStart.current = null;
       return;
     }
-    stopWheelZoom();
-    stopCameraAnimation();
+    beginPointer(event);
+    if (activePointers.current.size > 1) {
+      beginPinch();
+      return;
+    }
     const hitId = findHitAt(event.clientX, event.clientY);
     pointerStart.current = {
       x: event.clientX,
@@ -937,7 +1249,8 @@ export function TrendGraphCanvas({
       hitId,
       pointerType: event.pointerType,
     };
-    if (!reducedMotion && event.isPrimary && (!hitId || event.pointerType === "touch")) {
+    // Reduced motion still pans; only its release glide is suppressed.
+    if (event.isPrimary && (!hitId || event.pointerType === "touch")) {
       panGesture.current = {
         pointerId: event.pointerId,
         x: event.clientX,
@@ -952,7 +1265,7 @@ export function TrendGraphCanvas({
     }
 
     // Mouse/pen node drags are handled directly against live screen geometry.
-    // Touch keeps d3-zoom so pinch and two-finger pan still work.
+    // Touch keeps two-finger work for the pinch and single-finger pan.
     if (event.pointerType !== "touch" && hitId) {
       const node = graphData.nodes.find((candidate) => candidate.id === hitId);
       const point = toGraphPoint(event.clientX, event.clientY);
@@ -964,23 +1277,50 @@ export function TrendGraphCanvas({
           offsetY: node.y - point.y,
           active: false,
         };
-        try {
-          event.currentTarget.setPointerCapture(event.pointerId);
-        } catch {
-          // Pointer capture is an enhancement; the drag still works without it.
-        }
       }
     }
     setGraphCursor("grabbing");
   }
 
   function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const tracked = activePointers.current.get(event.pointerId);
+    if (tracked) {
+      tracked.x = event.clientX;
+      tracked.y = event.clientY;
+    }
     if (!isGraphSurface(event.target)) {
       updateHovered(null);
       setGraphCursor("");
       return;
     }
+    const container = containerRef.current;
+    const pinchState = pinch.current;
+    if (pinchState && container && activePointers.current.size > 1) {
+      const [first, second] = [...activePointers.current.values()];
+      if (first && second) {
+        const rect = container.getBoundingClientRect();
+        const { width, height } = sizeRef.current;
+        const distance = Math.max(1, Math.hypot(first.x - second.x, first.y - second.y));
+        const k = clampZoom((pinchState.k * distance) / pinchState.distance);
+        const midpointX = (first.x + second.x) / 2 - rect.left;
+        const midpointY = (first.y + second.y) / 2 - rect.top;
+        // Keep the graph point that was between the fingers between them.
+        cameraRef.current = {
+          k,
+          x: pinchState.graphX - (midpointX - width / 2) / k,
+          y: pinchState.graphY - (midpointY - height / 2) / k,
+        };
+        requestPaint();
+      }
+      return;
+    }
     const start = pointerStart.current;
+    if (!start && panGesture.current) {
+      // A pinch released one finger; that finger is panning, not hovering.
+      updateHovered(null);
+      setGraphCursor("grabbing");
+      return;
+    }
     const threshold = event.pointerType === "touch" ? 10 : 5;
     if (start) {
       // A background press is already a camera pan; skip hit testing until it
@@ -998,13 +1338,17 @@ export function TrendGraphCanvas({
           if (point) {
             if (!drag.active) {
               drag.active = true;
-              setDragging(true);
-              graphRef.current?.d3ReheatSimulation();
+              if (!reducedMotionRef.current) {
+                const simulation = simulationRef.current;
+                if (simulation) simulation.alphaTarget(0.3);
+                runRelaxation("drag");
+              }
             }
             drag.node.x = point.x + drag.offsetX;
             drag.node.y = point.y + drag.offsetY;
             drag.node.fx = drag.node.x;
             drag.node.fy = drag.node.y;
+            requestPaint();
           }
           updateHovered(null);
           setGraphCursor("grabbing");
@@ -1023,6 +1367,28 @@ export function TrendGraphCanvas({
   }
 
   function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    activePointers.current.delete(event.pointerId);
+    if (pinch.current && activePointers.current.size < 2) {
+      // A finger left the pinch. The remaining touch becomes a fresh pan; the
+      // last finger leaving ends the gesture without selecting.
+      pinch.current = null;
+      pointerStart.current = null;
+      const remaining = [...activePointers.current.entries()].at(0);
+      if (remaining && !reducedMotionRef.current) {
+        const [remainingId, position] = remaining;
+        panGesture.current = {
+          pointerId: remainingId,
+          x: position.x,
+          y: position.y,
+          startX: position.x,
+          startY: position.y,
+          time: event.timeStamp,
+          vx: 0,
+          vy: 0,
+          moved: false,
+        };
+      }
+    }
     const start = pointerStart.current;
     pointerStart.current = null;
     const dragged = finishNodeDrag();
@@ -1055,7 +1421,9 @@ export function TrendGraphCanvas({
     setGraphCursor("");
   }
 
-  function handlePointerCancel() {
+  function handlePointerCancel(event: ReactPointerEvent<HTMLDivElement>) {
+    activePointers.current.delete(event.pointerId);
+    pinch.current = null;
     finishNodeDrag();
     pointerStart.current = null;
     setGraphCursor("");
@@ -1063,12 +1431,15 @@ export function TrendGraphCanvas({
 
   useEffect(() => {
     function releaseOutside(event: PointerEvent) {
-      // Pointer capture normally routes the release back here; this is the
-      // fallback for browsers that drop it, and for background pans.
-      finishNodeDrag();
+      // Pointer capture routes canvas releases through the React handlers. This
+      // is the fallback for browsers that drop capture, and for gestures that
+      // ended outside the graph.
+      activePointers.current.delete(event.pointerId);
+      if (activePointers.current.size < 2) pinch.current = null;
       const target = event.target;
       if (target instanceof Node && containerRef.current?.contains(target)) return;
       pointerStart.current = null;
+      finishNodeDrag();
       updateHovered(null);
       setGraphCursor("");
     }
@@ -1080,19 +1451,23 @@ export function TrendGraphCanvas({
     };
   }, [finishNodeDrag, setGraphCursor, updateHovered]);
 
-  const colorFor = useCallback(
-    (kind: GraphNode["kind"]) => {
-      if (kind === "pattern") return palette.pattern;
-      if (kind === "pool") return palette.pool;
-      return palette.segment;
+  /**
+   * Connection count drives hue: leaves stay near the surface, and the more
+   * links a pattern has the deeper its purple. Trend potential already owns
+   * radius, so colour never repeats size.
+   */
+  const nodeColor = useCallback(
+    (node: NodePoint) => {
+      if (node.hub) return node.kind === "pool" ? palette.pool : palette.segment;
+      // A single link stays almost white; the ramp saturates as links gather.
+      const weight = Math.min(1, Math.max(0, (node.degree - 1) / 4));
+      return mixColor(palette.background, palette.pattern, 0.12 + weight * 0.88);
     },
     [palette],
   );
 
   const paintNode = useCallback(
-    (raw: object, ctx: CanvasRenderingContext2D) => {
-      const node = raw as NodePoint;
-      frameNodes.current.push(node);
+    (ctx: CanvasRenderingContext2D, node: NodePoint) => {
       const x = node.x ?? 0;
       const y = node.y ?? 0;
       const selected = node.id === selectedId;
@@ -1100,8 +1475,9 @@ export function TrendGraphCanvas({
       const active = activeIds.has(node.id);
       const emphasis = emphasisIds.has(node.id);
       const dim = !active;
-      const kindColor = colorFor(node.kind);
       const radius = node.radius + (hovered ? 0.8 : 0);
+      const shape = shapeFor(node.media);
+      const fill = selected || hovered ? palette.pattern : nodeColor(node);
 
       ctx.save();
       ctx.globalAlpha = dim ? 0.16 : 1;
@@ -1109,33 +1485,29 @@ export function TrendGraphCanvas({
       // A selected or hovered node gets a soft halo; everything else stays flat
       // so the map's colour encoding is never mistaken for emphasis.
       if (selected || hovered) {
-        ctx.beginPath();
-        ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+        nodePath(ctx, x, y, radius + 8, shape);
         ctx.fillStyle = palette.pattern;
         ctx.globalAlpha = dim ? 0.06 : 0.16;
         ctx.fill();
         ctx.globalAlpha = dim ? 0.16 : 1;
       }
 
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      // A selected or hovered node is the focus of the interaction; hubs keep
-      // their kind colour so the map's anchors never read as a claim.
-      ctx.fillStyle = selected || hovered ? palette.pattern : kindColor;
+      nodePath(ctx, x, y, radius, shape);
+      // A pattern's fill is the ramp itself; a hub keeps its kind colour so the
+      // map's anchors never read as a claim.
+      ctx.fillStyle = fill;
       ctx.fill();
       ctx.lineWidth = 0.7;
       ctx.strokeStyle = palette.background;
       ctx.stroke();
 
       if (selected || hovered) {
-        ctx.beginPath();
-        ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
+        nodePath(ctx, x, y, radius + 4, shape);
         ctx.lineWidth = 1;
         ctx.strokeStyle = selected ? palette.foreground : palette.muted;
         ctx.stroke();
       } else if (emphasis) {
-        ctx.beginPath();
-        ctx.arc(x, y, radius + 3.5, 0, Math.PI * 2);
+        nodePath(ctx, x, y, radius + 3.5, shape);
         ctx.lineWidth = 1.1;
         ctx.strokeStyle = palette.pattern;
         ctx.stroke();
@@ -1143,58 +1515,44 @@ export function TrendGraphCanvas({
 
       ctx.restore();
     },
-    [activeIds, colorFor, emphasisIds, hoveredId, palette, selectedId],
-  );
-
-  /**
-   * Keep the node renderer identity tied to the label-only toggle as well, so
-   * ForceGraph repaints labels when context-label visibility changes without
-   * any node or link property changing.
-   */
-  const paintNodeAndLabels = useCallback(
-    (raw: object, context: CanvasRenderingContext2D) => {
-      paintNode(raw, context);
-    },
-    [paintNode, showContextLabels],
+    [activeIds, emphasisIds, hoveredId, nodeColor, palette, selectedId],
   );
 
   /**
    * Labels paint over the graph in screen space, so their size stays stable
-   * while the force graph zooms. Colliding labels are skipped except for the
-   * active selection.
+   * while the graph zooms. Colliding labels are skipped except for the active
+   * selection.
    */
-  const drawLabelsRef = useRef<(context: CanvasRenderingContext2D) => void>(() => {});
   const drawLabels = useCallback(
-    (context: CanvasRenderingContext2D) => {
-      const graph = graphRef.current;
-      if (!graph || !size.width || !size.height) {
+    (context: CanvasRenderingContext2D, camera: Camera, dpr: number) => {
+      if (!size.width || !size.height) {
         labelHitAreas.current = [];
         return;
       }
-      const dpr = window.devicePixelRatio || 1;
       if (labelCacheDpr.current !== dpr) {
         labelCache.current.clear();
         labelCacheDpr.current = dpr;
       }
       context.save();
-      // The graph paints in its own zoom transform. Labels are positioned in
-      // screen space, so draw them with the same CSS-pixel transform the graph
-      // starts with and restore the graph's transform afterwards.
+      // Labels are positioned in screen space, so draw them with the plain
+      // CSS-pixel transform the canvas starts with.
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       context.globalAlpha = 1;
 
-      const zoom = graph.zoom() || 1;
-      const leafFade = smoothstep(2, 2.4, zoom);
-      const hubFade = smoothstep(1.2, 1.7, zoom);
-      const positions = new Map(
-        frameNodes.current.map((node) => {
-          const point = graph.graph2ScreenCoords(node.x ?? 0, node.y ?? 0);
-          return [node.id, point];
-        }),
-      );
+      const zoom = camera.k;
+      // Labels describe detail, so they belong to closer zoom levels. Anchors
+      // stay named through the default overview (fit ≈ 0.8) and fade only when
+      // the whole map shrinks further; leaves need a closer view to appear.
+      const leafFade = smoothstep(0.95, 1.25, zoom);
+      const hubFade = smoothstep(0.45, 0.7, zoom);
+      const positions = new Map<string, { x: number; y: number }>();
+      for (const node of graphData.nodes) {
+        if (typeof node.x !== "number" || typeof node.y !== "number") continue;
+        positions.set(node.id, graphToScreen(camera, size.width, size.height, node.x, node.y));
+      }
       const placed: { left: number; top: number; right: number; bottom: number }[] = [];
       const hitAreas: LabelHitArea[] = [];
-      const labels = frameNodes.current
+      const labels = graphData.nodes
         .filter((node) => {
           if (!activeIds.has(node.id) && node.id !== hoveredId) return false;
           if (node.id === selectedId || node.id === hoveredId || showContextLabels) return true;
@@ -1288,7 +1646,7 @@ export function TrendGraphCanvas({
         // even the selected label. Selection is already shown by the ring and
         // the detail panel.
         if (!isHub) {
-          const coversHub = frameNodes.current.some((other) => {
+          const coversHub = graphData.nodes.some((other) => {
             if (!other.hub) return false;
             const hub = positions.get(other.id);
             if (!hub) return false;
@@ -1328,7 +1686,9 @@ export function TrendGraphCanvas({
     [
       activeIds,
       getLabelBitmap,
+      graphData.nodes,
       hoveredId,
+      labelHubsAlways,
       palette,
       parentHubs,
       selectedId,
@@ -1338,64 +1698,166 @@ export function TrendGraphCanvas({
     ],
   );
 
-  drawLabelsRef.current = drawLabels;
-
-  /**
-   * Labels paint at the end of the graph's own frame, after links and nodes.
-   * Keeping them on the same canvas avoids a second full-screen transparent
-   * layer, which measured as the main source of dropped pan and drag frames.
-   * The stable callback reads the latest label closure through the ref.
-   */
-  const paintLabelFrame = useCallback((context: CanvasRenderingContext2D) => {
-    drawLabelsRef.current(context);
-  }, []);
-
-  const linkColor = useCallback(
-    (raw: object) => {
-      const link = raw as LinkPoint;
+  /** Links are stroked per colour/width/dash group to keep one path per style. */
+  const linkStyle = useCallback(
+    (link: LinkPoint) => {
       const source = endpointId(link.source);
       const target = endpointId(link.target);
       const sourceActive = activeIds.has(source);
       const targetActive = activeIds.has(target);
       const similar = link.relation === "similarity";
-      const active = sourceActive && targetActive;
-      if (selectedId && (source === selectedId || target === selectedId)) {
-        const otherActive = source === selectedId ? targetActive : sourceActive;
-        if (otherActive) return similar ? palette.edgeSimilarity : palette.edgeSelected;
-        return similar ? palette.edgeSimilarityDim : palette.edgeDim;
+      const selectedEdge = selectedId !== null && (source === selectedId || target === selectedId);
+      const otherActive = selectedEdge
+        ? source === selectedId
+          ? targetActive
+          : sourceActive
+        : false;
+
+      let color: string;
+      if (selectedEdge) {
+        color = otherActive
+          ? similar
+            ? palette.edgeSimilarity
+            : palette.edgeSelected
+          : similar
+            ? palette.edgeSimilarityDim
+            : palette.edgeDim;
+      } else if (sourceActive && targetActive) {
+        color = similar ? palette.edgeSimilarity : palette.edge;
+      } else {
+        color = similar ? palette.edgeSimilarityDim : palette.edgeDim;
       }
-      if (active) return similar ? palette.edgeSimilarity : palette.edge;
-      return similar ? palette.edgeSimilarityDim : palette.edgeDim;
+
+      const width = similar
+        ? selectedEdge && otherActive
+          ? 1
+          : 0.7
+        : selectedEdge && otherActive
+          ? 1.4
+          : 0.9;
+      return { color, width, dash: similar };
     },
     [activeIds, palette, selectedId],
   );
-  const linkWidth = useCallback(
-    (raw: object) => {
-      const link = raw as LinkPoint;
-      const source = endpointId(link.source);
-      const target = endpointId(link.target);
-      const selectedEdge = selectedId && (source === selectedId || target === selectedId);
-      const otherActive = selectedId
-        ? activeIds.has(source === selectedId ? target : source)
-        : false;
-      if (link.relation === "similarity") return selectedEdge && otherActive ? 1 : 0.7;
-      return selectedEdge && otherActive ? 1.4 : 0.9;
-    },
-    [activeIds, selectedId],
-  );
+
+  /**
+   * One frame: clear, draw links in the camera transform, draw nodes and the
+   * label overlay, then stop. Nothing schedules another frame.
+   */
+  const paint = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !size.width || !size.height) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const dpr = window.devicePixelRatio || 1;
+    const pixelWidth = Math.max(1, Math.round(size.width * dpr));
+    const pixelHeight = Math.max(1, Math.round(size.height * dpr));
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+      canvas.style.width = `${size.width}px`;
+      canvas.style.height = `${size.height}px`;
+    }
+
+    const camera = cameraRef.current;
+
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, pixelWidth, pixelHeight);
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.save();
+    context.translate(size.width / 2, size.height / 2);
+    context.scale(camera.k, camera.k);
+    context.translate(-camera.x, -camera.y);
+
+    // A fresh layout resolves endpoints lazily; the index lets the very first
+    // frame after a data change already draw its edges.
+    const groups = new Map<string, { color: string; width: number; dash: boolean; path: Path2D }>();
+    for (const link of graphData.links) {
+      const source =
+        typeof link.source === "object" ? link.source : nodeIndex.get(String(link.source));
+      const target =
+        typeof link.target === "object" ? link.target : nodeIndex.get(String(link.target));
+      if (!source || !target) continue;
+      if (typeof source.x !== "number" || typeof source.y !== "number") continue;
+      if (typeof target.x !== "number" || typeof target.y !== "number") continue;
+      const style = linkStyle(link);
+      const key = `${style.color}|${style.width}|${style.dash ? 1 : 0}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = {
+          color: style.color,
+          // Stroke widths are declared in screen pixels; the transform is zoomed.
+          width: style.width / camera.k,
+          dash: style.dash,
+          path: new Path2D(),
+        };
+        groups.set(key, group);
+      }
+      group.path.moveTo(source.x, source.y);
+      group.path.lineTo(target.x, target.y);
+    }
+    for (const group of groups.values()) {
+      context.strokeStyle = group.color;
+      context.lineWidth = group.width;
+      context.setLineDash(group.dash ? [3, 3] : []);
+      context.stroke(group.path);
+    }
+    context.setLineDash([]);
+
+    for (const node of graphData.nodes) paintNode(context, node);
+    context.restore();
+
+    drawLabels(context, camera, dpr);
+  }, [
+    drawLabels,
+    graphData.links,
+    graphData.nodes,
+    linkStyle,
+    nodeIndex,
+    paintNode,
+    size.height,
+    size.width,
+  ]);
+
+  useEffect(() => {
+    paintRef.current = paint;
+    requestPaint();
+  }, [paint, requestPaint]);
+
+  useEffect(() => {
+    setGraphCursor("grab");
+  }, [setGraphCursor]);
+
+  // Hover, selection, palette, size and font readiness rebuild `paint`. Radius
+  // and score updates mutate the existing graph object, so the incoming data
+  // props must request a frame on their own.
+  useEffect(() => {
+    requestPaint();
+  }, [fontReady, nodes, links, paint, requestPaint]);
+
+  /** A DPR change (moving between displays) must resize and repaint the canvas. */
+  useEffect(() => {
+    let media = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    const onChange = () => {
+      media.removeEventListener("change", onChange);
+      media = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      media.addEventListener("change", onChange);
+      requestPaint();
+    };
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, [requestPaint]);
 
   function zoomBy(factor: number) {
     stopWheelZoom();
     stopCameraAnimation();
-    const graph = graphRef.current;
-    if (!graph) return;
-    graph.zoom(graph.zoom() * factor, reducedMotion ? 0 : 250);
+    const camera = cameraRef.current;
+    animateCameraTo(camera.x, camera.y, camera.k * factor, reducedMotion ? 0 : 250);
   }
 
   function resetLayout() {
     stopWheelZoom();
     stopCameraAnimation();
-    shouldFit.current = true;
     setLayoutVersion((version) => version + 1);
   }
 
@@ -1403,46 +1865,29 @@ export function TrendGraphCanvas({
     <div
       ref={containerRef}
       className="absolute inset-0"
-      onMouseDownCapture={handleMouseDownCapture}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerLeave}
       onPointerCancel={handlePointerCancel}
+      onMouseDownCapture={(event) => {
+        // A node drag owns the gesture; stop the browser from starting a
+        // selection while the pointer is over the map.
+        if (
+          event.button === 0 &&
+          isGraphSurface(event.target) &&
+          findHitAt(event.clientX, event.clientY)
+        ) {
+          event.preventDefault();
+        }
+      }}
     >
-      <div aria-hidden="true" className="absolute inset-0">
-        {size.width > 0 && (
-          <ForceGraph2D
-            ref={graphRef}
-            width={size.width}
-            height={size.height}
-            graphData={graphData}
-            backgroundColor="rgba(0,0,0,0)"
-            nodeCanvasObject={paintNodeAndLabels}
-            linkColor={linkColor}
-            linkWidth={linkWidth}
-            linkCurvature={0}
-            linkLineDash={(raw: object) => (isSimilarityLink(raw) ? [3, 3] : null)}
-            onRenderFramePre={() => {
-              frameNodes.current = [];
-            }}
-            onRenderFramePost={paintLabelFrame}
-            onEngineStop={handleEngineStop}
-            cooldownTicks={reducedMotion ? 0 : 100}
-            warmupTicks={0}
-            cooldownTime={2_000}
-            d3AlphaDecay={0.035}
-            d3VelocityDecay={0.5}
-            minZoom={0.1}
-            maxZoom={2.5}
-            autoPauseRedraw={!dragging}
-            enablePointerInteraction={false}
-            enableNodeDrag={false}
-            enablePanInteraction
-            enableZoomInteraction={false}
-          />
-        )}
-      </div>
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        className="absolute inset-0 block"
+        style={{ touchAction: "none" }}
+      />
 
       <div
         role="group"

@@ -1,7 +1,6 @@
 import {
   Badge,
   Button,
-  Dialog,
   Shell,
   Sidebar,
   SidebarItem,
@@ -27,7 +26,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { TrendMap, TrendMapNode } from "../../shared/types.ts";
 import { DbNotice } from "@/components/db-notice";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
@@ -35,6 +34,10 @@ import { useTheme } from "@/hooks/use-app";
 import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-trends";
 import { formatRelative } from "@/lib/format";
 import type { GraphLink, GraphNode } from "@/lib/graph";
+
+const Dialog = lazy(() =>
+  import("@trendifest/opendesk/dialog").then((module) => ({ default: module.Dialog })),
+);
 
 const WINDOWS = [
   { hours: 24, label: "24h" },
@@ -55,6 +58,7 @@ function toCanvas(map: TrendMap) {
       description: node.description,
       radius: node.radius * 0.6,
       degree: map.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length,
+      media: node.kind === "pattern" ? (node.kind_ ?? "text") : undefined,
       hub: node.kind !== "pattern",
     };
   });
@@ -185,6 +189,7 @@ export function TrendMapPage() {
   const [desktopInspector, setDesktopInspector] = useState(true);
   const [mobileInspector, setMobileInspector] = useState(false);
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 1199px)").matches);
+  const [dialogsEnabled, setDialogsEnabled] = useState(false);
   const map = useTrendMap(hours);
   const collection = useCollectionStatus();
   const collect = useCollectNow();
@@ -249,6 +254,12 @@ export function TrendMapPage() {
     return () => media.removeEventListener("change", update);
   }, []);
 
+  // Load accessible modal behavior only after the first dialog request. Keep
+  // it mounted afterward so closing transitions and focus restoration finish.
+  useEffect(() => {
+    if (navOpen || aboutOpen || collectionOpen || mobileInspector) setDialogsEnabled(true);
+  }, [navOpen, aboutOpen, collectionOpen, mobileInspector]);
+
   useEffect(() => {
     setSelectedId(null);
   }, [hours]);
@@ -307,7 +318,7 @@ export function TrendMapPage() {
         </div>
       }
     >
-      <SidebarSection label="Workspace" collapsed={rail}>
+      <div className="od-sidebar-section">
         <SidebarItem
           icon={<Network />}
           active={!audience}
@@ -318,7 +329,7 @@ export function TrendMapPage() {
         >
           Trend graph
         </SidebarItem>
-      </SidebarSection>
+      </div>
       <SidebarSection label="Audience feeds" collapsed={rail}>
         {(data?.coverage ?? []).map((row) => (
           <SidebarItem
@@ -363,17 +374,6 @@ export function TrendMapPage() {
             <X />
           </Button>
         )}
-        <Button
-          variant="ghost"
-          square
-          aria-label="Close pattern inspector"
-          onClick={() => {
-            setDesktopInspector(false);
-            setMobileInspector(false);
-          }}
-        >
-          <PanelRight />
-        </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {selected && (
@@ -510,19 +510,6 @@ export function TrendMapPage() {
               >
                 <Info />
               </Button>
-              <Button
-                variant="ghost"
-                square
-                aria-label="Toggle pattern inspector"
-                aria-expanded={narrow ? mobileInspector : desktopInspector}
-                onClick={() =>
-                  narrow
-                    ? setMobileInspector(!mobileInspector)
-                    : setDesktopInspector(!desktopInspector)
-                }
-              >
-                <PanelRight />
-              </Button>
             </div>
           </div>
         }
@@ -544,29 +531,44 @@ export function TrendMapPage() {
                   {data ? `${patterns.length} patterns in view` : "Connecting to collected signals"}
                 </p>
               </div>
-              <div
-                className="observation-window pointer-events-auto"
-                aria-label="Observation window"
-                role="group"
-                style={
-                  {
-                    "--window-index": WINDOWS.findIndex((window) => window.hours === hours),
-                  } as CSSProperties
-                }
-              >
-                <span className="observation-indicator" aria-hidden="true" />
-                {WINDOWS.map((window) => (
-                  <Button
-                    key={window.hours}
-                    variant="ghost"
-                    size="xs"
-                    className="observation-option"
-                    aria-pressed={hours === window.hours}
-                    onClick={() => setHours(window.hours)}
-                  >
-                    {window.label}
-                  </Button>
-                ))}
+              <div className="pointer-events-auto flex items-center gap-2">
+                <div
+                  className="observation-window pointer-events-auto"
+                  aria-label="Observation window"
+                  role="group"
+                  style={
+                    {
+                      "--window-index": WINDOWS.findIndex((window) => window.hours === hours),
+                    } as CSSProperties
+                  }
+                >
+                  <span className="observation-indicator" aria-hidden="true" />
+                  {WINDOWS.map((window) => (
+                    <Button
+                      key={window.hours}
+                      variant="ghost"
+                      size="xs"
+                      className="observation-option"
+                      aria-pressed={hours === window.hours}
+                      onClick={() => setHours(window.hours)}
+                    >
+                      {window.label}
+                    </Button>
+                  ))}
+                </div>
+                <Button
+                  variant="ghost"
+                  square
+                  aria-label="Toggle pattern inspector"
+                  aria-expanded={narrow ? mobileInspector : desktopInspector}
+                  onClick={() =>
+                    narrow
+                      ? setMobileInspector(!mobileInspector)
+                      : setDesktopInspector(!desktopInspector)
+                  }
+                >
+                  <PanelRight />
+                </Button>
               </div>
             </div>
             {canvas.nodes.length > 0 && (
@@ -578,8 +580,7 @@ export function TrendMapPage() {
                 activeIds={connectedIds}
                 emphasisIds={NO_EMPHASIS}
                 showContextLabels={false}
-                labelHubsAlways
-                autoFitSelection={false}
+                autoFitSelection
                 onSelect={selectNode}
               />
             )}
@@ -634,140 +635,164 @@ export function TrendMapPage() {
                   "Waiting for data"
                 )}
               </span>
-              <span className="rounded bg-surface/90 px-1">Larger node · higher potential</span>
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded bg-surface/90 px-1.5 py-1">
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  <span className="graph-legend-swatch" data-shape="text" data-level="1" />
+                  <span className="graph-legend-swatch" data-shape="text" data-level="2" />
+                  <span className="graph-legend-swatch" data-shape="text" data-level="3" />
+                </span>
+                <span>colour · connections</span>
+                <span className="flex items-center gap-1">
+                  <span className="graph-legend-swatch" data-shape="image" data-level="2" />
+                  <span className="graph-legend-swatch" data-shape="video" data-level="2" />
+                  <span className="graph-legend-swatch" data-shape="audio" data-level="2" />
+                  <span className="graph-legend-swatch" data-shape="link" data-level="2" />
+                </span>
+                <span>shape · type</span>
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  <span className="graph-legend-dot" style={{ width: 5, height: 5 }} />
+                  <span className="graph-legend-dot" style={{ width: 9, height: 9 }} />
+                </span>
+                <span>size · potential</span>
+              </span>
             </div>
           </section>
-          {desktopInspector && (
-            <aside
-              className="graph-inspector min-h-0 min-w-0 border border-line bg-surface"
-              aria-label="Pattern inspector"
-            >
-              {inspector}
-            </aside>
-          )}
+          <aside
+            className="graph-inspector min-h-0 min-w-0 border border-line bg-surface"
+            aria-label="Pattern inspector"
+            data-open={desktopInspector && !narrow}
+            inert={!desktopInspector || narrow}
+            aria-hidden={!desktopInspector || narrow}
+          >
+            {inspector}
+          </aside>
         </div>
       </Shell>
-      <Dialog open={navOpen} onOpenChange={setNavOpen} title="Audience feeds" size="sm">
-        <div className="mobile-sidebar">{sidebar(false)}</div>
-      </Dialog>
-      <Dialog
-        open={mobileInspector && narrow}
-        onOpenChange={setMobileInspector}
-        title="Pattern inspector"
-        size="sm"
-      >
-        <div className="mobile-inspector">{inspector}</div>
-      </Dialog>
-      <Dialog
-        open={aboutOpen}
-        onOpenChange={setAboutOpen}
-        title="How trend potential works"
-        description="A transparent ranking heuristic over collected evidence, not a probability."
-      >
-        <div className="space-y-4 text-[12.5px] leading-5 text-fg-2">
-          <p>
-            Solid edges mean an audience feed observed a pattern. Dashed edges connect patterns with
-            similar embedding centroids, compared only within the same model, modality, and native
-            dimension.
-          </p>
-          <p>
-            Similarity links use cosine thresholds of 0.75 for text and 0.78 for images or audio.
-            Each pattern has at most three similarity links. These are affinity heuristics, not
-            probabilities or proof that two posts mean the same thing.
-          </p>
-          <dl className="space-y-2">
-            {Object.entries(
-              data?.method.weights ?? {
-                reach: 0.34,
-                velocity: 0.26,
-                spread: 0.18,
-                persistence: 0.12,
-                diversity: 0.1,
-              },
-            ).map(([label, weight]) => (
-              <div className="flex justify-between gap-4" key={label}>
-                <dt className="capitalize">{label}</dt>
-                <dd className="mono">{Math.round(weight * 100)}%</dd>
-              </div>
-            ))}
-          </dl>
-          <p>
-            The weighted result is reduced when evidence is limited. Five independent authors are
-            needed for the full score. Larger pattern nodes have higher scores; audience hubs carry
-            no score. Connections do not inflate the score.
-          </p>
-          <p className="rounded-lg bg-sunken p-3">
-            {data?.method.velocityComparable
-              ? "Velocity compares distinct authors in the latest and preceding six-hour windows."
-              : "Velocity stays neutral until at least twelve hours of observation history are available."}
-          </p>
-          <p className="text-[11px] text-fg-3">
-            Audience feeds are collection contexts, not verified viewer demographics. Feed selection
-            cannot prove a poster’s age.
-          </p>
-        </div>
-      </Dialog>
-      <Dialog
-        open={collectionOpen}
-        onOpenChange={setCollectionOpen}
-        title="Collection status"
-        description="Live social feeds, local embeddings, and your Postgres database."
-        footer={
-          <Button
-            variant="primary"
-            icon={<RefreshCw />}
-            loading={busy}
-            disabled={!status?.configured}
-            onClick={() => collect.mutate(25)}
+      {dialogsEnabled && (
+        <Suspense fallback={null}>
+          <Dialog open={navOpen} onOpenChange={setNavOpen} title="Audience feeds" size="sm">
+            <div className="mobile-sidebar">{sidebar(false)}</div>
+          </Dialog>
+          <Dialog
+            open={mobileInspector && narrow}
+            onOpenChange={setMobileInspector}
+            title="Pattern inspector"
+            size="sm"
           >
-            Collect now
-          </Button>
-        }
-      >
-        <div className="space-y-4 text-[12px] leading-5 text-fg-2">
-          <div className="flex items-center justify-between gap-3">
-            <span>Bluesky feed</span>
-            <Badge tone={live ? "ok" : "neutral"} dot>
-              {statusLabel}
-            </Badge>
-          </div>
-          <p>
-            {status?.lastBackfillAt
-              ? `Last collection ${formatRelative(status.lastBackfillAt)}.`
-              : "No completed collection reported."}{" "}
-            The graph refreshes every two minutes; feed status refreshes separately.
-          </p>
-          {collection.isError && (
-            <p role="alert" className="text-danger-fg">
-              {collection.error.message}
-            </p>
-          )}
-          {collect.isError && (
-            <p role="alert" className="text-danger-fg">
-              {collect.error.message}
-            </p>
-          )}
-          <p role="status" className="text-fg-3">
-            {busy
-              ? "A collection cycle is running. This can take time while media is embedded."
-              : status?.lastBackfill
-                ? `Last completed cycle: processed ${status.lastBackfill.stored} posts and ${status.lastBackfill.vectors} vectors. ${status.lastBackfill.errors.length} feed errors.`
-                : collect.isSuccess
-                  ? "Collection accepted. Waiting for updated status."
-                  : ""}
-          </p>
-          {status?.lastErrors && status.lastErrors.length > 0 && (
-            <ul className="space-y-1 rounded-lg bg-sunken p-3" aria-label="Collection errors">
-              {status.lastErrors.map((error, index) => (
-                <li key={`${error.segmentId}:${index}`} className="break-words">
-                  {error.segmentId}: {error.message}
-                </li>
-              ))}
-            </ul>
-          )}
-          {unconfigured && <DbNotice />}
-        </div>
-      </Dialog>
+            <div className="mobile-inspector">{inspector}</div>
+          </Dialog>
+          <Dialog
+            open={aboutOpen}
+            onOpenChange={setAboutOpen}
+            title="How trend potential works"
+            description="A transparent ranking heuristic over collected evidence, not a probability."
+          >
+            <div className="space-y-4 text-[12.5px] leading-5 text-fg-2">
+              <p>
+                Solid edges mean an audience feed observed a pattern. Dashed edges connect patterns
+                with similar embedding centroids, compared only within the same model, modality, and
+                native dimension.
+              </p>
+              <p>
+                Similarity links use cosine thresholds of 0.75 for text and 0.78 for images or
+                audio. Each pattern has at most three similarity links. These are affinity
+                heuristics, not probabilities or proof that two posts mean the same thing.
+              </p>
+              <dl className="space-y-2">
+                {Object.entries(
+                  data?.method.weights ?? {
+                    reach: 0.34,
+                    velocity: 0.26,
+                    spread: 0.18,
+                    persistence: 0.12,
+                    diversity: 0.1,
+                  },
+                ).map(([label, weight]) => (
+                  <div className="flex justify-between gap-4" key={label}>
+                    <dt className="capitalize">{label}</dt>
+                    <dd className="mono">{Math.round(weight * 100)}%</dd>
+                  </div>
+                ))}
+              </dl>
+              <p>
+                The weighted result is reduced when evidence is limited. Five independent authors
+                are needed for the full score. Larger pattern nodes have higher scores; audience
+                hubs carry no score. Connections do not inflate the score.
+              </p>
+              <p className="rounded-lg bg-sunken p-3">
+                {data?.method.velocityComparable
+                  ? "Velocity compares distinct authors in the latest and preceding six-hour windows."
+                  : "Velocity stays neutral until at least twelve hours of observation history are available."}
+              </p>
+              <p className="text-[11px] text-fg-3">
+                Audience feeds are collection contexts, not verified viewer demographics. Feed
+                selection cannot prove a poster’s age.
+              </p>
+            </div>
+          </Dialog>
+          <Dialog
+            open={collectionOpen}
+            onOpenChange={setCollectionOpen}
+            title="Collection status"
+            description="Live social feeds, local embeddings, and your Postgres database."
+            footer={
+              <Button
+                variant="primary"
+                icon={<RefreshCw />}
+                loading={busy}
+                disabled={!status?.configured}
+                onClick={() => collect.mutate(25)}
+              >
+                Collect now
+              </Button>
+            }
+          >
+            <div className="space-y-4 text-[12px] leading-5 text-fg-2">
+              <div className="flex items-center justify-between gap-3">
+                <span>Bluesky feed</span>
+                <Badge tone={live ? "ok" : "neutral"} dot>
+                  {statusLabel}
+                </Badge>
+              </div>
+              <p>
+                {status?.lastBackfillAt
+                  ? `Last collection ${formatRelative(status.lastBackfillAt)}.`
+                  : "No completed collection reported."}{" "}
+                The graph refreshes every two minutes; feed status refreshes separately.
+              </p>
+              {collection.isError && (
+                <p role="alert" className="text-danger-fg">
+                  {collection.error.message}
+                </p>
+              )}
+              {collect.isError && (
+                <p role="alert" className="text-danger-fg">
+                  {collect.error.message}
+                </p>
+              )}
+              <p role="status" className="text-fg-3">
+                {busy
+                  ? "A collection cycle is running. This can take time while media is embedded."
+                  : status?.lastBackfill
+                    ? `Last completed cycle: processed ${status.lastBackfill.stored} posts and ${status.lastBackfill.vectors} vectors. ${status.lastBackfill.errors.length} feed errors.`
+                    : collect.isSuccess
+                      ? "Collection accepted. Waiting for updated status."
+                      : ""}
+              </p>
+              {status?.lastErrors && status.lastErrors.length > 0 && (
+                <ul className="space-y-1 rounded-lg bg-sunken p-3" aria-label="Collection errors">
+                  {status.lastErrors.map((error, index) => (
+                    <li key={`${error.segmentId}:${index}`} className="break-words">
+                      {error.segmentId}: {error.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {unconfigured && <DbNotice />}
+            </div>
+          </Dialog>
+        </Suspense>
+      )}
     </>
   );
 }

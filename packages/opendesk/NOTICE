@@ -1,5 +1,5 @@
 @trendifest/opendesk
-====================
+===
 
 This package contains source-derived UI code from the OpenDesk web application.
 
@@ -18,15 +18,29 @@ Upstream files adapted (paths relative to the upstream repository):
   web/src/components/ui/badge.tsx   Badge
   web/src/components/ui/dialog.tsx  Dialog
   web/src/components/ui/spinner.tsx Spinner
-  web/src/lib/cn.ts                 class merge helper
-  web/src/lib/tones.ts              palette tone names
+  web/src/lib/cn.ts                 class-name helper
   LICENSE                           copied verbatim
+
+Bundled fonts (not part of the Apache-2.0 upstream): the latin subsets of Geist
+and Geist Mono, copied from the Fontsource builds of the Vercel Geist fonts.
+Both are licensed under the SIL Open Font License 1.1, retained at
+src/fonts/geist-OFL.txt and src/fonts/geist-mono-OFL.txt.
+
+  Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)
 
 Adaptations: the helpdesk application runtime (routing, session, i18n, realtime,
 assistant, billing, telemetry), its domain components and its scripts were not
-copied. Remaining components take their state from props. Motion is limited to
-short CSS transitions/animations that are disabled by prefers-reduced-motion,
-and Radix supplies dialog focus trapping, Escape handling and ARIA semantics.
+copied. Remaining components take their state from props. Variants, sizes and
+palette tones with no consumer in this app were dropped: Button keeps primary,
+secondary and ghost at two sizes, Badge keeps the neutral and ok tones, Dialog
+keeps two widths. The dialog open/close motion and the foldable sidebar section
+stay, limited to short CSS transitions/animations that are disabled by
+prefers-reduced-motion, and Radix (scoped to @radix-ui/react-dialog) supplies
+dialog focus trapping, Escape handling and ARIA semantics. Only the latin font
+subsets are loaded; other scripts fall back to the platform UI font. Class names
+are joined with clsx alone, and the few overrides that need to win over a
+component default are settled by a component-layer rule, so no class-merging
+runtime is bundled.
 
 Changes made to the derived files are licensed under the Apache License 2.0 as
 part of this repository.

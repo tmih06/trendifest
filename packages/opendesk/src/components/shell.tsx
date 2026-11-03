@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { cn } from "../lib/cn.ts";
 
 /**
  * The app frame, derived from OpenDesk's AppLayout: the header runs across the
@@ -14,16 +13,14 @@ export function Shell({
   header,
   children,
   collapsed = false,
-  className,
 }: {
   sidebar: ReactNode;
   header: ReactNode;
   children: ReactNode;
   collapsed?: boolean;
-  className?: string;
 }) {
   return (
-    <div className={cn("od-shell", className)} data-collapsed={collapsed ? "" : undefined}>
+    <div className="od-shell" data-collapsed={collapsed ? "" : undefined}>
       <div className="od-shell-header">{header}</div>
       <div className="od-shell-body">
         <aside className="od-shell-nav">{sidebar}</aside>

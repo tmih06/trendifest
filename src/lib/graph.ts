@@ -7,10 +7,10 @@
 import type { TrendMapNodeKind, TrendMapRelation } from "../../shared/types.ts";
 
 /** The renderer's node vocabulary is the wire vocabulary; one source of truth. */
-export type GraphNodeKind = TrendMapNodeKind;
+type GraphNodeKind = TrendMapNodeKind;
 
 /** Edges are either a collected observation or a measured centroid similarity. */
-export type GraphRelation = TrendMapRelation;
+type GraphRelation = TrendMapRelation;
 
 export interface GraphNode {
   id: string;
@@ -19,6 +19,8 @@ export interface GraphNode {
   description: string;
   radius: number;
   degree: number;
+  /** Pattern content type; drives the node shape. */
+  media?: string;
   /** Fixed anchors (audience hubs) that must not drift and keep their labels. */
   hub?: boolean;
 }

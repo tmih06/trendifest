@@ -39,18 +39,25 @@ public health endpoint. Protect the deployment with HTTPS.
 
 - **Audience sidebar:** emphasize patterns actually observed by a selected feed.
   Filtering does not restart the layout. Counts are observed posts, not measured
-  audience sizes.
+  audience sizes. Click a section heading to fold its rows; the icon-only rail
+  keeps every row available.
 - **Observation window:** 24 hours, 3 days, or 7 days, with a sliding active
   indicator that respects reduced motion.
-- **Graph:** pan, zoom, drag nodes, fit to view, or restart the layout. Larger
-  pattern nodes have higher emergence scores. Audience hubs have no score.
+- **Graph:** three independent encodings: **colour** is the connection count
+  (pale for a single link, saturated purple as links accumulate), **size** is
+  the trend potential, and **shape** is the pattern's content type — circle for
+  text, rounded square for image, triangle for video, diamond for audio, and
+  pentagon for links. Audience hubs are neutral greys. Selecting a node frames
+  only that node and its direct neighbours.
+  Pan and zoom cover a wide range; wheel zoom is eased rather than stepped.
   Background mouse, pen, and single-touch pans glide to a stop after release.
   A new press, zoom, or camera control interrupts the glide. Holding still
   before release, multi-touch gestures, and reduced-motion mode do not fling.
 - **Pattern inspector:** keyboard-accessible ranking, score breakdown, source
   posts with Bluesky links, and neighboring patterns with cosine similarity.
   The desktop inspector floats above the graph without resizing its canvas;
-  close it from the panel or toggle it from the header.
+  close it from the panel or toggle it beside the observation-window selector.
+  Expansion and collapse slide and fade, respecting reduced motion.
 - **Collection status:** real tail/backfill state, upstream errors, and a manual
   collection action. A disconnected feed is never labeled live.
 - **Appearance:** light/dark preference, collapsible desktop sidebar, mobile
@@ -142,7 +149,7 @@ The package adapts OpenDesk's shell, inset work panel, compact sidebar/rail,
 Button, Badge, Dialog, theme tokens, Geist/Geist Mono fonts, and Lucide icon
 conventions. Helpdesk routing, authentication, chat, billing, telemetry, and AI
 assistant services are not imported. Components take Trendifest state through
-props; the graph remains our `react-force-graph-2d`/D3 engine.
+props; the graph is our own canvas renderer with a `d3-force` layout.
 
 Upstream paths, the pinned revision, and modification notices are recorded in
 `packages/opendesk/NOTICE` and package metadata. The full upstream license is

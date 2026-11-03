@@ -86,12 +86,41 @@ a {
 .graph-inspector {
   position: absolute;
   z-index: 30;
-  inset-block: 68px 64px;
+  /* Reset the graph's bottom-right view controls sit above the footer; the
+     floating panel ends clear of them so neither swallows the other's clicks. */
+  inset-block: 68px 96px;
   inset-inline-end: 12px;
   width: 320px;
   overflow: hidden;
   border-radius: 12px;
   box-shadow: var(--od-shadow-float);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(16px);
+}
+
+[dir="rtl"] .graph-inspector {
+  transform: translateX(-16px);
+}
+
+.graph-inspector[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .graph-inspector {
+    transition:
+      opacity 180ms ease-out,
+      transform 180ms cubic-bezier(0.2, 0, 0, 1),
+      visibility 0s 180ms;
+  }
+  .graph-inspector[data-open="true"] {
+    transition-delay: 0s;
+  }
 }
 
 .observation-window {
@@ -173,6 +202,56 @@ a {
   inset-inline: 20px;
   transform: translateY(-50%);
   text-align: center;
+}
+
+/* Legend glyphs mirror the canvas vocabulary: the ramp and the type outlines
+   are drawn in CSS so they stay crisp without a second canvas. */
+.graph-legend-swatch {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--graph-legend-level, #e0d7fa);
+}
+
+.graph-legend-swatch[data-level="1"] {
+  --graph-legend-level: color-mix(in srgb, var(--graph-node-focused) 12%, var(--surface));
+}
+
+.graph-legend-swatch[data-level="2"] {
+  --graph-legend-level: color-mix(in srgb, var(--graph-node-focused) 55%, var(--surface));
+}
+
+.graph-legend-swatch[data-level="3"] {
+  --graph-legend-level: var(--graph-node-focused);
+}
+
+.graph-legend-swatch[data-shape="text"] {
+  border-radius: 9999px;
+}
+
+.graph-legend-swatch[data-shape="image"] {
+  border-radius: 2px;
+}
+
+.graph-legend-swatch[data-shape="video"] {
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+  border-radius: 1px;
+}
+
+.graph-legend-swatch[data-shape="audio"] {
+  transform: rotate(45deg);
+  border-radius: 1px;
+}
+
+.graph-legend-swatch[data-shape="link"] {
+  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+  border-radius: 1px;
+}
+
+.graph-legend-dot {
+  flex: none;
+  border-radius: 9999px;
+  background: var(--graph-legend-level, #9578ee);
 }
 
 .mobile-nav-trigger {

@@ -1,23 +1,26 @@
-import { Dialog as D } from "radix-ui";
+import * as D from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 
+// The two panel widths this app opens: a compact sheet (mobile nav, inspector)
+// and the default reading width for the explanation and status dialogs.
 const WIDTHS = {
   sm: "max-w-[400px]",
   md: "max-w-[520px]",
-  lg: "max-w-[680px]",
-  xl: "max-w-[880px]",
 } as const;
 
 /**
  * A centred modal, derived from OpenDesk's Dialog. Radix supplies the focus
  * trap, Escape handling and ARIA wiring; the page styling is upstream's.
  *
- * The dialog is normally controlled from outside (`open` + `onOpenChange`), so
- * an external Button may be the opener: Radix only restores focus
- * automatically when its own Trigger was used. Here the element focused at the
- * moment of opening is remembered and focused again on close.
+ * The dialog is controlled from outside (`open` + `onOpenChange`), so an
+ * external Button is the opener: Radix only restores focus automatically when
+ * its own Trigger was used. Here the element focused at the moment of opening
+ * is remembered and focused again on close.
+ *
+ * Kept on its own subpath (`@trendifest/opendesk/dialog`) so the app can load
+ * Radix and this panel only when a dialog is first opened.
  */
 export function Dialog({
   open,
@@ -26,7 +29,6 @@ export function Dialog({
   description,
   children,
   footer,
-  className,
   size = "md",
 }: {
   open: boolean;
@@ -35,11 +37,10 @@ export function Dialog({
   description?: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
-  className?: string;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: keyof typeof WIDTHS;
 }) {
   // Radix focuses the content as it opens but only restores focus to its own
-  // Trigger, and this dialog is usually controlled from outside. The opener is
+  // Trigger, and this dialog is controlled from outside. The opener is
   // the element focused before opening, or — since Safari doesn't focus buttons
   // on click — the last element pressed outside the dialog.
   const opener = useRef<HTMLElement | null>(null);
@@ -80,7 +81,6 @@ export function Dialog({
             "od-dialog-panel",
             "data-[state=open]:animate-dialog-in data-[state=closed]:animate-dialog-out motion-reduce:animate-none",
             WIDTHS[size],
-            className,
           )}
         >
           <div className="flex items-start justify-between gap-4 px-5 pb-2 pt-[18px]">
