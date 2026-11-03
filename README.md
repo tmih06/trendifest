@@ -43,6 +43,9 @@ public health endpoint. Protect the deployment with HTTPS.
 - **Observation window:** 24 hours, 3 days, or 7 days.
 - **Graph:** pan, zoom, drag nodes, fit to view, or restart the layout. Larger
   pattern nodes have higher emergence scores. Audience hubs have no score.
+  Background mouse, pen, and single-touch pans glide to a stop after release.
+  A new press, zoom, or camera control interrupts the glide. Holding still
+  before release, multi-touch gestures, and reduced-motion mode do not fling.
 - **Pattern inspector:** keyboard-accessible ranking, score breakdown, source
   posts with Bluesky links, and neighboring patterns with cosine similarity.
 - **Collection status:** real tail/backfill state, upstream errors, and a manual

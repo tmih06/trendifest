@@ -373,6 +373,23 @@ export function TrendGraphCanvas({
     raf: number;
     lastFrame: number;
   } | null>(null);
+  const panGesture = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    startX: number;
+    startY: number;
+    time: number;
+    vx: number;
+    vy: number;
+    moved: boolean;
+  } | null>(null);
+  const panMomentum = useRef<{
+    raf: number;
+    time: number;
+    vx: number;
+    vy: number;
+  } | null>(null);
   const cameraAnimation = useRef<{
     raf: number;
     start: number;
@@ -436,6 +453,10 @@ export function TrendGraphCanvas({
     const animation = cameraAnimation.current;
     if (animation?.raf) window.cancelAnimationFrame(animation.raf);
     cameraAnimation.current = null;
+    const momentum = panMomentum.current;
+    if (momentum) window.cancelAnimationFrame(momentum.raf);
+    panMomentum.current = null;
+    panGesture.current = null;
   }, []);
 
   const animateCameraTo = useCallback(
@@ -485,6 +506,81 @@ export function TrendGraphCanvas({
     },
     [stopCameraAnimation, stopWheelZoom],
   );
+
+  useEffect(() => {
+    /** Track the pointer, not graph coordinates, so glide feels the same at every zoom. */
+    function trackPan(event: PointerEvent) {
+      const gesture = panGesture.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      const elapsed = event.timeStamp - gesture.time;
+      if (elapsed <= 0) return;
+      const blend = 1 - Math.exp(-elapsed / 30);
+      gesture.vx += ((event.clientX - gesture.x) / elapsed - gesture.vx) * blend;
+      gesture.vy += ((event.clientY - gesture.y) / elapsed - gesture.vy) * blend;
+      gesture.x = event.clientX;
+      gesture.y = event.clientY;
+      gesture.time = event.timeStamp;
+      gesture.moved ||= Math.hypot(gesture.x - gesture.startX, gesture.y - gesture.startY) > 10;
+    }
+
+    /** Release velocity decays exponentially; a held, cancelled or tiny drag never flings. */
+    function releasePan(event: PointerEvent) {
+      const gesture = panGesture.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      panGesture.current = null;
+      if (reducedMotion || !gesture.moved || event.timeStamp - gesture.time > 80) return;
+      const speed = Math.hypot(gesture.vx, gesture.vy);
+      if (speed < 0.05) return;
+      const limit = Math.min(1, 2.5 / speed);
+      const momentum = {
+        raf: 0,
+        time: performance.now(),
+        vx: gesture.vx * limit,
+        vy: gesture.vy * limit,
+      };
+      panMomentum.current = momentum;
+      const tick = (now: number) => {
+        const graph = graphRef.current;
+        if (!graph || panMomentum.current !== momentum) return;
+        const elapsed = Math.max(0, now - momentum.time);
+        momentum.time = now;
+        // 280ms time constant: frame-rate-independent friction, no spring or rebound.
+        const decay = Math.exp(-elapsed / 280);
+        const travel = (280 * (1 - decay)) / (graph.zoom() || 1);
+        const center = graph.centerAt();
+        graph.centerAt(center.x - momentum.vx * travel, center.y - momentum.vy * travel, 0);
+        momentum.vx *= decay;
+        momentum.vy *= decay;
+        if (Math.hypot(momentum.vx, momentum.vy) < 0.02) {
+          panMomentum.current = null;
+          return;
+        }
+        momentum.raf = window.requestAnimationFrame(tick);
+      };
+      momentum.raf = window.requestAnimationFrame(tick);
+    }
+
+    const stopWhenHidden = () => {
+      if (document.hidden) stopCameraAnimation();
+    };
+    // Capture keeps release velocity accurate outside the canvas. Any new press
+    // (including a second touch), zoom/control action, blur or cancellation stops glide.
+    window.addEventListener("pointerdown", stopCameraAnimation, true);
+    window.addEventListener("pointermove", trackPan, true);
+    window.addEventListener("pointerup", releasePan, true);
+    window.addEventListener("pointercancel", stopCameraAnimation, true);
+    window.addEventListener("blur", stopCameraAnimation);
+    document.addEventListener("visibilitychange", stopWhenHidden);
+    return () => {
+      window.removeEventListener("pointerdown", stopCameraAnimation, true);
+      window.removeEventListener("pointermove", trackPan, true);
+      window.removeEventListener("pointerup", releasePan, true);
+      window.removeEventListener("pointercancel", stopCameraAnimation, true);
+      window.removeEventListener("blur", stopCameraAnimation);
+      document.removeEventListener("visibilitychange", stopWhenHidden);
+      stopCameraAnimation();
+    };
+  }, [reducedMotion, stopCameraAnimation]);
 
   const getLabelBitmap = useCallback(
     (label: string, isHub: boolean, color: string, background: string, dpr: number) => {
@@ -841,6 +937,19 @@ export function TrendGraphCanvas({
       hitId,
       pointerType: event.pointerType,
     };
+    if (!reducedMotion && event.isPrimary && (!hitId || event.pointerType === "touch")) {
+      panGesture.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        startX: event.clientX,
+        startY: event.clientY,
+        time: event.timeStamp,
+        vx: 0,
+        vy: 0,
+        moved: false,
+      };
+    }
 
     // Mouse/pen node drags are handled directly against live screen geometry.
     // Touch keeps d3-zoom so pinch and two-finger pan still work.
