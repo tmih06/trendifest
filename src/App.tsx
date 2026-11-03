@@ -7,12 +7,14 @@ import { useHashRoute, useTheme, type RoutePage } from "@/hooks/use-app";
 import { useOverview } from "@/hooks/use-trends";
 import { AppProvider } from "@/lib/app-context";
 import { OverviewPage } from "@/pages/overview";
+import { SignalsPage } from "@/pages/signals";
 import { ExplorePage } from "@/pages/explore";
 import { WatchlistPage } from "@/pages/watchlist";
 import { AlertsPage } from "@/pages/alerts";
 
 const TITLES: Record<RoutePage, string> = {
   overview: "Overview",
+  signals: "Signals",
   explore: "Explore",
   watchlist: "Watchlist",
   alerts: "Alerts",
@@ -87,6 +89,7 @@ export default function App() {
         onToggleTheme={toggle}
       >
         {page === "overview" ? <OverviewPage /> : null}
+        {page === "signals" ? <SignalsPage /> : null}
         {page === "explore" ? <ExplorePage /> : null}
         {page === "watchlist" ? <WatchlistPage /> : null}
         {page === "alerts" ? <AlertsPage /> : null}

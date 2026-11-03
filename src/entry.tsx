@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import App from "./App";
 import { TrendGraphPage } from "./pages/trend-graph";
+import { TrendMapPage } from "./pages/trend-map";
 
 /**
  * The related graph is the root experience. The classic workspace remains at
@@ -13,6 +14,7 @@ export default function Entry() {
     window.addEventListener("hashchange", update);
     return () => window.removeEventListener("hashchange", update);
   }, []);
+  if (hash.startsWith("#/map")) return <TrendMapPage />;
   const graph = !hash || hash.startsWith("#/graph");
   return graph ? <TrendGraphPage /> : <App />;
 }

@@ -1,0 +1,29 @@
+# Local collection database. Data lives in a named volume, so stopping or
+# recreating the container does not lose collected posts.
+#
+#   docker compose up -d
+#
+# The app reads TRENDIFEST_DATABASE_URL (see .env.example).
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: trendifest-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trendifest
+      POSTGRES_PASSWORD: trendifest
+      POSTGRES_DB: trendifest
+    ports:
+      # Loopback only: this database holds collected public posts and has a
+      # development password, so it must not be reachable from the network.
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - trendifest-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trendifest -d trendifest"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  trendifest-pgdata:

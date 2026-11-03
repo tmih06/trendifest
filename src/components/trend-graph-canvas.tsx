@@ -1,4 +1,13 @@
-import { forceCenter, forceCollide, forceX, forceY } from "d3-force";
+import {
+  forceCenter,
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  forceX,
+  forceY,
+  type ForceLink,
+} from "d3-force";
 import { Crosshair, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
 import {
   useCallback,
@@ -80,10 +89,39 @@ function makeLabelBitmap(
     context.font = font;
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.lineWidth = 3;
-    context.lineJoin = "round";
-    context.strokeStyle = background;
-    context.strokeText(label, width / 2, height / 2);
+    // Hub names are the map's frame, and leaves keep moving under them while
+    // the force simulation settles. A halo is not enough to stay legible over
+    // a circle, so hub labels get an opaque chip; leaf labels keep the halo so
+    // they stay quiet.
+    if (isHub) {
+      context.fillStyle = background;
+      context.beginPath();
+      const radius = 3;
+      const left = 0;
+      const top = 0;
+      const right = width;
+      const bottom = height;
+      context.moveTo(left + radius, top);
+      context.lineTo(right - radius, top);
+      context.quadraticCurveTo(right, top, right, top + radius);
+      context.lineTo(right, bottom - radius);
+      context.quadraticCurveTo(right, bottom, right - radius, bottom);
+      context.lineTo(left + radius, bottom);
+      context.quadraticCurveTo(left, bottom, left, bottom - radius);
+      context.lineTo(left, top + radius);
+      context.quadraticCurveTo(left, top, left + radius, top);
+      context.closePath();
+      context.fill();
+    }
+    context.font = font;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    if (!isHub) {
+      context.lineWidth = 3;
+      context.lineJoin = "round";
+      context.strokeStyle = background;
+      context.strokeText(label, width / 2, height / 2);
+    }
     context.fillStyle = color;
     context.fillText(label, width / 2, height / 2);
   }
@@ -148,7 +186,7 @@ function readPalette(): GraphPalette {
     foreground: token("--text-normal") || FALLBACK_PALETTE.foreground,
     muted: token("--graph-text") || FALLBACK_PALETTE.muted,
     background: token("--background-primary") || FALLBACK_PALETTE.background,
-    edge: resolveColor(token("--graph-line") || "#a78bfa", 0.2),
+    edge: resolveColor(token("--graph-line") || "#a78bfa", 0.35),
     edgeDim: resolveColor(token("--graph-line") || "#a78bfa", 0.055),
     edgeSelected: resolveColor(token("--graph-line") || "#a78bfa", 0.62),
   };
@@ -174,57 +212,66 @@ function useReducedMotion() {
   return reduced;
 }
 
-/**
- * Seed every leaf around its monitored hub. A one-term graph puts the hub at
- * the center; the ring radius grows with the leaf count so the force layout
- * starts spread out instead of collapsing from a single point.
- */
+/** The same forces settle the initial layout offscreen and relax node drags. */
+function layoutForces() {
+  return {
+    charge: forceManyBody<NodePoint>().strength(-220).distanceMax(650),
+    link: forceLink<NodePoint, LinkPoint>()
+      .id((node) => node.id)
+      .distance(90)
+      .strength(0.3),
+    collide: forceCollide<NodePoint>((node) => node.radius + 10).iterations(3),
+    x: forceX<NodePoint>(0).strength(0.025),
+    y: forceY<NodePoint>(0).strength(0.025),
+    center: forceCenter<NodePoint>(0, 0),
+  };
+}
+
+/** No audience ring or fixed anchors: only observed edges shape the layout. */
 function makeGraphData(
   sourceNodes: GraphNode[],
   sourceLinks: GraphLink[],
   layoutVersion = 0,
+  previous?: CanvasGraph,
 ): CanvasGraph {
-  const hubs = sourceNodes.filter((node) => node.kind === "term");
-  const hubPositions = new Map<string, { x: number; y: number }>();
-  hubs.forEach((node, index) => {
-    const angle = hubs.length === 1 ? 0 : (index / hubs.length) * Math.PI * 2 - Math.PI / 2;
-    const distance = hubs.length === 1 ? 0 : 250;
-    hubPositions.set(node.id, {
-      x: Math.cos(angle) * distance,
-      y: Math.sin(angle) * distance,
-    });
-  });
-
-  const anchors = new Map<string, { x: number; y: number; count: number }>();
-  for (const link of sourceLinks) {
-    if (link.relation === "contains") continue;
-    const sourceHub = hubPositions.get(link.source);
-    const targetHub = hubPositions.get(link.target);
-    const hub = sourceHub ?? targetHub;
-    const leafId = sourceHub ? link.target : targetHub ? link.source : null;
-    if (!hub || !leafId) continue;
-    const anchor = anchors.get(leafId) ?? { x: 0, y: 0, count: 0 };
-    anchor.x += hub.x;
-    anchor.y += hub.y;
-    anchor.count += 1;
-    anchors.set(leafId, anchor);
-  }
-
-  return {
+  const oldNodes = new Map(previous?.nodes.map((node) => [node.id, node]));
+  const graph: CanvasGraph = {
     nodes: sourceNodes.map((node, index) => {
-      const hub = hubPositions.get(node.id);
-      if (hub) return { ...node, x: hub.x, y: hub.y };
-      const anchor = anchors.get(node.id) ?? { x: 0, y: 0, count: 1 };
-      const angle = index * 2.399963229728653 + layoutVersion * 0.83;
-      const radius = 58 + ((index + layoutVersion) % 5) * 16;
+      const old = oldNodes.get(node.id);
+      const angle = index * 2.399963229728653 + layoutVersion * 0.41;
+      const distance = 24 * Math.sqrt(index + 1);
       return {
         ...node,
-        x: anchor.x / anchor.count + Math.cos(angle) * radius,
-        y: anchor.y / anchor.count + Math.sin(angle) * radius,
+        x: old?.x ?? Math.cos(angle) * distance,
+        y: old?.y ?? Math.sin(angle) * distance,
+        vx: 0,
+        vy: 0,
       };
     }),
     links: sourceLinks.map((link) => ({ ...link })),
   };
+  const [oldTopology, newTopology] = [previous, graph].map((data) =>
+    data
+      ? [...data.nodes.map((node) => node.id), ...data.links.map((link) => link.id)]
+          .sort()
+          .join("\n")
+      : null,
+  );
+  if (previous && oldTopology === newTopology) return graph;
+
+  const forces = layoutForces();
+  const simulation = forceSimulation<NodePoint>(graph.nodes).stop();
+  for (const [name, force] of Object.entries(forces)) simulation.force(name, force as never);
+  forces.link.links(graph.links as LinkPoint[]);
+  simulation.alphaDecay(0.035).velocityDecay(0.5).tick(300);
+  simulation.stop();
+  for (const node of graph.nodes) {
+    node.vx = 0;
+    node.vy = 0;
+  }
+  // d3 resolves endpoints to objects; the canvas owns its own link resolution.
+  graph.links = sourceLinks.map((link) => ({ ...link }));
+  return graph;
 }
 
 interface TrendGraphCanvasProps {
@@ -235,6 +282,18 @@ interface TrendGraphCanvasProps {
   activeIds: Set<string>;
   emphasisIds: Set<string>;
   showContextLabels: boolean;
+  /**
+   * Keep hub labels visible at every zoom level. The trend map's hubs are
+   * viewer segments, and an unlabeled anchor makes the map unreadable; the
+   * related graph has one hub whose label is already obvious from context.
+   */
+  labelHubsAlways?: boolean;
+  /**
+   * Re-frame the camera onto the selection. Correct when the graph is a
+   * neighborhood to explore; wrong for a map whose node size encodes a score,
+   * because zooming into one node destroys the comparison the view exists for.
+   */
+  autoFitSelection?: boolean;
   onSelect: (id: string | null) => void;
 }
 
@@ -251,6 +310,8 @@ export function TrendGraphCanvas({
   activeIds,
   emphasisIds,
   showContextLabels,
+  labelHubsAlways = false,
+  autoFitSelection = true,
   onSelect,
 }: TrendGraphCanvasProps) {
   const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
@@ -298,22 +359,19 @@ export function TrendGraphCanvas({
   const [palette, setPalette] = useState(readPalette);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [, setFontReady] = useState(false);
-  const [hasSettled, setHasSettled] = useState(false);
   const [dragging, setDragging] = useState(false);
-  // Restarting the layout reseeds leaves while the monitored hub stays centered.
-  const graphData = useMemo(
-    () => makeGraphData(nodes, links, layoutVersion),
-    [nodes, links, layoutVersion],
-  );
-  const hubPositions = useMemo(
-    () =>
-      new Map(
-        graphData.nodes
-          .filter((node) => node.kind === "term")
-          .map((node) => [node.id, { x: node.x ?? 0, y: node.y ?? 0 }] as const),
-      ),
-    [graphData],
-  );
+  const previousLayout = useRef<{ version: number; data: CanvasGraph } | null>(null);
+  const graphData = useMemo(() => {
+    const previous = previousLayout.current;
+    const data = makeGraphData(
+      nodes,
+      links,
+      layoutVersion,
+      previous?.version === layoutVersion ? previous.data : undefined,
+    );
+    previousLayout.current = { version: layoutVersion, data };
+    return data;
+  }, [nodes, links, layoutVersion]);
   const parentHubs = useMemo(() => {
     const parents = new Map<string, string[]>();
     for (const link of graphData.links) {
@@ -327,8 +385,7 @@ export function TrendGraphCanvas({
 
   useEffect(() => {
     shouldFit.current = true;
-    setHasSettled(false);
-  }, [nodes]);
+  }, [layoutVersion]);
 
   const stopWheelZoom = useCallback(() => {
     const state = wheelZoom.current;
@@ -542,44 +599,20 @@ export function TrendGraphCanvas({
     };
   }, [stopCameraAnimation]);
 
+  const mountedGraph = size.width > 0;
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph) return;
-    const charge = graph.d3Force("charge") as { strength?: (value: number) => void } | undefined;
-    charge?.strength?.(-260);
-    const link = graph.d3Force("link") as
-      | {
-          distance?: (value: (link: LinkPoint) => number) => void;
-          strength?: (value: number) => void;
-        }
-      | undefined;
-    link?.distance?.((edge) =>
-      edge.relation === "rising" ? 136 : edge.relation === "contains" ? 92 : 116,
-    );
-    link?.strength?.(0.07);
-    graph.d3Force(
-      "collide",
-      forceCollide<NodePoint>(
-        (node) => (node.radius ?? 6) + (node.kind === "term" ? 32 : 16),
-      ) as never,
-    );
-    // The monitored term is an elastic anchor, not a fixed point: it can drift
-    // and pull back after a drag while the related queries settle around it.
-    graph.d3Force(
-      "x",
-      forceX<NodePoint>((node) => hubPositions.get(node.id)?.x ?? 0).strength((node) =>
-        node.kind === "term" ? 0.05 : 0,
-      ) as never,
-    );
-    graph.d3Force(
-      "y",
-      forceY<NodePoint>((node) => hubPositions.get(node.id)?.y ?? 0).strength((node) =>
-        node.kind === "term" ? 0.05 : 0,
-      ) as never,
-    );
-    graph.d3Force("center", forceCenter<NodePoint>(0, 0).strength(0.006) as never);
+    const forces = layoutForces();
+    // Keep the library-owned link force: it binds endpoints when its deferred
+    // graph-data update runs, which can happen after this React effect.
+    const link = graph.d3Force("link") as unknown as ForceLink<NodePoint, LinkPoint>;
+    link.distance(90).strength(0.3);
+    for (const [name, force] of Object.entries(forces)) {
+      if (name !== "link") graph.d3Force(name, force as never);
+    }
     graph.d3ReheatSimulation();
-  }, [graphData, hubPositions, layoutVersion]);
+  }, [graphData, mountedGraph]);
 
   const compact = size.width < 700 || size.height < 560;
 
@@ -651,9 +684,9 @@ export function TrendGraphCanvas({
   );
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || !autoFitSelection) return;
     fitSelectionCamera(620);
-  }, [fitSelectionCamera, selectedId]);
+  }, [autoFitSelection, fitSelectionCamera, selectedId]);
 
   const finishLayout = useCallback(() => {
     if (shouldFit.current) {
@@ -664,7 +697,6 @@ export function TrendGraphCanvas({
 
   const handleEngineStop = useCallback(() => {
     finishLayout();
-    setHasSettled(true);
   }, [finishLayout]);
 
   const updateHovered = useCallback((id: string | null) => {
@@ -706,7 +738,7 @@ export function TrendGraphCanvas({
       for (const node of graphData.nodes) {
         if (typeof node.x !== "number" || typeof node.y !== "number") continue;
         const point = graph.graph2ScreenCoords(node.x, node.y);
-        const radius = (node.radius ?? 5) * zoom + (node.kind === "term" ? 14 : 11);
+        const radius = (node.radius ?? 5) * zoom + (node.hub ? 14 : 11);
         const distance = Math.hypot(x - point.x, y - point.y);
         if (distance <= radius && distance < closestDistance) {
           closest = node.id;
@@ -896,8 +928,8 @@ export function TrendGraphCanvas({
 
   const colorFor = useCallback(
     (kind: GraphNode["kind"]) => {
-      if (kind === "term") return palette.term;
-      if (kind === "rising") return palette.rising;
+      if (kind === "term" || kind === "segment") return palette.term;
+      if (kind === "rising" || kind === "pool") return palette.rising;
       return palette.top;
     },
     [palette],
@@ -914,7 +946,7 @@ export function TrendGraphCanvas({
       const active = activeIds.has(node.id);
       const emphasis = emphasisIds.has(node.id);
       const dim = !active;
-      const isHub = node.kind === "term";
+      const isHub = node.hub === true;
       const kindColor = colorFor(node.kind);
       const radius = node.radius + (hovered ? 0.8 : 0);
 
@@ -933,10 +965,10 @@ export function TrendGraphCanvas({
 
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = isHub || selected || hovered ? palette.term : palette.background;
+      ctx.fillStyle = selected || hovered || isHub ? palette.term : kindColor;
       ctx.fill();
-      ctx.lineWidth = isHub ? 1.2 : 1.25;
-      ctx.strokeStyle = selected || hovered ? palette.term : isHub ? palette.background : kindColor;
+      ctx.lineWidth = 0.7;
+      ctx.strokeStyle = palette.background;
       ctx.stroke();
 
       if (selected || hovered) {
@@ -1010,16 +1042,19 @@ export function TrendGraphCanvas({
         .filter((node) => {
           if (!activeIds.has(node.id) && node.id !== hoveredId) return false;
           if (node.id === selectedId || node.id === hoveredId || showContextLabels) return true;
-          return node.kind === "term" ? hubFade > 0.01 : leafFade > 0.01;
+          if (labelHubsAlways && node.hub) return true;
+          return node.hub ? hubFade > 0.01 : leafFade > 0.01;
         })
         .toSorted((a, b) => {
+          // Hub labels are drawn last so pattern circles cannot paint over the
+          // anchor names; without this a dense cluster hides "Discover".
           const priority = (node: NodePoint) =>
             node.id === selectedId || node.id === hoveredId
               ? 3
-              : node.kind === "term"
-                ? 2
+              : node.hub
+                ? 1.5
                 : node.degree > 2
-                  ? 1.5
+                  ? 2
                   : 1;
           return priority(b) - priority(a);
         });
@@ -1027,17 +1062,24 @@ export function TrendGraphCanvas({
       for (const node of labels) {
         const point = positions.get(node.id);
         if (!point) continue;
-        const isHub = node.kind === "term";
+        const isHub = node.hub === true;
         const selected = node.id === selectedId;
         const hovered = node.id === hoveredId;
-        const fade = selected || hovered || showContextLabels ? 1 : isHub ? hubFade : leafFade;
+        const fade =
+          selected || hovered || showContextLabels || (labelHubsAlways && isHub)
+            ? 1
+            : isHub
+              ? hubFade
+              : leafFade;
         if (fade < 0.02) continue;
         const fontSize = isHub ? 12 : 11;
         const labelColor = selected || hovered ? palette.foreground : palette.muted;
         const bitmap = getLabelBitmap(node.label, isHub, labelColor, palette.background, dpr);
         const textWidth = bitmap.textWidth;
         let labelX = point.x;
-        let labelY = point.y + node.radius * zoom + 12;
+        // Hubs carry the map's frame and are flanked by their own leaves, so
+        // their names sit further out than a leaf label would.
+        let labelY = point.y + node.radius * zoom + (isHub ? 22 : 12);
 
         if (!isHub) {
           const parents = (parentHubs.get(node.id) ?? [])
@@ -1056,12 +1098,23 @@ export function TrendGraphCanvas({
               directionY = dy / length;
             }
           }
-          const distance = node.radius * zoom + 7 + textWidth / 2;
-          labelX = point.x + directionX * distance;
-          labelY = point.y + directionY * distance;
+          // Wide labels are centered beneath the node instead of pushed out
+          // radially: a long sentence offset by half its own width otherwise
+          // reads as detached from the circle it describes.
+          if (textWidth > 96) {
+            labelX = point.x;
+            labelY = point.y + node.radius * zoom + 12;
+          } else {
+            const distance = node.radius * zoom + 7 + textWidth / 2;
+            labelX = point.x + directionX * distance;
+            labelY = point.y + directionY * distance;
+          }
         }
 
-        const inset = textWidth / 2 + 12;
+        // Hub names are the map's frame and sit beside their circle; a narrow
+        // inset let "News" and "Game dev" run into each other when hubs were
+        // close. Hub labels get a wider margin so they stay legible.
+        const inset = textWidth / 2 + (isHub ? 26 : 12);
         const minX = inset;
         const maxX = size.width - inset;
         const maxY = size.height - (size.width < 640 ? 10 : 58);
@@ -1075,9 +1128,12 @@ export function TrendGraphCanvas({
         const top = labelY - fontSize / 2 - pad * 0.5;
         const bottom = labelY + fontSize / 2 + pad * 0.5;
 
-        if (!isHub && !selected && !hovered) {
+        // Hub names are the frame of the map; nothing may paint over them, not
+        // even the selected label. Selection is already shown by the ring and
+        // the detail panel.
+        if (!isHub) {
           const coversHub = frameNodes.current.some((other) => {
-            if (other.kind !== "term") return false;
+            if (!other.hub) return false;
             const hub = positions.get(other.id);
             if (!hub) return false;
             const nearestX = Math.max(left, Math.min(hub.x, right));
@@ -1209,10 +1265,11 @@ export function TrendGraphCanvas({
             }}
             onRenderFramePost={paintLabelFrame}
             onEngineStop={handleEngineStop}
-            cooldownTicks={reducedMotion || !hasSettled ? 0 : 240}
-            warmupTicks={reducedMotion ? 80 : 180}
-            d3AlphaDecay={0.018}
-            d3VelocityDecay={0.32}
+            cooldownTicks={reducedMotion ? 0 : 100}
+            warmupTicks={0}
+            cooldownTime={2_000}
+            d3AlphaDecay={0.035}
+            d3VelocityDecay={0.5}
             minZoom={0.35}
             maxZoom={2.5}
             autoPauseRedraw={!dragging}

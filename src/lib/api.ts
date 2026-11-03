@@ -2,6 +2,8 @@ import type {
   Alert,
   Overview,
   RangeKey,
+  SocialSignals,
+  TrendMap,
   TrendAnalysis,
   WatchlistItem,
 } from "../../shared/types.ts";
@@ -103,4 +105,58 @@ export function readAlerts(id?: string) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(id ? { id } : {}),
   });
+}
+
+export function fetchSignals(hours: number) {
+  return request<SocialSignals>(`/api/signals?${query({ hours: String(hours) })}`);
+}
+
+export interface SearchResult {
+  uri: string;
+  permalink: string;
+  text: string;
+  authorHandle: string | null;
+  kind: string;
+  publishedAt: string;
+  score: number;
+}
+
+export function searchSignals(text: string, signal?: AbortSignal) {
+  return request<{ results: SearchResult[] }>(`/api/signals/search?${query({ q: text })}`, {
+    signal,
+  });
+}
+
+export interface CollectStatus {
+  configured: boolean;
+  backfilling: boolean;
+  lastBackfillAt: string | null;
+  tailConnected: boolean;
+  tail: { seen: number; processed: number; dropped: number; sampleRate: number } | null;
+  segments: number;
+  lastErrors: Array<{ segmentId: string; message: string }>;
+}
+
+export interface IngestReport {
+  segments: number;
+  fetched: number;
+  stored: number;
+  observations: number;
+  vectors: number;
+  unvectorized: number;
+  clusters: number;
+  skippedLanguage: number;
+  errors: Array<{ segmentId: string; message: string }>;
+}
+
+export function collectNow(limit: number) {
+  return request<{ report: IngestReport; status: CollectStatus }>("/api/collect", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ limit }),
+  });
+}
+
+export function fetchTrendMap(hours: number) {
+  return request<TrendMap>(`/api/trend-map?${query({ hours: String(hours) })}`);
 }

@@ -6,26 +6,40 @@
  */
 import type { TermInsight, TrendAnalysis } from "../../shared/types.ts";
 
-export type NodeKind = "term" | "top" | "rising";
-export type Relation = "related" | "rising" | "contains";
+/**
+ * Both graph views share one node vocabulary: a Google Trends related-query
+ * neighborhood ("term"/"top"/"rising") and the social trend map ("segment"/
+ * "pattern"/"pool"). Keeping one union lets a single canvas renderer serve both.
+ */
+export type NodeKind = "term" | "top" | "rising" | "segment" | "pattern" | "pool";
+export type Relation = "related" | "rising" | "contains" | "observed-in";
 
 export const KIND_LABEL: Record<NodeKind, string> = {
   term: "Tracked term",
   top: "Top query",
   rising: "Rising query",
+  segment: "Viewer segment",
+  pattern: "Pattern",
+  pool: "Whole-network pool",
 };
 
 export const KIND_COLOR: Record<NodeKind, string> = {
   term: "--graph-node-focused",
   top: "--graph-node",
   rising: "--graph-node-attachment",
+  segment: "--graph-node-attachment",
+  pattern: "--graph-node",
+  pool: "--graph-node-unresolved",
 };
 
-export const KIND_ORDER: NodeKind[] = ["term", "top", "rising"];
+export const KIND_ORDER: NodeKind[] = ["term", "top", "rising", "segment", "pattern", "pool"];
 export const KIND_GROUP_LABEL: Record<NodeKind, string> = {
   term: "Tracked term",
   top: "Top queries",
   rising: "Rising queries",
+  segment: "Viewer segments",
+  pattern: "Patterns",
+  pool: "Whole-network pool",
 };
 
 export interface GraphNode {
@@ -35,6 +49,16 @@ export interface GraphNode {
   description: string;
   radius: number;
   degree: number;
+  /**
+   * Hubs are the fixed anchors of a view: the monitored term in the related
+   * graph, the viewer segments in the trend map. The canvas keys anchor
+   * behavior on this rather than on a specific kind, so a second view does not
+   * need its own renderer.
+   */
+  hub?: boolean;
+  /** Fixed layout position, used by views whose hubs must not drift. */
+  x?: number;
+  y?: number;
   /** Google's related-query score; null for the monitored center. */
   value: number | null;
   rising: boolean;
@@ -113,6 +137,7 @@ export function buildRelatedGraph(analysis: TrendAnalysis): RelatedGraph {
     description: `Monitored search term in ${analysis.query.geo}.`,
     radius: 17,
     degree: 0,
+    hub: true,
     value: null,
     rising: false,
     parentTerm: insight.term,

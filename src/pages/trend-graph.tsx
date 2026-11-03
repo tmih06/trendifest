@@ -1,4 +1,5 @@
 import {
+  Activity,
   Bell,
   ChevronDown,
   ChevronRight,
@@ -64,6 +65,7 @@ const EMPTY_GRAPH: RelatedGraph = {
 
 const RIBBON = [
   { href: "#/graph", label: "Related graph", icon: Network, active: true },
+  { href: "#/map", label: "Trend map", icon: Activity, active: false },
   { href: "#/overview", label: "Overview", icon: LayoutDashboard, active: false },
   { href: "#/explore", label: "Explore", icon: Compass, active: false },
   { href: "#/watchlist", label: "Watchlist", icon: Radar, active: false },

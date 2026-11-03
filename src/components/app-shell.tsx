@@ -9,6 +9,7 @@ import {
   Network,
   Radar,
   Sun,
+  Waves,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { RoutePage } from "@/hooks/use-app";
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { page: "overview", label: "Overview", icon: LayoutDashboard },
+  { page: "signals", label: "Signals", icon: Waves },
   { page: "explore", label: "Explore", icon: Compass },
   { page: "watchlist", label: "Watchlist", icon: Radar },
   { page: "alerts", label: "Alerts", icon: Bell },
@@ -25,6 +27,7 @@ const NAV = [
 
 const PAGE_LABEL: Record<RoutePage, string> = {
   overview: "Overview",
+  signals: "Signals",
   explore: "Explore",
   watchlist: "Watchlist",
   alerts: "Alerts",

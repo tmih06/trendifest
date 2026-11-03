@@ -4,6 +4,17 @@ import type { ApiError, RangeKey } from "../shared/types.ts";
 import { isGeoCode, isRangeKey } from "../shared/config.ts";
 import { AUTH_ENABLED, authorize } from "./auth.ts";
 import { getAnalysis, parseTermList, suggest, TrendSourceError } from "./google-trends.ts";
+import { DatabaseMissingError } from "./db.ts";
+import {
+  runBackfill,
+  signalsWithCoverage,
+  socialHealth,
+  startSocialCollection,
+  status,
+} from "./social/service.ts";
+import { buildTrendMap } from "./social/trend-map.ts";
+import { searchAcrossSpaces } from "./social/pipeline.ts";
+import { BlueskyError } from "./social/bluesky.ts";
 import { buildOverview, refreshWatchlist } from "./overview.ts";
 import {
   addWatchlist,
@@ -67,6 +78,7 @@ async function handleApi(request: Request, url: URL) {
       ok: true,
       mode: PRODUCTION ? "production" : "development",
       now: new Date().toISOString(),
+      social: socialHealth(),
     });
   }
 
@@ -123,6 +135,46 @@ async function handleApi(request: Request, url: URL) {
     }
   }
 
+  if (url.pathname === "/api/signals" && request.method === "GET") {
+    const windowHours = Number(url.searchParams.get("hours") ?? "72");
+    if (!Number.isFinite(windowHours) || windowHours <= 0 || windowHours > 720) {
+      throw new ApiFailure(400, "Window must be between 1 and 720 hours", "invalid_window");
+    }
+    return json(await signalsWithCoverage(Math.round(windowHours)));
+  }
+
+  if (url.pathname === "/api/trend-map" && request.method === "GET") {
+    const hours = Number(url.searchParams.get("hours") ?? "72");
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 720) {
+      throw new ApiFailure(400, "Window must be between 1 and 720 hours", "invalid_window");
+    }
+    return json(await buildTrendMap(Math.round(hours)));
+  }
+
+  if (url.pathname === "/api/signals/search" && request.method === "GET") {
+    const query = url.searchParams.get("q")?.trim() ?? "";
+    if (query.length < 2)
+      throw new ApiFailure(400, "Enter at least two characters", "invalid_query");
+    return json({ results: await searchAcrossSpaces(query.slice(0, 200)) });
+  }
+
+  if (url.pathname === "/api/collect" && request.method === "POST") {
+    const body = await readJson(request);
+    const limit = typeof body.limit === "number" ? Math.round(body.limit) : 8;
+    if (limit < 1 || limit > 50) {
+      throw new ApiFailure(400, "Collect between 1 and 50 posts per segment", "invalid_limit");
+    }
+    const report = await runBackfill(limit);
+    if (!report) {
+      throw new ApiFailure(409, "A collection cycle is already running", "collect_in_progress");
+    }
+    return json({ report, status: status() }, 202);
+  }
+
+  if (url.pathname === "/api/collect/status" && request.method === "GET") {
+    return json(status());
+  }
+
   if (url.pathname === "/api/alerts/read" && request.method === "POST") {
     const body = await readJson(request);
     const id = typeof body.id === "string" ? body.id : undefined;
@@ -160,48 +212,101 @@ async function serveStatic(url: URL) {
   return new Response("Not found", { status: 404 });
 }
 
-const server = Bun.serve({
-  port: PORT,
-  idleTimeout: 60,
-  async fetch(request) {
-    const url = new URL(request.url);
-
-    // Health is intentionally public so a supervisor can probe the process;
-    // everything else, including the client shell, sits behind the password.
-    const unauthorized = url.pathname === "/api/health" ? null : authorize(request);
-    if (unauthorized) return unauthorized;
-
-    if (url.pathname.startsWith("/api/")) {
-      try {
-        return await handleApi(request, url);
-      } catch (error) {
-        if (error instanceof ApiFailure) {
-          return apiError(error.status, error.message, error.code);
-        }
-        if (error instanceof TrendSourceError) {
-          return apiError(error.status, error.message, error.code);
-        }
-        console.error(`API ${request.method} ${url.pathname} failed:`, error);
-        return apiError(500, "The server could not complete that request. Try again.", "internal");
+/**
+ * Bind the API port.
+ *
+ * In development a taken port is normal (a stale dev server, another project's
+ * process) and must not kill the workspace, so the server walks forward to the
+ * next free port and prints what it got. `scripts/dev.ts` already picks a free
+ * port, so this is the safety net for a direct `bun server/index.ts`.
+ *
+ * In production, falling back would silently move the API away from whatever a
+ * supervisor, reverse proxy, or firewall expects. There it fails loudly.
+ */
+function listen(port: number) {
+  for (let offset = 0; offset < 20; offset += 1) {
+    const candidate = port + offset;
+    if (candidate > 65_535) break;
+    try {
+      return { server: Bun.serve({ port: candidate, idleTimeout: 60, fetch }), port: candidate };
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code !== "EADDRINUSE") throw error;
+      if (PRODUCTION) {
+        console.error(`Port ${candidate} is in use. Production refuses to move silently.`);
+        process.exit(1);
       }
+      console.warn(`Port ${candidate} is in use; trying ${candidate + 1}.`);
     }
+  }
+  console.error(`No free API port found starting at ${port}.`);
+  process.exit(1);
+}
 
-    if (PRODUCTION) return serveStatic(url);
+const { server, port: boundPort } = listen(PORT);
 
-    return json(
-      {
-        name: "trendifest-api",
-        message: "API is running. The interface is served by Vite during development.",
-      },
-      200,
-    );
-  },
-});
+/**
+ * Drain in-flight requests on a supervisor's stop signal instead of dropping
+ * them. Bun keeps the process alive on open sockets, so the exit is explicit.
+ */
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    void server.stop().then(() => process.exit(0));
+  });
+}
+
+async function fetch(request: Request) {
+  const url = new URL(request.url);
+
+  // Health is intentionally public so a supervisor can probe the process;
+  // everything else, including the client shell, sits behind the password.
+  const unauthorized = url.pathname === "/api/health" ? null : authorize(request);
+  if (unauthorized) return unauthorized;
+
+  if (url.pathname.startsWith("/api/")) {
+    try {
+      return await handleApi(request, url);
+    } catch (error) {
+      if (error instanceof ApiFailure) {
+        return apiError(error.status, error.message, error.code);
+      }
+      if (error instanceof TrendSourceError) {
+        return apiError(error.status, error.message, error.code);
+      }
+      if (error instanceof DatabaseMissingError || error instanceof BlueskyError) {
+        return apiError(error.status, error.message, error.code);
+      }
+      console.error(`API ${request.method} ${url.pathname} failed:`, error);
+      return apiError(500, "The server could not complete that request. Try again.", "internal");
+    }
+  }
+
+  if (PRODUCTION) return serveStatic(url);
+
+  return json(
+    {
+      name: "trendifest-api",
+      message: "API is running. The interface is served by Vite during development.",
+    },
+    200,
+  );
+}
 
 console.log(
-  `Trendifest API listening on http://127.0.0.1:${server.port} (${PRODUCTION ? "production" : "development"})`,
+  `Trendifest API listening on http://127.0.0.1:${boundPort} (${PRODUCTION ? "production" : "development"})`,
 );
 console.log(AUTH_ENABLED ? "Password protection: on" : "Password protection: off (development)");
+
+// Social collection is opt-in: it needs a database, downloads models on first
+// use, and reaches the public Bluesky network. The keyword MVP never requires it.
+if (process.env.TRENDIFEST_SOCIAL === "1") {
+  const social = startSocialCollection();
+  console.log(
+    social.configured
+      ? `Social collection: ${social.segments} viewer segments`
+      : "Social collection: disabled (TRENDIFEST_DATABASE_URL is not set)",
+  );
+}
 
 const MONITOR =
   process.env.TRENDIFEST_MONITOR === "1" || (PRODUCTION && process.env.TRENDIFEST_MONITOR !== "0");

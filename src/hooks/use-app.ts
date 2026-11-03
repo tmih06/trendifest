@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type RoutePage = "overview" | "explore" | "watchlist" | "alerts";
+export type RoutePage = "overview" | "signals" | "explore" | "watchlist" | "alerts";
 
-const PAGES: RoutePage[] = ["overview", "explore", "watchlist", "alerts"];
+const PAGES: RoutePage[] = ["overview", "signals", "explore", "watchlist", "alerts"];
 
 interface RouteState {
   page: RoutePage;

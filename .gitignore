@@ -5,3 +5,7 @@ dist
 .vite
 server/data/state.json
 .DS_Store
+
+# Local embedding weights and model cache
+.cache
+tsconfig.tsbuildinfo

@@ -11,7 +11,9 @@ export default defineConfig({
     alias: { "@": src },
   },
   server: {
-    port: 5180,
+    // `scripts/dev.ts` selects this port and passes it in; the fallback only
+    // applies when Vite runs on its own (for example `vp dev` directly).
+    port: Number(process.env.PORT ?? 5180),
     strictPort: true,
     proxy: {
       "/api": {
@@ -26,6 +28,7 @@ export default defineConfig({
   fmt: {
     ignorePatterns: [
       ".agents/**",
+      ".cache/**",
       "dist/**",
       "server/data/**",
       "tests/fixtures/**",
@@ -34,7 +37,7 @@ export default defineConfig({
     ],
   },
   lint: {
-    ignorePatterns: [".agents/**", "dist/**", "server/data/**", "tests/fixtures/**"],
+    ignorePatterns: [".agents/**", ".cache/**", "dist/**", "server/data/**", "tests/fixtures/**"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },
     options: { typeAware: true, typeCheck: true },
