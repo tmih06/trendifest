@@ -86,10 +86,11 @@ with stable ID tie-breaking and at most three similarity edges per pattern.
 Weak or incompatible pairs remain unlinked. These thresholds are heuristics,
 not calibrated probabilities or proof of identical meaning.
 
-The map shows up to 40 patterns, with stratified audience coverage before the
+The map shows up to 90 patterns, with stratified audience coverage before the
 remaining slots go to the strongest scores. It does not render every collected
 post as a separate node. The inspector includes up to three distinct source
-posts per pattern, excluding deleted and out-of-window posts.
+posts per pattern, excluding deleted and out-of-window posts, plus measured
+engagement: the latest likes and reposts/quotes across the pattern's members.
 
 ### Emergence score
 
@@ -122,10 +123,24 @@ stay separate. Sampled video frames are searchable but do not form clusters;
 soundtracks can cluster. There is no speech transcription or OCR pipeline.
 
 Cluster admission uses complete linkage: a new member must pass its space's
-threshold against every existing member, not merely the centroid. Very short
-text remains searchable but is excluded from clustering. Media extraction
-failure does not discard a post's usable text. Deletes remove derived vectors
-and memberships.
+threshold against every existing member, not merely the centroid. Candidates are
+ranked by their nearest member rather than by the running centroid, because a
+centroid drifts toward the average of everything a cluster absorbed and can hide
+a genuinely compatible neighbour; up to three candidates are tried per vector.
+
+Retiring a cluster at the per-space cap **archives** it instead of deleting it.
+Deleting cascaded the cluster's memberships away, and because a busy space hits
+the cap constantly, vectorised posts kept losing their only cluster — the live
+corpus reached 18k embedded posts with no membership. Archived clusters keep
+every member, stay out of new joins, and are excluded from the map and counts.
+
+`recluster()` repairs membership rather than rebuilding it: it walks vectors that
+have no membership, re-runs the same assignment, and is resumable, so an
+interrupted run continues where it stopped. Vectors are never recomputed and
+existing memberships are never destroyed. Very short text remains searchable but
+is excluded from clustering, sampled video frames stay searchable but do not
+cluster, media extraction failure does not discard a post's usable text, and
+deletes remove derived vectors and memberships.
 
 ### Audience and language limitations
 

@@ -155,6 +155,9 @@ export interface TrendMapNode {
   clusterId?: string;
   kind_?: string;
   mediaCount?: number;
+  /** Latest measured engagement across member posts. */
+  likes?: number;
+  shares?: number;
   firstSeenAt?: string;
   lastSeenAt?: string;
   /** A few member posts, so the inspector can show provenance without a list route. */

@@ -32,7 +32,7 @@ import { DbNotice } from "@/components/db-notice";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
 import { useTheme } from "@/hooks/use-app";
 import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-trends";
-import { formatRelative } from "@/lib/format";
+import { compactNumber, formatRelative } from "@/lib/format";
 import type { GraphLink, GraphNode } from "@/lib/graph";
 
 const Dialog = lazy(() =>
@@ -105,6 +105,18 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
             <div>
               <dt className="text-[11px] text-fg-3">Collected posts</dt>
               <dd className="mono mt-1 text-[17px] text-fg">{score.posts}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] text-fg-3">Likes</dt>
+              <dd className="mono mt-1 text-[17px] text-fg">
+                {node.likes === undefined ? "—" : compactNumber(node.likes)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] text-fg-3">Reposts + quotes</dt>
+              <dd className="mono mt-1 text-[17px] text-fg">
+                {node.shares === undefined ? "—" : compactNumber(node.shares)}
+              </dd>
             </div>
           </dl>
           <div className="space-y-2.5">

@@ -152,6 +152,12 @@ function migrationSql() {
     );
     CREATE INDEX IF NOT EXISTS cluster_members_post_idx ON cluster_members (post_id);
 
+    -- Retired clusters are archived, not deleted: deleting one cascaded its
+    -- memberships away and left embedded posts with no cluster at all.
+    ALTER TABLE clusters ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+    CREATE INDEX IF NOT EXISTS clusters_active_idx
+      ON clusters (space, last_seen_at DESC) WHERE archived_at IS NULL;
+
     -- Ingestion checkpoints live beside the data so a restart resumes instead
     -- of re-walking the same feed pages.
     CREATE TABLE IF NOT EXISTS ingest_state (

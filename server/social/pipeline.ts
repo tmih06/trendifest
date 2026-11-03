@@ -86,6 +86,8 @@ const MIN_CLUSTER_TEXT = 25;
 const TAIL_SAMPLE_RATE = Number(process.env.TRENDIFEST_TAIL_SAMPLE ?? "20");
 /** Pending embeddings; beyond this the oldest waiting post is dropped, not queued forever. */
 const TAIL_QUEUE_LIMIT = 64;
+/** Candidate clusters inspected per vector; bounds work against cluster count. */
+const CANDIDATE_CLUSTERS = 3;
 /** A stale centroid stops dominating after this long without a new member. */
 const CLUSTER_IDLE_HOURS = 24;
 const MAX_CLUSTERS_PER_SPACE = 400;
@@ -219,74 +221,115 @@ function blendCentroid(centroid: string, values: number[], weight: number) {
   return blended;
 }
 
+/**
+ * Try one candidate cluster. The centroid test is necessary but not sufficient:
+ * a running-mean centroid drifts, so an early "good morning" cluster absorbed
+ * enough greetings that its centre sat among all of them and a 67-member cluster
+ * of unrelated posts followed. Requiring the new vector to be within the floor
+ * of every existing member is what stops that drift.
+ */
+async function joinCluster(
+  postId: string,
+  item: PreparedVector,
+  candidate: { id: string; member_count: number; centroid: string },
+  literal: string,
+): Promise<boolean> {
+  const db = await getDb();
+  const [nearestRow] = (await db`
+    SELECT coalesce(min(1 - (e.vec <=> ${literal}::vector)), 1)::float8 AS nearest
+    FROM cluster_members cm
+    JOIN embeddings e ON e.post_id = cm.post_id AND e.span = cm.span
+    WHERE cm.cluster_id = ${candidate.id}
+  `) as unknown as Array<{ nearest: number }>;
+  if (Number(nearestRow?.nearest ?? 1) < MEMBER_FLOOR[item.space]) return false;
+
+  const similarity = Number(
+    (
+      await db`SELECT (1 - (centroid <=> ${literal}::vector))::float8 AS s FROM clusters WHERE id = ${candidate.id}`
+    )[0]?.s ?? 0,
+  );
+  const centroid = toVectorLiteral(
+    blendCentroid(candidate.centroid, item.vector.values, Number(candidate.member_count)),
+  );
+  await db.begin(async (tx) => {
+    await tx`
+      UPDATE clusters
+      SET centroid = ${centroid}::vector, member_count = member_count + 1, last_seen_at = now()
+      WHERE id = ${candidate.id}
+    `;
+    await tx`
+      INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
+      VALUES (${candidate.id}, ${postId}, ${item.span}, ${similarity})
+      ON CONFLICT (cluster_id, post_id, span) DO NOTHING
+    `;
+  });
+  return true;
+}
+
 async function assignCluster(postId: string, item: PreparedVector) {
   const db = await getDb();
   const threshold = JOIN_THRESHOLD[item.space];
   const literal = toVectorLiteral(item.vector.values);
 
+  // Rank candidate clusters by the *nearest member*, not only the centroid.
+  // A running mean drifts toward the middle of everything it absorbed, so two
+  // posts that genuinely match can both sit far from the centre of the cluster
+  // they belong in. Searching members directly finds those clusters; the
+  // complete-linkage check below still decides whether joining is legal.
   const candidates = (await db`
-    SELECT id, member_count, centroid::text AS centroid,
-           (1 - (centroid <=> ${literal}::vector)) AS similarity
-    FROM clusters
-    WHERE space = ${item.space}
-      AND model = ${item.vector.model}
-      AND last_seen_at > now() - ${`${CLUSTER_IDLE_HOURS} hours`}::interval
-    ORDER BY centroid <=> ${literal}::vector
-    LIMIT 1
+    SELECT c.id, c.member_count, c.centroid::text AS centroid,
+           (1 - (c.centroid <=> ${literal}::vector)) AS similarity,
+           nearest.best AS member_similarity
+    FROM clusters c
+    CROSS JOIN LATERAL (
+      SELECT max(1 - (e.vec <=> ${literal}::vector))::float8 AS best
+      FROM cluster_members cm
+      JOIN embeddings e ON e.post_id = cm.post_id AND e.span = cm.span
+      WHERE cm.cluster_id = c.id
+    ) nearest
+    WHERE c.space = ${item.space}
+      AND c.model = ${item.vector.model}
+      AND c.archived_at IS NULL
+      AND c.last_seen_at > now() - ${`${CLUSTER_IDLE_HOURS} hours`}::interval
+      AND (1 - (c.centroid <=> ${literal}::vector)) >= ${threshold - 0.15}
+    ORDER BY nearest.best DESC, c.centroid <=> ${literal}::vector
+    LIMIT ${CANDIDATE_CLUSTERS}
   `) as unknown as Array<{
     id: string;
     member_count: number;
     centroid: string;
     similarity: number;
+    member_similarity: number;
   }>;
 
-  const best = candidates[0];
-  if (best && Number(best.similarity) >= threshold) {
-    const similarity = Number(best.similarity);
-    const count = Number(best.member_count);
-
-    // Compare against the actual members before accepting. A running-mean
-    // centroid drifts: an early "good morning" cluster absorbed enough greetings
-    // that its centroid sat among all of them, and a 67-member cluster of
-    // mutually unrelated posts followed. Centroid distance is necessary but not
-    // sufficient; the nearest-member check is what stops that drift.
-    const [nearestRow] = (await db`
-      SELECT coalesce(min(1 - (e.vec <=> ${literal}::vector)), 1)::float8 AS nearest
-      FROM cluster_members cm
-      JOIN embeddings e ON e.post_id = cm.post_id AND e.span = cm.span
-      WHERE cm.cluster_id = ${best.id}
-    `) as unknown as Array<{ nearest: number }>;
-
-    if (Number(nearestRow?.nearest ?? 1) >= MEMBER_FLOOR[item.space]) {
-      const centroid = toVectorLiteral(blendCentroid(best.centroid, item.vector.values, count));
-
-      await db.begin(async (tx) => {
-        await tx`
-          UPDATE clusters
-          SET centroid = ${centroid}::vector, member_count = member_count + 1, last_seen_at = now()
-          WHERE id = ${best.id}
-        `;
-        await tx`
-          INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
-          VALUES (${best.id}, ${postId}, ${item.span}, ${similarity})
-          ON CONFLICT (cluster_id, post_id, span) DO NOTHING
-        `;
-      });
-      return { clusterId: best.id, joined: true };
-    }
-    // Far from at least one existing member: fall through and open a new cluster.
+  // Try several nearby clusters, strongest first, not just the single nearest
+  // centroid. A centroid drifts toward its cluster's average, so the closest
+  // centre is not always the cluster whose members are all within the floor;
+  // one rejected candidate used to send an otherwise groupable post to a new
+  // singleton cluster.
+  for (const candidate of candidates) {
+    // A cluster needs at least one member within the floor; the join helper
+    // then proves the stronger complete-linkage invariant.
+    if (Number(candidate.member_similarity) < threshold) break;
+    const accepted = await joinCluster(postId, item, candidate, literal);
+    if (accepted) return { clusterId: candidate.id, joined: true };
   }
 
   // Cap growth rather than let singleton clusters multiply forever. Retiring a
-  // cluster keeps its members, so already-grouped posts are never un-grouped.
+  // cluster archives it instead of deleting it: deleting cascades a cluster's
+  // membership away, and on a busy space the cap was hit constantly, so a
+  // vectorised post could lose the only cluster it ever belonged to. Archived
+  // clusters keep every member and stay out of new joins.
   const [countRow] = await db`
-    SELECT count(*)::int AS total FROM clusters WHERE space = ${item.space}
+    SELECT count(*)::int AS total FROM clusters
+    WHERE space = ${item.space} AND archived_at IS NULL
   `;
   if (Number(countRow?.total ?? 0) >= MAX_CLUSTERS_PER_SPACE) {
     await db`
-      DELETE FROM clusters
+      UPDATE clusters SET archived_at = now()
       WHERE id IN (
-        SELECT id FROM clusters WHERE space = ${item.space}
+        SELECT id FROM clusters
+        WHERE space = ${item.space} AND archived_at IS NULL
         ORDER BY last_seen_at ASC LIMIT ${RETIRED_CLUSTERS_PER_CYCLE}
       )
     `;
@@ -579,12 +622,17 @@ function toTailPost(event: TailEvent) {
 }
 
 /**
- * Rebuild cluster membership from the stored vectors.
+ * Assign stored vectors that have no cluster membership.
  *
- * Ingest skips already-vectorized posts, so any change to a join threshold — or
- * a repaired cluster table — leaves existing vectors unassigned. This walks them
- * in publication order and re-runs assignment, which is the operational path for
- * a threshold change. Vectors are never recomputed; only membership is.
+ * Ingest only visits new posts, so a vector can be orphaned by a repaired
+ * cluster table or by the old retire-on-cap behaviour, which deleted a cluster
+ * and cascaded its memberships away. This walks the orphans in publication order
+ * and re-runs the same assignment as ingest. It is resumable: the query is
+ * driven by the absence of membership, so re-running it after an interruption
+ * continues with whatever is still unassigned. Vectors are never recomputed and
+ * existing memberships are never destroyed.
+ *
+ * Bounded by `limit` so an operator can run it in chunks on a large corpus.
  */
 export async function recluster(options: { space?: Space; limit?: number } = {}) {
   const db = await getDb();
@@ -598,7 +646,16 @@ export async function recluster(options: { space?: Space; limit?: number } = {})
     JOIN posts p ON p.id = e.post_id
     WHERE p.deleted_at IS NULL
       AND (${space ?? null}::text IS NULL OR e.space = ${space ?? null})
-    ORDER BY p.published_at ASC
+      AND NOT EXISTS (
+        SELECT 1 FROM cluster_members cm
+        WHERE cm.post_id = e.post_id AND cm.span = e.span
+      )
+      -- Exclude spans that can never cluster. Filtering in the loop instead
+      -- left them first in publication order, so every run re-read the same
+      -- skippable rows and never reached the real orphans.
+      AND NOT (e.space = 'text' AND length(p.body) < ${MIN_CLUSTER_TEXT})
+      AND NOT (e.space = 'image' AND e.span LIKE '%:frame:%')
+    ORDER BY p.published_at ASC, e.post_id, e.span
     LIMIT ${limit}
   `) as unknown as Array<{
     post_id: string;
@@ -610,15 +667,8 @@ export async function recluster(options: { space?: Space; limit?: number } = {})
     body_length: number;
   }>;
 
-  await db`DELETE FROM cluster_members`;
-  await db`DELETE FROM clusters`;
-
   let assigned = 0;
   for (const row of rows) {
-    // Same rule as ingest: very short text has no separable direction.
-    if (row.space === "text" && Number(row.body_length) < MIN_CLUSTER_TEXT) continue;
-    if (row.space === "image" && row.span.includes(":frame:")) continue;
-
     const values = row.vec
       .replace(/^\[|\]$/g, "")
       .split(",")
@@ -635,7 +685,7 @@ export async function recluster(options: { space?: Space; limit?: number } = {})
     assigned += 1;
   }
 
-  return { vectors: rows.length, assigned };
+  return { examined: rows.length, assigned };
 }
 
 /* ------------------------------------------------------------------ *
@@ -691,7 +741,7 @@ export async function listClusters(limit = 20): Promise<PatternCluster[]> {
            c.first_seen_at, c.last_seen_at,
            (SELECT avg(cm.similarity)::float8 FROM cluster_members cm WHERE cm.cluster_id = c.id) AS cohesion
     FROM clusters c
-    WHERE c.member_count > 0
+    WHERE c.member_count > 0 AND c.archived_at IS NULL
     ORDER BY post_count DESC, c.last_seen_at DESC
     LIMIT ${limit}
   `) as unknown as ClusterRow[];
@@ -805,7 +855,7 @@ export async function socialSignals(windowHours = 72): Promise<SocialSignals> {
           AND published_at > now() - ${`${windowHours} hours`}::interval) AS posts,
       (SELECT count(*)::int FROM observations
         WHERE observed_at > now() - ${`${windowHours} hours`}::interval) AS observations,
-      (SELECT count(*)::int FROM clusters) AS clusters,
+      (SELECT count(*)::int FROM clusters WHERE archived_at IS NULL) AS clusters,
       (SELECT count(*)::int FROM posts p
         WHERE p.deleted_at IS NULL
           AND p.published_at > now() - ${`${windowHours} hours`}::interval

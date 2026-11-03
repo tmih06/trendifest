@@ -27,11 +27,12 @@ import type { Space } from "../db.ts";
 
 const HOURS_DEFAULT = 72;
 /**
- * Patterns drawn on the map. Beyond roughly this many, circles overlap so
- * heavily that size comparison — the whole point of the encoding — stops
- * working; the ranked list still reports the full top set.
+ * Patterns drawn on the map. The repaired clustering now yields far more
+ * multi-member patterns than the original 40 slots exposed, so the ceiling is
+ * raised while collision handling keeps them readable. Payload stays bounded:
+ * each pattern costs one node, its edges and at most three source examples.
  */
-const MAX_PATTERN_NODES = 40;
+const MAX_PATTERN_NODES = 90;
 /**
  * Per-segment share of the map. Taking the global top N let the discovery pool,
  * which sees the whole network, take 30 of 40 slots and left seven niches with
@@ -61,6 +62,8 @@ interface ClusterStatsRow {
   kind: string;
   media_count: number;
   observed_span_hours: number;
+  likes: string | number;
+  shares: string | number;
 }
 
 /**
@@ -144,7 +147,8 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
       FROM clusters c
       JOIN cluster_members cm ON cm.cluster_id = c.id
       JOIN posts p ON p.id = cm.post_id
-      WHERE p.deleted_at IS NULL
+      WHERE c.archived_at IS NULL
+        AND p.deleted_at IS NULL
         AND p.published_at > now() - ${`${hours} hours`}::interval
     ),
     agg AS (
@@ -183,7 +187,25 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
              ORDER BY (jsonb_array_length(p.media) > 0) DESC, p.published_at DESC
              LIMIT 1) AS kind,
            (SELECT count(*)::int FROM members m WHERE m.cluster_id = a.cluster_id
-              AND jsonb_array_length(m.media) > 0) AS media_count
+              AND jsonb_array_length(m.media) > 0) AS media_count,
+           -- The latest snapshot per member, so a pattern's reach is measured
+           -- engagement rather than assumed from post count.
+           (SELECT coalesce(sum(latest.likes), 0)::bigint
+              FROM members m
+              CROSS JOIN LATERAL (
+                SELECT ms.likes FROM metric_snapshots ms
+                WHERE ms.post_id = m.post_id
+                ORDER BY ms.captured_at DESC LIMIT 1
+              ) latest
+             WHERE m.cluster_id = a.cluster_id) AS likes,
+           (SELECT coalesce(sum(latest.reposts + latest.quotes), 0)::bigint
+              FROM members m
+              CROSS JOIN LATERAL (
+                SELECT ms.reposts, ms.quotes FROM metric_snapshots ms
+                WHERE ms.post_id = m.post_id
+                ORDER BY ms.captured_at DESC LIMIT 1
+              ) latest
+             WHERE m.cluster_id = a.cluster_id) AS shares
     FROM agg a
     JOIN clusters c ON c.id = a.cluster_id
     WHERE a.authors >= 1
@@ -196,6 +218,8 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
       kind: string;
       media_count: number;
       observed_span_hours: number;
+      likes: string | number;
+      shares: string | number;
     }
   >;
 
@@ -281,6 +305,8 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
       clusterId: row.cluster_id,
       kind_: row.kind,
       mediaCount: Number(row.media_count),
+      likes: Number(row.likes),
+      shares: Number(row.shares),
       firstSeenAt: row.first_seen.toISOString(),
       lastSeenAt: row.last_seen.toISOString(),
     });
@@ -379,7 +405,8 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
     FROM clusters a
     JOIN clusters b ON a.id < b.id AND a.space = b.space
       AND a.model = b.model AND a.dim = b.dim
-    WHERE a.id = ANY(${clusterIds}::text[]) AND b.id = ANY(${clusterIds}::text[])
+    WHERE a.archived_at IS NULL AND b.archived_at IS NULL
+      AND a.id = ANY(${clusterIds}::text[]) AND b.id = ANY(${clusterIds}::text[])
     ORDER BY similarity DESC, a.id, b.id
   `) as unknown as Array<{ source: string; target: string; space: Space; similarity: number }>);
   const similarityDegree = new Map<string, number>();

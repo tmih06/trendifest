@@ -13,3 +13,11 @@ export function formatRelative(iso: string) {
   }
   return relative.format(Math.round(delta / 86_400_000), "day");
 }
+
+/** Compact engagement counts: 1_284 → "1.3k" so the inspector stays narrow. */
+export function compactNumber(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}

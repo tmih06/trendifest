@@ -552,3 +552,74 @@ describe.skipIf(!enabled)("pattern similarity graph", () => {
     );
   });
 });
+
+describe.skipIf(!enabled)("cluster retirement", () => {
+  /**
+   * The old cap path deleted *clusters*, and the foreign key cascaded their
+   * memberships away. On a busy space the cap is hit constantly, so a post
+   * could be vectorised and then lose the only cluster it ever belonged to —
+   * the real corpus ended with 18k embedded posts in no cluster at all, and the
+   * map showed a wall of single-member patterns. Retirement must archive.
+   */
+  test("retiring a cluster keeps its members instead of orphaning them", async () => {
+    const db = await getDb();
+    await db`TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts RESTART IDENTITY CASCADE`;
+
+    const retiredUri = "at://did:plc:retire/app.bsky.feed.post/old";
+    await db`
+      INSERT INTO posts (id, source, uri, author_did, body, kind, permalink, published_at, content_hash)
+      VALUES (${retiredUri}, 'bluesky', ${retiredUri}, 'did:plc:retire',
+        'a post that must keep its cluster membership', 'text',
+        'https://bsky.app/profile/retire', now(), 'retire')
+    `;
+    await db`
+      INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
+      VALUES ('retiring', 'text', 'test', 2, ${PADDING_VECTOR}::vector, 1,
+        now() - interval '10 days', now() - interval '10 days')
+    `;
+    await db`
+      INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
+      VALUES ('retiring', ${retiredUri}, 'body', 1)
+    `;
+
+    // Fill a space past the cap with clusters that are newer than the victim.
+    for (let index = 0; index < 401; index += 1) {
+      const uri = `at://did:plc:cap${index}/app.bsky.feed.post/${index}`;
+      await db`
+        INSERT INTO posts (id, source, uri, author_did, body, kind, permalink, published_at, content_hash)
+        VALUES (${uri}, 'bluesky', ${uri}, ${`did:plc:cap${index}`},
+          'filler post for the cluster cap', 'text', 'https://bsky.app/profile/cap', now(), ${uri})
+      `;
+      await db`
+        INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
+        VALUES (${`cap-${index}`}, 'text', 'test', 2,
+          ${toVectorLiteral([Math.cos(index), Math.sin(index)])}::vector, 1, now(), now())
+      `;
+      await db`
+        INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
+        VALUES (${`cap-${index}`}, ${uri}, 'body', 1)
+      `;
+    }
+
+    // One more vector forces a retirement pass over the capped space.
+    await ingestTailEvent(
+      event({
+        uri: "at://did:plc:retire/app.bsky.feed.post/new",
+        record: {
+          text: "a completely different sentence about harbour cranes at dawn",
+          createdAt: "2026-11-03T00:30:00.000Z",
+        },
+      }),
+    );
+
+    const [row] = (await db`
+      SELECT count(*)::int AS members FROM cluster_members WHERE cluster_id = 'retiring'
+    `) as unknown as Array<{ members: number }>;
+    expect(Number(row?.members)).toBe(1);
+
+    const [archived] = (await db`
+      SELECT count(*)::int AS n FROM clusters WHERE archived_at IS NOT NULL
+    `) as unknown as Array<{ n: number }>;
+    expect(Number(archived?.n)).toBeGreaterThan(0);
+  });
+});
