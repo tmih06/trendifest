@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Agentation } from "agentation";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { TrendMapPage } from "./pages/trend-map";
@@ -21,6 +22,7 @@ createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={client}>
       <TrendMapPage />
+      {import.meta.env.DEV && <Agentation />}
     </QueryClientProvider>
   </StrictMode>,
 );

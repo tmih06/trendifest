@@ -163,6 +163,22 @@ bun run build
 bun test
 ```
 
+### Visual feedback with Agentation
+
+`agentation` is installed as a development dependency and mounted in
+`src/main.tsx` behind Vite's `import.meta.env.DEV` guard. Run `bun dev`, open
+the desktop app, and use **Start feedback mode** in the bottom-right corner.
+Select an element, add a note, then choose **Copy feedback** and paste it into
+your coding agent. Clear temporary annotations when finished.
+
+No MCP endpoint or webhook is configured: feedback stays local until copied.
+Agentation is excluded from production builds. Individual graph nodes are
+canvas pixels, not DOM elements; annotate the graph surface or its inspector
+when giving feedback about a node. See the [Agentation documentation](https://www.agentation.com/install)
+for optional MCP integration and licensing.
+
+### Database tests
+
 Database integration tests are skipped unless `TRENDIFEST_TEST_DATABASE_URL`
 points to a **disposable, separate database**. Tests truncate its public tables;
 never point that variable at the collection database.
