@@ -40,7 +40,8 @@ public health endpoint. Protect the deployment with HTTPS.
 - **Audience sidebar:** emphasize patterns actually observed by a selected feed.
   Filtering does not restart the layout. Counts are observed posts, not measured
   audience sizes.
-- **Observation window:** 24 hours, 3 days, or 7 days.
+- **Observation window:** 24 hours, 3 days, or 7 days, with a sliding active
+  indicator that respects reduced motion.
 - **Graph:** pan, zoom, drag nodes, fit to view, or restart the layout. Larger
   pattern nodes have higher emergence scores. Audience hubs have no score.
   Background mouse, pen, and single-touch pans glide to a stop after release.
@@ -48,6 +49,8 @@ public health endpoint. Protect the deployment with HTTPS.
   before release, multi-touch gestures, and reduced-motion mode do not fling.
 - **Pattern inspector:** keyboard-accessible ranking, score breakdown, source
   posts with Bluesky links, and neighboring patterns with cosine similarity.
+  The desktop inspector floats above the graph without resizing its canvas;
+  close it from the panel or toggle it from the header.
 - **Collection status:** real tail/backfill state, upstream errors, and a manual
   collection action. A disconnected feed is never labeled live.
 - **Appearance:** light/dark preference, collapsible desktop sidebar, mobile

@@ -512,18 +512,6 @@
     width: 100%;
     flex-direction: column;
   }
-  .od-sidebar-brand {
-    display: flex;
-    flex: none;
-    align-items: center;
-    min-width: 0;
-    height: 3rem;
-    padding: 0 18px;
-  }
-  .od-sidebar[data-collapsed] .od-sidebar-brand {
-    justify-content: center;
-    padding: 0;
-  }
   .od-sidebar-scroll {
     flex: 1 1 auto;
     min-height: 0;

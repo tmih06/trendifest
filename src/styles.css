@@ -70,6 +70,7 @@ a {
 }
 
 .graph-workspace {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   height: 100%;
@@ -77,13 +78,63 @@ a {
   min-width: 0;
 }
 
-.graph-workspace.with-inspector {
-  grid-template-columns: minmax(0, 1fr) 292px;
-}
-
 .graph-surface {
   background: var(--surface);
   isolation: isolate;
+}
+
+.graph-inspector {
+  position: absolute;
+  z-index: 30;
+  inset-block: 68px 64px;
+  inset-inline-end: 12px;
+  width: 320px;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: var(--od-shadow-float);
+}
+
+.observation-window {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 36px);
+  isolation: isolate;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.observation-indicator {
+  position: absolute;
+  z-index: -1;
+  inset-block: 2px;
+  inset-inline-start: 2px;
+  width: 36px;
+  border-radius: 6px;
+  background: var(--active);
+  transform: translateX(calc(var(--window-index) * 100%));
+  pointer-events: none;
+}
+
+[dir="rtl"] .observation-indicator {
+  transform: translateX(calc(var(--window-index) * -100%));
+}
+
+.observation-window .observation-option {
+  padding-inline: 0;
+  color: var(--fg-3);
+  background: transparent;
+}
+
+.observation-window .observation-option[aria-pressed="true"] {
+  color: var(--fg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .observation-indicator {
+    transition: transform 150ms cubic-bezier(0.2, 0, 0, 1);
+  }
 }
 
 .graph-state {
@@ -147,9 +198,6 @@ a {
 }
 
 @media (max-width: 1199px) {
-  .graph-workspace.with-inspector {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .graph-inspector {
     display: none;
   }

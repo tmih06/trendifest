@@ -27,7 +27,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { TrendMap, TrendMapNode } from "../../shared/types.ts";
 import { DbNotice } from "@/components/db-notice";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
@@ -273,18 +273,6 @@ export function TrendMapPage() {
   const sidebar = (rail: boolean) => (
     <Sidebar
       collapsed={rail}
-      brand={
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-inverse text-inverse-fg">
-            <Network className="size-4" aria-hidden="true" />
-          </span>
-          {!rail && (
-            <span className="truncate text-[14px] font-semibold tracking-tight">
-              trendifest<span className="ms-1 text-fg-3">.</span>
-            </span>
-          )}
-        </div>
-      }
       footer={
         <div className="space-y-2">
           <SidebarItem
@@ -316,9 +304,6 @@ export function TrendMapPage() {
               {rail ? "Expand sidebar" : "Collapse sidebar"}
             </SidebarItem>
           </div>
-          {!rail && (
-            <p className="px-4 pb-1 text-[10px] leading-4 text-fg-3">Social signals, connected.</p>
-          )}
         </div>
       }
     >
@@ -378,6 +363,17 @@ export function TrendMapPage() {
             <X />
           </Button>
         )}
+        <Button
+          variant="ghost"
+          square
+          aria-label="Close pattern inspector"
+          onClick={() => {
+            setDesktopInspector(false);
+            setMobileInspector(false);
+          }}
+        >
+          <PanelRight />
+        </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {selected && (
@@ -531,11 +527,7 @@ export function TrendMapPage() {
           </div>
         }
       >
-        <div
-          id="graph-workspace"
-          tabIndex={-1}
-          className={cn("graph-workspace", desktopInspector && "with-inspector")}
-        >
+        <div id="graph-workspace" tabIndex={-1} className="graph-workspace">
           <section
             className="graph-surface relative min-h-0 min-w-0 overflow-hidden"
             aria-label="Trend graph"
@@ -553,14 +545,22 @@ export function TrendMapPage() {
                 </p>
               </div>
               <div
-                className="pointer-events-auto inline-flex rounded-lg border border-line bg-surface p-0.5"
+                className="observation-window pointer-events-auto"
                 aria-label="Observation window"
+                role="group"
+                style={
+                  {
+                    "--window-index": WINDOWS.findIndex((window) => window.hours === hours),
+                  } as CSSProperties
+                }
               >
+                <span className="observation-indicator" aria-hidden="true" />
                 {WINDOWS.map((window) => (
                   <Button
                     key={window.hours}
-                    variant={hours === window.hours ? "subtle" : "ghost"}
+                    variant="ghost"
                     size="xs"
+                    className="observation-option"
                     aria-pressed={hours === window.hours}
                     onClick={() => setHours(window.hours)}
                   >
@@ -639,7 +639,7 @@ export function TrendMapPage() {
           </section>
           {desktopInspector && (
             <aside
-              className="graph-inspector min-h-0 min-w-0 border-s border-line bg-surface"
+              className="graph-inspector min-h-0 min-w-0 border border-line bg-surface"
               aria-label="Pattern inspector"
             >
               {inspector}

@@ -2,18 +2,16 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 
 /**
- * The sidebar column, derived from OpenDesk's Sidebar: a brand block, one
- * scrollable body and a footer that stays put. It fills whatever height the
+ * The sidebar column, derived from OpenDesk's Sidebar: one scrollable body
+ * and a footer that stays put. It fills whatever height the
  * shell column (or a mobile dialog) gives it.
  */
 export function Sidebar({
-  brand,
   children,
   footer,
   collapsed = false,
   className,
 }: {
-  brand: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
   collapsed?: boolean;
@@ -21,7 +19,6 @@ export function Sidebar({
 }) {
   return (
     <div className={cn("od-sidebar", className)} data-collapsed={collapsed ? "" : undefined}>
-      <div className="od-sidebar-brand">{brand}</div>
       <div className="od-sidebar-scroll">
         <nav aria-label="Primary" className="flex flex-col">
           {children}
