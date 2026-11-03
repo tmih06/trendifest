@@ -499,3 +499,56 @@ describe.skipIf(!enabled)("trend map stratification", () => {
     expect(sources.has("segment:shitpost")).toBe(true);
   });
 });
+
+describe.skipIf(!enabled)("pattern similarity graph", () => {
+  test("links measured neighbors without crossing model spaces or exceeding the degree cap", async () => {
+    const db = await getDb();
+    await db`TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts RESTART IDENTITY CASCADE`;
+    const belowThreshold = toVectorLiteral([0.74, Math.sqrt(1 - 0.74 ** 2)]);
+    const fixtures = [
+      { id: "near-a", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
+      { id: "near-b", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
+      { id: "near-c", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
+      { id: "near-d", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
+      { id: "near-e", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
+      { id: "weak", space: "text", model: "same", dim: 2, vector: belowThreshold },
+      { id: "other-model", space: "text", model: "different", dim: 2, vector: PADDING_VECTOR },
+      { id: "other-space", space: "image", model: "same", dim: 2, vector: PADDING_VECTOR },
+      { id: "other-dim", space: "text", model: "same", dim: 3, vector: PADDING_VECTOR },
+    ];
+    for (const fixture of fixtures) {
+      const uri = `at://did:plc:similarity/app.bsky.feed.post/${fixture.id}`;
+      await db`
+        INSERT INTO posts (id, source, uri, author_did, body, kind, permalink, published_at, content_hash)
+        VALUES (${uri}, 'bluesky', ${uri}, ${`did:plc:${fixture.id}`},
+          'A collected pattern with sufficient text for the map', 'text',
+          'https://bsky.app/profile/example', now(), ${fixture.id})
+      `;
+      await db`
+        INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
+        VALUES (${fixture.id}, ${fixture.space}, ${fixture.model}, ${fixture.dim},
+          ${fixture.vector}::vector, 1, now(), now())
+      `;
+      await db`INSERT INTO cluster_members (cluster_id, post_id, span, similarity) VALUES (${fixture.id}, ${uri}, 'body', 1)`;
+      await db`INSERT INTO observations (post_id, segment_id, observed_at, via) VALUES (${uri}, 'gaming', now(), 'feed')`;
+    }
+    const map = await buildTrendMap(24);
+    const links = map.edges.filter((edge) => edge.relation === "similarity");
+    // Five close centroids would form ten links without the degree cap. The
+    // deterministic cap admits six, excluding incompatible padded vectors.
+    expect(links).toHaveLength(6);
+    const degree = new Map<string, number>();
+    for (const link of links) {
+      expect(link.source).toStartWith("cluster:near-");
+      expect(link.target).toStartWith("cluster:near-");
+      expect(link.similarity).toBeCloseTo(1, 6);
+      degree.set(link.source, (degree.get(link.source) ?? 0) + 1);
+      degree.set(link.target, (degree.get(link.target) ?? 0) + 1);
+    }
+    expect([...degree.values()]).toEqual([3, 3, 3, 3]);
+    expect(new Set(links.map((edge) => edge.id)).size).toBe(6);
+    expect(map.edges.filter((edge) => edge.relation === "observed-in")).toHaveLength(
+      fixtures.length,
+    );
+  });
+});

@@ -1,0 +1,571 @@
+/*
+ * @trendifest/opendesk — design tokens and chrome styles derived from the
+ * OpenDesk web app (Apache-2.0; see ../NOTICE and ../LICENSE).
+ *
+ * The consuming app imports tailwindcss first, then this file, so the tokens
+ * below feed the same Tailwind build and the components' utilities resolve.
+ */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Monochrome product palette: paper, mist, ash, smoke, graphite, charcoal,
+ * coal, ink. Status hues exist only for small semantic dots and badges.
+ * Every colour is a variable so the light and dark themes swap in one place.
+ */
+:root {
+  color-scheme: light;
+  /* Runtime copies: @theme inline inlines these into utilities, while the base
+     layer and hand-written CSS still read them as variables. */
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Chrome: the off-white frame behind the sidebar and header. */
+  --chrome: #f5f5f5;
+  --chrome-hover: rgb(10 10 10 / 0.045);
+  --chrome-active: rgb(10 10 10 / 0.075);
+  --chrome-line: rgb(10 10 10 / 0.07);
+  --frame: var(--chrome);
+  --canvas: #f5f5f5;
+  --surface: #ffffff;
+  --raised: #ffffff;
+  --sunken: #fafafa;
+  --hover: #f4f4f4;
+  --active: #ededed;
+  --line: #e4e4e4;
+  --line-soft: #f0f0f0;
+  --line-strong: #d6d6d6;
+  --fg: #0a0a0a;
+  --fg-2: #4a4a4a;
+  --fg-3: #737373;
+  --fg-4: #a3a3a3;
+  --inverse: #0a0a0a;
+  --inverse-hover: #262626;
+  --inverse-fg: #ffffff;
+  --focus-line: #6b6b6b;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --danger-fg: #b91c1c;
+  --scrim: rgb(10 10 10 / 0.28);
+  /* Shadows keep a separate variable name so the @theme mapping below is not
+     self-referential: utilities read these, the theme names point here. */
+  --od-shadow-xs: 0 1px 2px rgb(10 10 10 / 0.04);
+  --od-shadow-pop: 0 4px 12px -2px rgb(10 10 10 / 0.08), 0 2px 4px rgb(10 10 10 / 0.04);
+  --od-shadow-float: 0 1px 2px rgb(10 10 10 / 0.04), 0 30px 70px -32px rgb(10 10 10 / 0.32);
+
+  /* Tones: a solid hue, a 10% tint, an 18% hairline and an ink for text. */
+  --tone-gray-solid: #737373;
+  --tone-gray-soft: color-mix(in oklab, var(--tone-gray-solid) 10%, transparent);
+  --tone-gray-line: color-mix(in oklab, var(--tone-gray-solid) 18%, transparent);
+  --tone-gray: color-mix(in oklab, var(--tone-gray-solid) 82%, var(--fg));
+  --tone-red-solid: #e03131;
+  --tone-red-soft: color-mix(in oklab, var(--tone-red-solid) 10%, transparent);
+  --tone-red-line: color-mix(in oklab, var(--tone-red-solid) 18%, transparent);
+  --tone-red: color-mix(in oklab, var(--tone-red-solid) 82%, var(--fg));
+  --tone-orange-solid: #e8590c;
+  --tone-orange-soft: color-mix(in oklab, var(--tone-orange-solid) 10%, transparent);
+  --tone-orange-line: color-mix(in oklab, var(--tone-orange-solid) 18%, transparent);
+  --tone-orange: color-mix(in oklab, var(--tone-orange-solid) 82%, var(--fg));
+  --tone-amber-solid: #d48806;
+  --tone-amber-soft: color-mix(in oklab, var(--tone-amber-solid) 10%, transparent);
+  --tone-amber-line: color-mix(in oklab, var(--tone-amber-solid) 18%, transparent);
+  --tone-amber: color-mix(in oklab, var(--tone-amber-solid) 82%, var(--fg));
+  --tone-yellow-solid: #d9a404;
+  --tone-yellow-soft: color-mix(in oklab, var(--tone-yellow-solid) 10%, transparent);
+  --tone-yellow-line: color-mix(in oklab, var(--tone-yellow-solid) 18%, transparent);
+  --tone-yellow: color-mix(in oklab, var(--tone-yellow-solid) 82%, var(--fg));
+  --tone-lime-solid: #5c940d;
+  --tone-lime-soft: color-mix(in oklab, var(--tone-lime-solid) 10%, transparent);
+  --tone-lime-line: color-mix(in oklab, var(--tone-lime-solid) 18%, transparent);
+  --tone-lime: color-mix(in oklab, var(--tone-lime-solid) 82%, var(--fg));
+  --tone-green-solid: #12a150;
+  --tone-green-soft: color-mix(in oklab, var(--tone-green-solid) 10%, transparent);
+  --tone-green-line: color-mix(in oklab, var(--tone-green-solid) 18%, transparent);
+  --tone-green: color-mix(in oklab, var(--tone-green-solid) 82%, var(--fg));
+  --tone-teal-solid: #0c9488;
+  --tone-teal-soft: color-mix(in oklab, var(--tone-teal-solid) 10%, transparent);
+  --tone-teal-line: color-mix(in oklab, var(--tone-teal-solid) 18%, transparent);
+  --tone-teal: color-mix(in oklab, var(--tone-teal-solid) 82%, var(--fg));
+  --tone-cyan-solid: #0c8599;
+  --tone-cyan-soft: color-mix(in oklab, var(--tone-cyan-solid) 10%, transparent);
+  --tone-cyan-line: color-mix(in oklab, var(--tone-cyan-solid) 18%, transparent);
+  --tone-cyan: color-mix(in oklab, var(--tone-cyan-solid) 82%, var(--fg));
+  --tone-blue-solid: #2b6cf0;
+  --tone-blue-soft: color-mix(in oklab, var(--tone-blue-solid) 10%, transparent);
+  --tone-blue-line: color-mix(in oklab, var(--tone-blue-solid) 18%, transparent);
+  --tone-blue: color-mix(in oklab, var(--tone-blue-solid) 82%, var(--fg));
+  --tone-indigo-solid: #4c5fd5;
+  --tone-indigo-soft: color-mix(in oklab, var(--tone-indigo-solid) 10%, transparent);
+  --tone-indigo-line: color-mix(in oklab, var(--tone-indigo-solid) 18%, transparent);
+  --tone-indigo: color-mix(in oklab, var(--tone-indigo-solid) 82%, var(--fg));
+  --tone-violet-solid: #7048e8;
+  --tone-violet-soft: color-mix(in oklab, var(--tone-violet-solid) 10%, transparent);
+  --tone-violet-line: color-mix(in oklab, var(--tone-violet-solid) 18%, transparent);
+  --tone-violet: color-mix(in oklab, var(--tone-violet-solid) 82%, var(--fg));
+  --tone-purple-solid: #9c36b5;
+  --tone-purple-soft: color-mix(in oklab, var(--tone-purple-solid) 10%, transparent);
+  --tone-purple-line: color-mix(in oklab, var(--tone-purple-solid) 18%, transparent);
+  --tone-purple: color-mix(in oklab, var(--tone-purple-solid) 82%, var(--fg));
+  --tone-pink-solid: #d6336c;
+  --tone-pink-soft: color-mix(in oklab, var(--tone-pink-solid) 10%, transparent);
+  --tone-pink-line: color-mix(in oklab, var(--tone-pink-solid) 18%, transparent);
+  --tone-pink: color-mix(in oklab, var(--tone-pink-solid) 82%, var(--fg));
+  --tone-rose-solid: #e64980;
+  --tone-rose-soft: color-mix(in oklab, var(--tone-rose-solid) 10%, transparent);
+  --tone-rose-line: color-mix(in oklab, var(--tone-rose-solid) 18%, transparent);
+  --tone-rose: color-mix(in oklab, var(--tone-rose-solid) 82%, var(--fg));
+}
+
+.dark {
+  color-scheme: dark;
+  --chrome: #141416;
+  --chrome-hover: rgb(255 255 255 / 0.05);
+  --chrome-active: rgb(255 255 255 / 0.085);
+  --chrome-line: rgb(255 255 255 / 0.075);
+  --canvas: #141416;
+  --surface: #1b1c1f;
+  --raised: #232427;
+  --sunken: #17181a;
+  --hover: #232427;
+  --active: #2b2c30;
+  --line: #2e2f33;
+  --line-soft: #252629;
+  --line-strong: #3c3d42;
+  --fg: #f7f7f7;
+  --fg-2: #c4c4c4;
+  --fg-3: #8f8f8f;
+  --fg-4: #5f5f5f;
+  --inverse: #f7f7f7;
+  --inverse-hover: #e4e4e4;
+  --inverse-fg: #0a0a0a;
+  --focus-line: #8a8a8a;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --danger-fg: #f87171;
+  --scrim: rgb(0 0 0 / 0.6);
+  --od-shadow-xs: 0 1px 2px rgb(0 0 0 / 0.4);
+  --od-shadow-pop: 0 4px 12px -2px rgb(0 0 0 / 0.5), 0 2px 4px rgb(0 0 0 / 0.3);
+  --od-shadow-float: 0 30px 70px -32px rgb(0 0 0 / 0.8);
+  /* Tones, dark: lighter hues on the same tint system. */
+  --tone-gray-solid: #a3a3a3;
+  --tone-gray-soft: color-mix(in oklab, var(--tone-gray-solid) 10%, transparent);
+  --tone-gray-line: color-mix(in oklab, var(--tone-gray-solid) 18%, transparent);
+  --tone-gray: color-mix(in oklab, var(--tone-gray-solid) 82%, var(--fg));
+  --tone-red-solid: #ff6b6b;
+  --tone-red-soft: color-mix(in oklab, var(--tone-red-solid) 10%, transparent);
+  --tone-red-line: color-mix(in oklab, var(--tone-red-solid) 18%, transparent);
+  --tone-red: color-mix(in oklab, var(--tone-red-solid) 82%, var(--fg));
+  --tone-orange-solid: #ff8a4c;
+  --tone-orange-soft: color-mix(in oklab, var(--tone-orange-solid) 10%, transparent);
+  --tone-orange-line: color-mix(in oklab, var(--tone-orange-solid) 18%, transparent);
+  --tone-orange: color-mix(in oklab, var(--tone-orange-solid) 82%, var(--fg));
+  --tone-amber-solid: #f5b53d;
+  --tone-amber-soft: color-mix(in oklab, var(--tone-amber-solid) 10%, transparent);
+  --tone-amber-line: color-mix(in oklab, var(--tone-amber-solid) 18%, transparent);
+  --tone-amber: color-mix(in oklab, var(--tone-amber-solid) 82%, var(--fg));
+  --tone-yellow-solid: #ffd43b;
+  --tone-yellow-soft: color-mix(in oklab, var(--tone-yellow-solid) 10%, transparent);
+  --tone-yellow-line: color-mix(in oklab, var(--tone-yellow-solid) 18%, transparent);
+  --tone-yellow: color-mix(in oklab, var(--tone-yellow-solid) 82%, var(--fg));
+  --tone-lime-solid: #a9e34b;
+  --tone-lime-soft: color-mix(in oklab, var(--tone-lime-solid) 10%, transparent);
+  --tone-lime-line: color-mix(in oklab, var(--tone-lime-solid) 18%, transparent);
+  --tone-lime: color-mix(in oklab, var(--tone-lime-solid) 82%, var(--fg));
+  --tone-green-solid: #3dd68c;
+  --tone-green-soft: color-mix(in oklab, var(--tone-green-solid) 10%, transparent);
+  --tone-green-line: color-mix(in oklab, var(--tone-green-solid) 18%, transparent);
+  --tone-green: color-mix(in oklab, var(--tone-green-solid) 82%, var(--fg));
+  --tone-teal-solid: #2dd4bf;
+  --tone-teal-soft: color-mix(in oklab, var(--tone-teal-solid) 10%, transparent);
+  --tone-teal-line: color-mix(in oklab, var(--tone-teal-solid) 18%, transparent);
+  --tone-teal: color-mix(in oklab, var(--tone-teal-solid) 82%, var(--fg));
+  --tone-cyan-solid: #66d9e8;
+  --tone-cyan-soft: color-mix(in oklab, var(--tone-cyan-solid) 10%, transparent);
+  --tone-cyan-line: color-mix(in oklab, var(--tone-cyan-solid) 18%, transparent);
+  --tone-cyan: color-mix(in oklab, var(--tone-cyan-solid) 82%, var(--fg));
+  --tone-blue-solid: #6b9bff;
+  --tone-blue-soft: color-mix(in oklab, var(--tone-blue-solid) 10%, transparent);
+  --tone-blue-line: color-mix(in oklab, var(--tone-blue-solid) 18%, transparent);
+  --tone-blue: color-mix(in oklab, var(--tone-blue-solid) 82%, var(--fg));
+  --tone-indigo-solid: #91a7ff;
+  --tone-indigo-soft: color-mix(in oklab, var(--tone-indigo-solid) 10%, transparent);
+  --tone-indigo-line: color-mix(in oklab, var(--tone-indigo-solid) 18%, transparent);
+  --tone-indigo: color-mix(in oklab, var(--tone-indigo-solid) 82%, var(--fg));
+  --tone-violet-solid: #9d85ff;
+  --tone-violet-soft: color-mix(in oklab, var(--tone-violet-solid) 10%, transparent);
+  --tone-violet-line: color-mix(in oklab, var(--tone-violet-solid) 18%, transparent);
+  --tone-violet: color-mix(in oklab, var(--tone-violet-solid) 82%, var(--fg));
+  --tone-purple-solid: #da77f2;
+  --tone-purple-soft: color-mix(in oklab, var(--tone-purple-solid) 10%, transparent);
+  --tone-purple-line: color-mix(in oklab, var(--tone-purple-solid) 18%, transparent);
+  --tone-purple: color-mix(in oklab, var(--tone-purple-solid) 82%, var(--fg));
+  --tone-pink-solid: #f472b6;
+  --tone-pink-soft: color-mix(in oklab, var(--tone-pink-solid) 10%, transparent);
+  --tone-pink-line: color-mix(in oklab, var(--tone-pink-solid) 18%, transparent);
+  --tone-pink: color-mix(in oklab, var(--tone-pink-solid) 82%, var(--fg));
+  --tone-rose-solid: #ff8fab;
+  --tone-rose-soft: color-mix(in oklab, var(--tone-rose-solid) 10%, transparent);
+  --tone-rose-line: color-mix(in oklab, var(--tone-rose-solid) 18%, transparent);
+  --tone-rose: color-mix(in oklab, var(--tone-rose-solid) 82%, var(--fg));
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  --color-chrome: var(--chrome);
+  --color-chrome-hover: var(--chrome-hover);
+  --color-chrome-active: var(--chrome-active);
+  --color-chrome-line: var(--chrome-line);
+  --color-frame: var(--frame);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-4: var(--fg-4);
+  --color-inverse: var(--inverse);
+  --color-inverse-hover: var(--inverse-hover);
+  --color-inverse-fg: var(--inverse-fg);
+  --color-focus-line: var(--focus-line);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-danger-fg: var(--danger-fg);
+  --color-scrim: var(--scrim);
+
+  --shadow-xs: var(--od-shadow-xs);
+  --shadow-pop: var(--od-shadow-pop);
+  --shadow-float: var(--od-shadow-float);
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius: 4px;
+  --radius-md: 5px;
+  --radius-lg: 7px;
+  --radius-xl: 8px;
+  --radius-2xl: 12px;
+
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14px;
+  --text-base--line-height: 22px;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-dialog-in: dialog-in 200ms var(--ease-out-expo) both;
+  --animate-dialog-out: dialog-out 140ms ease-in forwards;
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-fade-out: fade-out 140ms ease-in forwards;
+
+  --color-tone-gray-soft: var(--tone-gray-soft);
+  --color-tone-gray-line: var(--tone-gray-line);
+  --color-tone-gray: var(--tone-gray);
+  --color-tone-gray-solid: var(--tone-gray-solid);
+  --color-tone-red-soft: var(--tone-red-soft);
+  --color-tone-red-line: var(--tone-red-line);
+  --color-tone-red: var(--tone-red);
+  --color-tone-red-solid: var(--tone-red-solid);
+  --color-tone-orange-soft: var(--tone-orange-soft);
+  --color-tone-orange-line: var(--tone-orange-line);
+  --color-tone-orange: var(--tone-orange);
+  --color-tone-orange-solid: var(--tone-orange-solid);
+  --color-tone-amber-soft: var(--tone-amber-soft);
+  --color-tone-amber-line: var(--tone-amber-line);
+  --color-tone-amber: var(--tone-amber);
+  --color-tone-amber-solid: var(--tone-amber-solid);
+  --color-tone-yellow-soft: var(--tone-yellow-soft);
+  --color-tone-yellow-line: var(--tone-yellow-line);
+  --color-tone-yellow: var(--tone-yellow);
+  --color-tone-yellow-solid: var(--tone-yellow-solid);
+  --color-tone-lime-soft: var(--tone-lime-soft);
+  --color-tone-lime-line: var(--tone-lime-line);
+  --color-tone-lime: var(--tone-lime);
+  --color-tone-lime-solid: var(--tone-lime-solid);
+  --color-tone-green-soft: var(--tone-green-soft);
+  --color-tone-green-line: var(--tone-green-line);
+  --color-tone-green: var(--tone-green);
+  --color-tone-green-solid: var(--tone-green-solid);
+  --color-tone-teal-soft: var(--tone-teal-soft);
+  --color-tone-teal-line: var(--tone-teal-line);
+  --color-tone-teal: var(--tone-teal);
+  --color-tone-teal-solid: var(--tone-teal-solid);
+  --color-tone-cyan-soft: var(--tone-cyan-soft);
+  --color-tone-cyan-line: var(--tone-cyan-line);
+  --color-tone-cyan: var(--tone-cyan);
+  --color-tone-cyan-solid: var(--tone-cyan-solid);
+  --color-tone-blue-soft: var(--tone-blue-soft);
+  --color-tone-blue-line: var(--tone-blue-line);
+  --color-tone-blue: var(--tone-blue);
+  --color-tone-blue-solid: var(--tone-blue-solid);
+  --color-tone-indigo-soft: var(--tone-indigo-soft);
+  --color-tone-indigo-line: var(--tone-indigo-line);
+  --color-tone-indigo: var(--tone-indigo);
+  --color-tone-indigo-solid: var(--tone-indigo-solid);
+  --color-tone-violet-soft: var(--tone-violet-soft);
+  --color-tone-violet-line: var(--tone-violet-line);
+  --color-tone-violet: var(--tone-violet);
+  --color-tone-violet-solid: var(--tone-violet-solid);
+  --color-tone-purple-soft: var(--tone-purple-soft);
+  --color-tone-purple-line: var(--tone-purple-line);
+  --color-tone-purple: var(--tone-purple);
+  --color-tone-purple-solid: var(--tone-purple-solid);
+  --color-tone-pink-soft: var(--tone-pink-soft);
+  --color-tone-pink-line: var(--tone-pink-line);
+  --color-tone-pink: var(--tone-pink);
+  --color-tone-pink-solid: var(--tone-pink-solid);
+  --color-tone-rose-soft: var(--tone-rose-soft);
+  --color-tone-rose-line: var(--tone-rose-line);
+  --color-tone-rose: var(--tone-rose);
+  --color-tone-rose-solid: var(--tone-rose-solid);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.965);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-size: 16px;
+    color: var(--fg);
+    background: var(--canvas);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01", "cv11";
+  }
+  body {
+    font-size: 13px;
+    line-height: 20px;
+    background: var(--canvas);
+    min-height: 100dvh;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--fg) 14%, transparent);
+  }
+  * {
+    border-color: var(--line);
+  }
+  /* Keyboard focus: one visible ring everywhere. The root stylesheet sets the
+     same rule unlayered so it survives app-level resets. */
+  :focus-visible {
+    outline: 2px solid var(--focus-line);
+    outline-offset: 2px;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--fg-4);
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+  /* Thin, quiet scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+@layer components {
+  .mono {
+    font-family: var(--font-mono);
+    font-feature-settings: "zero";
+    letter-spacing: -0.01em;
+  }
+  /* Small tracked-uppercase eyebrow: section labels, stat labels, menu groups. */
+  .label-caps {
+    font-size: 10px;
+    line-height: 14px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-4);
+  }
+
+  /* ---------------------------------------------------------------- shell */
+  /* Full-height app frame: header across the chrome, sidebar column, and the
+     white work panel inset against the frame. */
+  .od-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--frame);
+    color: var(--fg);
+  }
+  .od-shell-header {
+    flex: none;
+    min-width: 0;
+  }
+  .od-shell-body {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .od-shell-nav {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    width: 15rem;
+    transition: width 200ms var(--ease-out-soft);
+  }
+  .od-shell[data-collapsed] .od-shell-nav {
+    width: 3.5rem;
+  }
+  .od-shell-panel {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+    border-top-left-radius: 12px;
+    background: var(--surface);
+  }
+  /* The work panel's content owns the remaining height. One stretched grid row
+     gives the page a definite height, so `height: 100%` inside it resolves and
+     its own regions scroll. */
+  .od-shell-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .od-shell-content > * {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  @media (max-width: 900px) {
+    .od-shell-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    /* Phones and narrow windows get the sidebar through a dialog instead. */
+    .od-shell-nav {
+      display: none;
+    }
+    .od-shell-panel {
+      border-left: 0;
+      border-top-left-radius: 0;
+    }
+  }
+
+  /* -------------------------------------------------------------- sidebar */
+  .od-sidebar {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+    flex-direction: column;
+  }
+  .od-sidebar-brand {
+    display: flex;
+    flex: none;
+    align-items: center;
+    min-width: 0;
+    height: 3rem;
+    padding: 0 18px;
+  }
+  .od-sidebar[data-collapsed] .od-sidebar-brand {
+    justify-content: center;
+    padding: 0;
+  }
+  .od-sidebar-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 4px 0 12px;
+  }
+  .od-sidebar-footer {
+    flex: none;
+    border-top: 1px solid var(--chrome-line);
+    padding: 6px 0;
+  }
+  .od-sidebar-section + .od-sidebar-section {
+    margin-top: 20px;
+  }
+}
+
+/* The dialog panel takes initial focus as a container, not as a control, so it
+   does not draw the global focus ring; its buttons and fields still do.
+   Unlayered to outrank the utilities applied to the panel. */
+.od-dialog-panel:focus-visible {
+  outline: none;
+}
+
+/* One frame of stillness when light and dark swap, so colours don't smear. */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  .od-shell-nav {
+    transition: none;
+  }
+}

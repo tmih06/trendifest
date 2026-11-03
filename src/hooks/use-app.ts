@@ -1,71 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type RoutePage = "overview" | "signals" | "explore" | "watchlist" | "alerts";
-
-const PAGES: RoutePage[] = ["overview", "signals", "explore", "watchlist", "alerts"];
-
-interface RouteState {
-  page: RoutePage;
-  params: URLSearchParams;
-}
-
-function parseHash(): RouteState {
-  const raw = window.location.hash.replace(/^#\/?/, "");
-  const [pagePart = "", query = ""] = raw.split("?");
-  const page = PAGES.includes(pagePart as RoutePage) ? (pagePart as RoutePage) : "overview";
-  return { page, params: new URLSearchParams(query) };
-}
-
-/**
- * Hash routing keeps the app deployable as static files under any host.
- * Query parameters travel in the hash, so a shared link carries its search but
- * never hits the server.
- */
-export function useHashRoute() {
-  const [route, setRoute] = useState<RouteState>(parseHash);
-
-  useEffect(() => {
-    const onChange = () => setRoute(parseHash());
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
-  }, []);
-
-  const navigate = useCallback((page: RoutePage, params?: Record<string, string>) => {
-    const query = new URLSearchParams(params ?? {});
-    const suffix = query.size ? `?${query.toString()}` : "";
-    const next = `#/${page}${suffix}`;
-    if (window.location.hash === next) {
-      setRoute({ page, params: query });
-    } else {
-      window.location.hash = next;
-    }
-  }, []);
-
-  /** Replace the current entry when only view filters change, so Back stays useful. */
-  const replace = useCallback((page: RoutePage, params?: Record<string, string>) => {
-    const query = new URLSearchParams(params ?? {});
-    const suffix = query.size ? `?${query.toString()}` : "";
-    const next = `#/${page}${suffix}`;
-    if (window.location.hash !== next) {
-      window.history.replaceState(null, "", next);
-    }
-    setRoute({ page, params: query });
-  }, []);
-
-  return { ...route, navigate, replace };
-}
-
-/** Delay a rapidly changing value; used to keep autocomplete requests quiet. */
-export function useDebouncedValue<T>(value: T, delay = 250) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delay);
-    return () => window.clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
-}
-
 export type Theme = "light" | "dark";
+
+const STORAGE_KEY = "trendifest-theme";
 
 function initialTheme(): Theme {
   if (typeof document === "undefined") return "light";
@@ -90,16 +27,18 @@ export function useTheme() {
       window.requestAnimationFrame(() => root.classList.remove("theme-switching"));
     }
     initialized.current = true;
+    // Matches the OpenDesk chrome surface, not the page surface, so the mobile
+    // browser bar blends with the app frame in both themes.
     document
       .getElementById("theme-color")
-      ?.setAttribute("content", theme === "dark" ? "#1e1e1e" : "#ffffff");
+      ?.setAttribute("content", theme === "dark" ? "#141416" : "#f5f5f5");
   }, [theme]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = (event: MediaQueryListEvent) => {
       try {
-        if (localStorage.getItem("trendifest-theme")) return;
+        if (localStorage.getItem(STORAGE_KEY)) return;
       } catch {
         // If storage is blocked, continue following the OS.
       }
@@ -113,7 +52,7 @@ export function useTheme() {
     setTheme((current) => {
       const next = current === "dark" ? "light" : "dark";
       try {
-        localStorage.setItem("trendifest-theme", next);
+        localStorage.setItem(STORAGE_KEY, next);
       } catch {
         // A blocked storage API should not break the toggle for this session.
       }

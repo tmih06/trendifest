@@ -1,0 +1,75 @@
+/**
+ * The social graph model shared by the canvas and the page. It carries only
+ * what the renderer needs: identity, kind, size, degree, and whether the node
+ * anchors the map. Collected evidence lives in the API payload, not here.
+ */
+
+import type { TrendMapNodeKind, TrendMapRelation } from "../../shared/types.ts";
+
+/** The renderer's node vocabulary is the wire vocabulary; one source of truth. */
+export type GraphNodeKind = TrendMapNodeKind;
+
+/** Edges are either a collected observation or a measured centroid similarity. */
+export type GraphRelation = TrendMapRelation;
+
+export interface GraphNode {
+  id: string;
+  kind: GraphNodeKind;
+  label: string;
+  description: string;
+  radius: number;
+  degree: number;
+  /** Fixed anchors (audience hubs) that must not drift and keep their labels. */
+  hub?: boolean;
+}
+
+export interface GraphLink {
+  id: string;
+  source: string;
+  target: string;
+  relation: GraphRelation;
+  /** Cosine similarity for `similarity` edges; absent on observations. */
+  similarity?: number;
+}
+
+export interface Connection {
+  node: GraphNode;
+  relation: GraphRelation;
+}
+
+/** A link whose endpoints are ids or, after the simulation resolves them, nodes. */
+export type ResolvedLink = Omit<GraphLink, "source" | "target"> & {
+  source: Endpoint;
+  target: Endpoint;
+};
+
+export type Endpoint = string | number | { id?: unknown };
+
+/** Compare an endpoint by id whether or not d3 has resolved it to a node. */
+export function endpointId(endpoint: Endpoint): string {
+  if (!endpoint || typeof endpoint !== "object") return String(endpoint);
+  const id = endpoint.id;
+  return typeof id === "string" || typeof id === "number" ? String(id) : "";
+}
+
+/**
+ * Direct relationships of one node. The force graph rewrites link endpoints to
+ * node objects, and the page passes unresolved string endpoints, so both are
+ * accepted and compared by id.
+ */
+export function connectionsFor(
+  id: string,
+  graph: { nodes: readonly GraphNode[]; links: readonly ResolvedLink[] },
+): Connection[] {
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const connections: Connection[] = [];
+  for (const link of graph.links) {
+    const source = endpointId(link.source);
+    const target = endpointId(link.target);
+    const otherId = source === id ? target : target === id ? source : null;
+    if (otherId === null) continue;
+    const node = byId.get(otherId);
+    if (node) connections.push({ node, relation: link.relation });
+  }
+  return connections;
+}

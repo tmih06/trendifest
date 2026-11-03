@@ -1,5 +1,7 @@
 import { ADOPTION_SEGMENTS, VIEWER_SEGMENTS } from "../../shared/segments.ts";
 import type {
+  ClusterExample,
+  PostKind,
   SocialSignals,
   TrendMap,
   TrendMapEdge,
@@ -7,15 +9,15 @@ import type {
   TrendScore,
 } from "../../shared/types.ts";
 import { getDb } from "../db.ts";
-import { segmentCoverage } from "./pipeline.ts";
+import { CLUSTER_THRESHOLDS, segmentCoverage } from "./pipeline.ts";
 import type { Space } from "../db.ts";
 
 /**
  * Trend map: the collection graph rendered for a non-specialist audience.
  *
- * Nodes are viewer segments (fixed hubs) and pattern clusters (leaves). An edge
- * means "this segment observed this pattern", which is a collected fact, not an
- * inference. Node size is the pattern's emergence score.
+ * Nodes are audience hubs and pattern clusters. Observation edges describe
+ * collected delivery; similarity edges describe same-model centroid affinity.
+ * Node size is the pattern's emergence score, not its number of connections.
  *
  * The score is a transparent heuristic, not a probability. It deliberately
  * weights *distinct authors* over post count: the first cluster measured here
@@ -38,6 +40,8 @@ const MAX_PATTERN_NODES = 40;
  * every audience is represented before remaining slots go to the strongest.
  */
 const MIN_PATTERNS_PER_SEGMENT = 3;
+/** Keep measured affinity readable without turning the graph into a hairball. */
+const MAX_SIMILARITY_LINKS = 3;
 /** Window used for the recent-versus-prior velocity comparison. */
 const VELOCITY_WINDOW_HOURS = 6;
 
@@ -236,19 +240,8 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
   const nodes: TrendMapNode[] = [];
   const edges: TrendMapEdge[] = [];
 
-  // Segment hubs are fixed positions: the map is read audience-first, and a
-  // drifting hub would make two visits show different structures for the same
-  // evidence. Angle is derived from the catalog order, which is stable.
-  //
-  // The ring radius grows with the pattern count, because each hub's leaves are
-  // placed on a ring around it: a fixed 260px radius left a hollow middle with
-  // eight isolated dots and crushed every discover leaf into one pile.
   const segmentNodes = VIEWER_SEGMENTS.filter((segment) => segment.scope === "collection");
-  // Compact enough that the hubs read as one population rather than eight
-  // islands, loose enough that each hub's leaf cluster stays its own clump.
-  const hubRing = Math.max(135, Math.min(190, 95 + Math.sqrt(clusters.length) * 12));
-  segmentNodes.forEach((segment, index) => {
-    const angle = (index / segmentNodes.length) * Math.PI * 2 - Math.PI / 2;
+  segmentNodes.forEach((segment) => {
     nodes.push({
       id: `segment:${segment.id}`,
       kind: "segment",
@@ -259,9 +252,6 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
       posts: coverage.find((row) => row.segmentId === segment.id)?.posts ?? 0,
       authors: 0,
       segments: [segment.id],
-      // Radius carries meaning for patterns only, so hubs are placed explicitly.
-      x: Math.cos(angle) * hubRing,
-      y: Math.sin(angle) * hubRing,
     });
   });
 
@@ -322,10 +312,90 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
     posts: coverage.find((row) => row.segmentId === "discover")?.posts ?? 0,
     authors: 0,
     segments: ["discover"],
-    x: 0,
-    y: 0,
   });
 
+  // Compare only displayed patterns, at most 780 pairs. Padding gives storage
+  // one width, not one semantic space: model, space and native dimension must
+  // all match. Thresholds are affinity heuristics, never calibrated confidence.
+  const clusterIds = clusterNodes.map((node) => node.clusterId!);
+  // Keep source evidence in the graph inspector after removing the separate
+  // Signals page. Lateral LIMIT bounds the payload to three distinct posts per
+  // pattern, excluding deleted and out-of-window posts.
+  const examples =
+    clusterIds.length === 0
+      ? []
+      : ((await db`
+    SELECT c.id AS cluster_id, p.*,
+      (SELECT array_agg(o.segment_id) FROM observations o WHERE o.post_id = p.id) AS segments,
+      (SELECT min(o.observed_at) FROM observations o WHERE o.post_id = p.id) AS observed_at
+    FROM clusters c
+    CROSS JOIN LATERAL (
+      SELECT DISTINCT p.id, p.permalink, p.body, p.author_handle, p.kind,
+        p.published_at, jsonb_array_length(p.media) AS media_count
+      FROM cluster_members cm JOIN posts p ON p.id = cm.post_id
+      WHERE cm.cluster_id = c.id AND p.deleted_at IS NULL
+        AND p.published_at > now() - ${`${hours} hours`}::interval
+      ORDER BY p.published_at DESC, p.id LIMIT 3
+    ) p
+    WHERE c.id = ANY(${clusterIds}::text[])
+  `) as unknown as Array<{
+          cluster_id: string;
+          id: string;
+          permalink: string;
+          body: string;
+          author_handle: string | null;
+          kind: PostKind;
+          published_at: Date;
+          media_count: number;
+          segments: string[] | null;
+          observed_at: Date | null;
+        }>);
+  const examplesByCluster = new Map<string, ClusterExample[]>();
+  for (const example of examples) {
+    const items = examplesByCluster.get(example.cluster_id) ?? [];
+    items.push({
+      uri: example.id,
+      permalink: example.permalink,
+      text: example.body,
+      authorHandle: example.author_handle,
+      kind: example.kind,
+      mediaCount: Number(example.media_count),
+      segments: example.segments ?? [],
+      observedAt: (example.observed_at ?? example.published_at).toISOString(),
+    });
+    examplesByCluster.set(example.cluster_id, items);
+  }
+  for (const node of clusterNodes) node.examples = examplesByCluster.get(node.clusterId!) ?? [];
+  const similarities =
+    clusterIds.length < 2
+      ? []
+      : ((await db`
+    SELECT a.id AS source, b.id AS target, a.space,
+           (1 - (a.centroid <=> b.centroid))::float8 AS similarity
+    FROM clusters a
+    JOIN clusters b ON a.id < b.id AND a.space = b.space
+      AND a.model = b.model AND a.dim = b.dim
+    WHERE a.id = ANY(${clusterIds}::text[]) AND b.id = ANY(${clusterIds}::text[])
+    ORDER BY similarity DESC, a.id, b.id
+  `) as unknown as Array<{ source: string; target: string; space: Space; similarity: number }>);
+  const similarityDegree = new Map<string, number>();
+  for (const pair of similarities) {
+    const similarity = Number(pair.similarity);
+    if (!Number.isFinite(similarity) || similarity < CLUSTER_THRESHOLDS[pair.space]) continue;
+    const sourceDegree = similarityDegree.get(pair.source) ?? 0;
+    const targetDegree = similarityDegree.get(pair.target) ?? 0;
+    if (sourceDegree >= MAX_SIMILARITY_LINKS || targetDegree >= MAX_SIMILARITY_LINKS) continue;
+    edges.push({
+      id: `similarity:${pair.source}:${pair.target}`,
+      source: `cluster:${pair.source}`,
+      target: `cluster:${pair.target}`,
+      relation: "similarity",
+      similarity,
+      weight: similarity,
+    });
+    similarityDegree.set(pair.source, sourceDegree + 1);
+    similarityDegree.set(pair.target, targetDegree + 1);
+  }
   const byPotential = [...clusterNodes].sort((a, b) => (b.potential ?? 0) - (a.potential ?? 0));
 
   return {

@@ -1,10 +1,11 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ApiError, RangeKey } from "../shared/types.ts";
-import { isGeoCode, isRangeKey } from "../shared/config.ts";
+import type { ApiError } from "../shared/types.ts";
+import { ApiFailure } from "./api-error.ts";
 import { AUTH_ENABLED, authorize } from "./auth.ts";
-import { getAnalysis, parseTermList, suggest, TrendSourceError } from "./google-trends.ts";
 import { DatabaseMissingError } from "./db.ts";
+import { BlueskyError } from "./social/bluesky.ts";
+import { searchAcrossSpaces } from "./social/pipeline.ts";
 import {
   runBackfill,
   signalsWithCoverage,
@@ -13,22 +14,10 @@ import {
   status,
 } from "./social/service.ts";
 import { buildTrendMap } from "./social/trend-map.ts";
-import { searchAcrossSpaces } from "./social/pipeline.ts";
-import { BlueskyError } from "./social/bluesky.ts";
-import { buildOverview, refreshWatchlist } from "./overview.ts";
-import {
-  addWatchlist,
-  ApiFailure,
-  markAlertsRead,
-  readState,
-  removeWatchlist,
-  updateThreshold,
-} from "./store.ts";
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
 const PRODUCTION = process.env.NODE_ENV === "production";
-const MONITOR_INTERVAL_MS = 15 * 60 * 1000;
 
 if (PRODUCTION && !AUTH_ENABLED) {
   console.error("TRENDIFEST_PASSWORD is required when NODE_ENV=production.");
@@ -51,17 +40,13 @@ function apiError(status: number, error: string, code = "bad_request") {
   return json({ error, code } satisfies ApiError, status);
 }
 
-function readGeo(url: URL) {
-  const geo = (url.searchParams.get("geo") ?? "US").toUpperCase();
-  if (!isGeoCode(geo)) throw new ApiFailure(400, "Choose a supported country", "invalid_geo");
-  return geo;
-}
-
-function readRange(url: URL): RangeKey {
-  const range = url.searchParams.get("range") ?? "12m";
-  if (!isRangeKey(range))
-    throw new ApiFailure(400, "Choose a supported date range", "invalid_range");
-  return range;
+/** Both social read routes share one window contract. */
+function readWindowHours(url: URL) {
+  const hours = Number(url.searchParams.get("hours") ?? "72");
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 720) {
+    throw new ApiFailure(400, "Window must be between 1 and 720 hours", "invalid_window");
+  }
+  return Math.round(hours);
 }
 
 async function readJson(request: Request) {
@@ -82,73 +67,12 @@ async function handleApi(request: Request, url: URL) {
     });
   }
 
-  if (url.pathname === "/api/overview" && request.method === "GET") {
-    const overview = await buildOverview(readGeo(url), readRange(url));
-    return json(overview);
-  }
-
-  if (url.pathname === "/api/analyze" && request.method === "GET") {
-    const terms = parseTermList(url.searchParams.get("terms"));
-    if (terms.length === 0) throw new ApiFailure(400, "Add a search term to analyze");
-    if (terms.length > 5) throw new ApiFailure(400, "Compare up to five terms at once", "limit");
-    const analysis = await getAnalysis(terms, readGeo(url), readRange(url));
-    return json(analysis);
-  }
-
-  if (url.pathname === "/api/suggest" && request.method === "GET") {
-    const query = url.searchParams.get("q")?.trim() ?? "";
-    if (query.length < 2) return json({ suggestions: [] });
-    try {
-      return json({ suggestions: await suggest(query) });
-    } catch {
-      // Suggestions are a convenience; a blocked upstream must not block typing.
-      return json({ suggestions: [] });
-    }
-  }
-
-  if (url.pathname === "/api/watchlist" && request.method === "GET") {
-    const state = await readState();
-    return json({ items: state.watchlist });
-  }
-
-  if (url.pathname === "/api/watchlist" && request.method === "POST") {
-    const body = await readJson(request);
-    const term = typeof body.term === "string" ? body.term : "";
-    const geo = typeof body.geo === "string" ? body.geo.toUpperCase() : "";
-    const threshold = typeof body.threshold === "number" ? body.threshold : 15;
-    const item = await addWatchlist(term, geo, threshold);
-    return json({ item }, 201);
-  }
-
-  const watchlistMatch = url.pathname.match(/^\/api\/watchlist\/([\w-]+)$/);
-  if (watchlistMatch) {
-    const id = watchlistMatch[1]!;
-    if (request.method === "DELETE") {
-      return json({ item: await removeWatchlist(id) });
-    }
-    if (request.method === "PATCH") {
-      const body = await readJson(request);
-      if (typeof body.threshold !== "number") {
-        throw new ApiFailure(400, "Provide a numeric alert threshold");
-      }
-      return json({ item: await updateThreshold(id, body.threshold) });
-    }
-  }
-
   if (url.pathname === "/api/signals" && request.method === "GET") {
-    const windowHours = Number(url.searchParams.get("hours") ?? "72");
-    if (!Number.isFinite(windowHours) || windowHours <= 0 || windowHours > 720) {
-      throw new ApiFailure(400, "Window must be between 1 and 720 hours", "invalid_window");
-    }
-    return json(await signalsWithCoverage(Math.round(windowHours)));
+    return json(await signalsWithCoverage(readWindowHours(url)));
   }
 
   if (url.pathname === "/api/trend-map" && request.method === "GET") {
-    const hours = Number(url.searchParams.get("hours") ?? "72");
-    if (!Number.isFinite(hours) || hours <= 0 || hours > 720) {
-      throw new ApiFailure(400, "Window must be between 1 and 720 hours", "invalid_window");
-    }
-    return json(await buildTrendMap(Math.round(hours)));
+    return json(await buildTrendMap(readWindowHours(url)));
   }
 
   if (url.pathname === "/api/signals/search" && request.method === "GET") {
@@ -164,22 +88,21 @@ async function handleApi(request: Request, url: URL) {
     if (limit < 1 || limit > 50) {
       throw new ApiFailure(400, "Collect between 1 and 50 posts per segment", "invalid_limit");
     }
-    const report = await runBackfill(limit);
-    if (!report) {
+    const current = status();
+    if (!current.configured) throw new DatabaseMissingError();
+    if (current.backfilling) {
       throw new ApiFailure(409, "A collection cycle is already running", "collect_in_progress");
     }
-    return json({ report, status: status() }, 202);
+    // Media inference outlives ordinary HTTP timeouts. The existing single-flight
+    // collector owns the work; clients observe completion through its status.
+    void runBackfill(limit).catch((error: unknown) => {
+      console.warn("Manual collection failed:", error instanceof Error ? error.message : error);
+    });
+    return json({ status: status() }, 202);
   }
 
   if (url.pathname === "/api/collect/status" && request.method === "GET") {
     return json(status());
-  }
-
-  if (url.pathname === "/api/alerts/read" && request.method === "POST") {
-    const body = await readJson(request);
-    const id = typeof body.id === "string" ? body.id : undefined;
-    const alerts = await markAlertsRead(id);
-    return json({ alerts, unread: alerts.filter((alert) => !alert.read).length });
   }
 
   return apiError(404, "API route not found", "not_found");
@@ -270,9 +193,6 @@ async function fetch(request: Request) {
       if (error instanceof ApiFailure) {
         return apiError(error.status, error.message, error.code);
       }
-      if (error instanceof TrendSourceError) {
-        return apiError(error.status, error.message, error.code);
-      }
       if (error instanceof DatabaseMissingError || error instanceof BlueskyError) {
         return apiError(error.status, error.message, error.code);
       }
@@ -298,7 +218,7 @@ console.log(
 console.log(AUTH_ENABLED ? "Password protection: on" : "Password protection: off (development)");
 
 // Social collection is opt-in: it needs a database, downloads models on first
-// use, and reaches the public Bluesky network. The keyword MVP never requires it.
+// use, and reaches the public Bluesky network.
 if (process.env.TRENDIFEST_SOCIAL === "1") {
   const social = startSocialCollection();
   console.log(
@@ -306,30 +226,4 @@ if (process.env.TRENDIFEST_SOCIAL === "1") {
       ? `Social collection: ${social.segments} viewer segments`
       : "Social collection: disabled (TRENDIFEST_DATABASE_URL is not set)",
   );
-}
-
-const MONITOR =
-  process.env.TRENDIFEST_MONITOR === "1" || (PRODUCTION && process.env.TRENDIFEST_MONITOR !== "0");
-
-if (MONITOR) {
-  const refresh = async () => {
-    try {
-      const { created, summaries } = await refreshWatchlist("12m");
-      if (created.length > 0) {
-        console.log(`Monitor created ${created.length} alert(s) across ${summaries} trend(s).`);
-      }
-    } catch (error) {
-      // A Google outage must not take down the web process; the next interval
-      // retries after the client's own cooldown.
-      console.warn(
-        "Background monitor could not refresh:",
-        error instanceof Error ? error.message : error,
-      );
-    }
-  };
-
-  void refresh();
-  const timer = setInterval(refresh, MONITOR_INTERVAL_MS);
-  timer.unref();
-  console.log(`Background alert monitor: every ${MONITOR_INTERVAL_MS / 60_000} minutes`);
 }

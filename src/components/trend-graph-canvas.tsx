@@ -18,10 +18,10 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { Button } from "@trendifest/opendesk";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
-import { Button } from "@/components/ui/button";
 import type { Theme } from "@/hooks/use-app";
-import { connectionsFor, type GraphLink, type GraphNode } from "@/pages/trend-graph.data";
+import { connectionsFor, endpointId, type GraphLink, type GraphNode } from "@/lib/graph";
 
 type NodePoint = GraphNode & {
   x?: number;
@@ -35,7 +35,8 @@ type LinkPoint = GraphLink & {
   source: string | number | NodePoint;
   target: string | number | NodePoint;
 };
-type CanvasGraph = { nodes: NodePoint[]; links: GraphLink[] };
+/** The layout copy: links point at ids until d3 resolves them to node objects. */
+type CanvasGraph = { nodes: NodePoint[]; links: LinkPoint[] };
 
 interface LabelHitArea {
   id: string;
@@ -52,7 +53,7 @@ interface LabelBitmap {
   textWidth: number;
 }
 
-const LABEL_FONT_FAMILY = '"Inter Variable", "Inter", sans-serif';
+const LABEL_FONT_FAMILY = '"Geist Variable", "Geist", ui-sans-serif, sans-serif';
 
 function smoothstep(edge0: number, edge1: number, value: number) {
   const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
@@ -136,27 +137,32 @@ function isGraphSurface(target: EventTarget | null): boolean {
 }
 
 interface GraphPalette {
-  term: string;
-  top: string;
-  rising: string;
+  segment: string;
+  pattern: string;
+  pool: string;
   foreground: string;
   muted: string;
   background: string;
   edge: string;
   edgeDim: string;
   edgeSelected: string;
+  /** Similarity is a measured affinity, so it stays quieter than an observation. */
+  edgeSimilarity: string;
+  edgeSimilarityDim: string;
 }
 
 const FALLBACK_PALETTE: GraphPalette = {
-  term: "#a78bfa",
-  top: "#b3b3b3",
-  rising: "#e0af68",
-  foreground: "#dadada",
-  muted: "#999999",
-  background: "#1e1e1e",
-  edge: "rgba(167, 139, 250, 0.20)",
-  edgeDim: "rgba(167, 139, 250, 0.055)",
-  edgeSelected: "rgba(167, 139, 250, 0.62)",
+  segment: "#737373",
+  pattern: "#7048e8",
+  pool: "#a3a3a3",
+  foreground: "#0a0a0a",
+  muted: "#737373",
+  background: "#ffffff",
+  edge: "rgba(115, 115, 115, 0.30)",
+  edgeDim: "rgba(115, 115, 115, 0.06)",
+  edgeSelected: "rgba(115, 115, 115, 0.62)",
+  edgeSimilarity: "rgba(115, 115, 115, 0.40)",
+  edgeSimilarityDim: "rgba(115, 115, 115, 0.10)",
 };
 
 let colorProbe: CanvasRenderingContext2D | null = null;
@@ -179,25 +185,34 @@ function readPalette(): GraphPalette {
   if (typeof document === "undefined") return FALLBACK_PALETTE;
   const styles = getComputedStyle(document.documentElement);
   const token = (name: string) => styles.getPropertyValue(name).trim();
+  // The shell owns the surfaces and text tokens; the graph-specific node hues
+  // fall back to them, so the map is drawn in the same palette as the chrome.
+  const surface =
+    token("--background-primary") || token("--surface") || FALLBACK_PALETTE.background;
+  const fg = token("--text-normal") || token("--fg") || FALLBACK_PALETTE.foreground;
+  const muted = token("--graph-text") || token("--fg-3") || FALLBACK_PALETTE.muted;
+  const line = token("--graph-line") || token("--line-strong") || "#737373";
   return {
-    term: token("--graph-node-focused") || FALLBACK_PALETTE.term,
-    top: token("--graph-node") || FALLBACK_PALETTE.top,
-    rising: token("--graph-node-attachment") || FALLBACK_PALETTE.rising,
-    foreground: token("--text-normal") || FALLBACK_PALETTE.foreground,
-    muted: token("--graph-text") || FALLBACK_PALETTE.muted,
-    background: token("--background-primary") || FALLBACK_PALETTE.background,
-    edge: resolveColor(token("--graph-line") || "#a78bfa", 0.35),
-    edgeDim: resolveColor(token("--graph-line") || "#a78bfa", 0.055),
-    edgeSelected: resolveColor(token("--graph-line") || "#a78bfa", 0.62),
+    segment: token("--graph-node") || muted,
+    pattern: token("--graph-node-focused") || muted,
+    pool: token("--graph-node-attachment") || muted,
+    foreground: fg,
+    muted,
+    background: surface,
+    edge: resolveColor(line, 0.3),
+    edgeDim: resolveColor(line, 0.06),
+    edgeSelected: resolveColor(line, 0.62),
+    // Dashed similarity links read thinner than a solid observation, so their
+    // alpha is raised slightly to keep both legible at the same zoom.
+    edgeSimilarity: resolveColor(line, 0.4),
+    edgeSimilarityDim: resolveColor(line, 0.1),
   };
 }
 
-function endpointId(endpoint: unknown): string {
-  if (!endpoint || typeof endpoint !== "object" || !("id" in endpoint)) {
-    return String(endpoint);
-  }
-  const id = endpoint.id;
-  return typeof id === "string" || typeof id === "number" ? String(id) : "";
+/** Similarity links are dashed so a measured proximity never reads as an observation. */
+function isSimilarityLink(link: object): boolean {
+  const relation = "relation" in link ? link.relation : null;
+  return typeof relation === "string" && relation === "similarity";
 }
 
 function useReducedMotion() {
@@ -218,7 +233,9 @@ function layoutForces() {
     charge: forceManyBody<NodePoint>().strength(-220).distanceMax(650),
     link: forceLink<NodePoint, LinkPoint>()
       .id((node) => node.id)
-      .distance(90)
+      // Similarity links join already-related patterns, so they sit closer than
+      // an audience observation; everything else keeps the established spacing.
+      .distance((link) => (isSimilarityLink(link) ? 80 : 90))
       .strength(0.3),
     collide: forceCollide<NodePoint>((node) => node.radius + 10).iterations(3),
     x: forceX<NodePoint>(0).strength(0.025),
@@ -227,7 +244,11 @@ function layoutForces() {
   };
 }
 
-/** No audience ring or fixed anchors: only observed edges shape the layout. */
+/**
+ * Layout starts from a golden-angle spiral so nodes never share a spot, then a
+ * finite simulation settles the graph. Observation and similarity edges both
+ * shape it; nothing is positioned by hand.
+ */
 function makeGraphData(
   sourceNodes: GraphNode[],
   sourceLinks: GraphLink[],
@@ -235,6 +256,28 @@ function makeGraphData(
   previous?: CanvasGraph,
 ): CanvasGraph {
   const oldNodes = new Map(previous?.nodes.map((node) => [node.id, node]));
+  const oldLinks = new Map(previous?.links.map((link) => [link.id, link]));
+  if (
+    previous &&
+    sourceNodes.length === previous.nodes.length &&
+    sourceLinks.length === previous.links.length &&
+    sourceNodes.every((node) => oldNodes.has(node.id)) &&
+    sourceLinks.every((link) => {
+      const old = oldLinks.get(link.id);
+      return (
+        old?.relation === link.relation &&
+        endpointId(old.source) === link.source &&
+        endpointId(old.target) === link.target
+      );
+    })
+  ) {
+    // Keep the graph object identity as well as coordinates. A new graphData
+    // object reheats the library even when only scores or labels changed.
+    // Collision padding reserves room for the bounded score-radius changes.
+    for (const node of sourceNodes) Object.assign(oldNodes.get(node.id)!, node);
+    for (const link of sourceLinks) oldLinks.get(link.id)!.similarity = link.similarity;
+    return previous;
+  }
   const graph: CanvasGraph = {
     nodes: sourceNodes.map((node, index) => {
       const old = oldNodes.get(node.id);
@@ -250,19 +293,11 @@ function makeGraphData(
     }),
     links: sourceLinks.map((link) => ({ ...link })),
   };
-  const [oldTopology, newTopology] = [previous, graph].map((data) =>
-    data
-      ? [...data.nodes.map((node) => node.id), ...data.links.map((link) => link.id)]
-          .sort()
-          .join("\n")
-      : null,
-  );
-  if (previous && oldTopology === newTopology) return graph;
 
   const forces = layoutForces();
   const simulation = forceSimulation<NodePoint>(graph.nodes).stop();
   for (const [name, force] of Object.entries(forces)) simulation.force(name, force as never);
-  forces.link.links(graph.links as LinkPoint[]);
+  forces.link.links(graph.links);
   simulation.alphaDecay(0.035).velocityDecay(0.5).tick(300);
   simulation.stop();
   for (const node of graph.nodes) {
@@ -283,9 +318,8 @@ interface TrendGraphCanvasProps {
   emphasisIds: Set<string>;
   showContextLabels: boolean;
   /**
-   * Keep hub labels visible at every zoom level. The trend map's hubs are
-   * viewer segments, and an unlabeled anchor makes the map unreadable; the
-   * related graph has one hub whose label is already obvious from context.
+   * Keep hub labels visible at every zoom level. The map's hubs are viewer
+   * segments, and an unlabeled anchor makes the map unreadable.
    */
   labelHubsAlways?: boolean;
   /**
@@ -298,9 +332,9 @@ interface TrendGraphCanvasProps {
 }
 
 /**
- * Obsidian-like force graph: canvas rendering, d3 simulation, pan/zoom, node
- * dragging and selection. The canvas is visual; Browse signals is the
- * keyboard and screen-reader path through all nodes.
+ * Force graph: canvas rendering, d3 simulation, pan/zoom, node dragging and
+ * selection. The canvas is visual; the ranked pattern list is the keyboard and
+ * screen-reader path through the same nodes.
  */
 export function TrendGraphCanvas({
   theme,
@@ -375,10 +409,15 @@ export function TrendGraphCanvas({
   const parentHubs = useMemo(() => {
     const parents = new Map<string, string[]>();
     for (const link of graphData.links) {
-      if (link.relation === "contains") continue;
-      const list = parents.get(link.target) ?? [];
-      list.push(link.source);
-      parents.set(link.target, list);
+      // Similarity edges join peers, not a hub to its leaves; label placement
+      // only follows the audience-to-pattern observation edges. Endpoints may
+      // already be resolved to node objects by the simulation, so compare ids.
+      if (link.relation === "similarity") continue;
+      const source = endpointId(link.source);
+      const target = endpointId(link.target);
+      const list = parents.get(target) ?? [];
+      list.push(source);
+      parents.set(target, list);
     }
     return parents;
   }, [graphData.links]);
@@ -607,7 +646,7 @@ export function TrendGraphCanvas({
     // Keep the library-owned link force: it binds endpoints when its deferred
     // graph-data update runs, which can happen after this React effect.
     const link = graph.d3Force("link") as unknown as ForceLink<NodePoint, LinkPoint>;
-    link.distance(90).strength(0.3);
+    link.distance((raw) => (isSimilarityLink(raw) ? 80 : 90)).strength(0.3);
     for (const [name, force] of Object.entries(forces)) {
       if (name !== "link") graph.d3Force(name, force as never);
     }
@@ -623,6 +662,12 @@ export function TrendGraphCanvas({
     },
     [compact, stopCameraAnimation],
   );
+
+  // Resize the camera, not the simulation, when the sidebar, inspector or
+  // viewport changes. A desktop zoom carried onto a phone crops most nodes.
+  useEffect(() => {
+    if (size.width > 0 && size.height > 0) fitAll(0);
+  }, [fitAll, size.width, size.height]);
 
   /**
    * Ease the camera to a box containing the selected node and its direct
@@ -928,9 +973,9 @@ export function TrendGraphCanvas({
 
   const colorFor = useCallback(
     (kind: GraphNode["kind"]) => {
-      if (kind === "term" || kind === "segment") return palette.term;
-      if (kind === "rising" || kind === "pool") return palette.rising;
-      return palette.top;
+      if (kind === "pattern") return palette.pattern;
+      if (kind === "pool") return palette.pool;
+      return palette.segment;
     },
     [palette],
   );
@@ -946,18 +991,18 @@ export function TrendGraphCanvas({
       const active = activeIds.has(node.id);
       const emphasis = emphasisIds.has(node.id);
       const dim = !active;
-      const isHub = node.hub === true;
       const kindColor = colorFor(node.kind);
       const radius = node.radius + (hovered ? 0.8 : 0);
 
       ctx.save();
       ctx.globalAlpha = dim ? 0.16 : 1;
 
-      // Selected notes glow; unfocused hubs stay flat like Obsidian notes.
+      // A selected or hovered node gets a soft halo; everything else stays flat
+      // so the map's colour encoding is never mistaken for emphasis.
       if (selected || hovered) {
         ctx.beginPath();
         ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
-        ctx.fillStyle = palette.term;
+        ctx.fillStyle = palette.pattern;
         ctx.globalAlpha = dim ? 0.06 : 0.16;
         ctx.fill();
         ctx.globalAlpha = dim ? 0.16 : 1;
@@ -965,7 +1010,9 @@ export function TrendGraphCanvas({
 
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = selected || hovered || isHub ? palette.term : kindColor;
+      // A selected or hovered node is the focus of the interaction; hubs keep
+      // their kind colour so the map's anchors never read as a claim.
+      ctx.fillStyle = selected || hovered ? palette.pattern : kindColor;
       ctx.fill();
       ctx.lineWidth = 0.7;
       ctx.strokeStyle = palette.background;
@@ -981,7 +1028,7 @@ export function TrendGraphCanvas({
         ctx.beginPath();
         ctx.arc(x, y, radius + 3.5, 0, Math.PI * 2);
         ctx.lineWidth = 1.1;
-        ctx.strokeStyle = palette.term;
+        ctx.strokeStyle = palette.pattern;
         ctx.stroke();
       }
 
@@ -1146,7 +1193,9 @@ export function TrendGraphCanvas({
         const collides = placed.some(
           (box) => left < box.right && right > box.left && top < box.bottom && bottom > box.top,
         );
-        if (collides && !selected && !hovered && !isHub) continue;
+        // Hubs stay eligible at every zoom, but cannot overprint another name.
+        // The audience sidebar retains names suppressed on small viewports.
+        if (collides && !selected && !hovered) continue;
 
         if (fade >= 0.3) {
           hitAreas.push({
@@ -1199,12 +1248,15 @@ export function TrendGraphCanvas({
       const target = endpointId(link.target);
       const sourceActive = activeIds.has(source);
       const targetActive = activeIds.has(target);
+      const similar = link.relation === "similarity";
+      const active = sourceActive && targetActive;
       if (selectedId && (source === selectedId || target === selectedId)) {
-        return (source === selectedId ? targetActive : sourceActive)
-          ? palette.edgeSelected
-          : palette.edgeDim;
+        const otherActive = source === selectedId ? targetActive : sourceActive;
+        if (otherActive) return similar ? palette.edgeSimilarity : palette.edgeSelected;
+        return similar ? palette.edgeSimilarityDim : palette.edgeDim;
       }
-      return sourceActive && targetActive ? palette.edge : palette.edgeDim;
+      if (active) return similar ? palette.edgeSimilarity : palette.edge;
+      return similar ? palette.edgeSimilarityDim : palette.edgeDim;
     },
     [activeIds, palette, selectedId],
   );
@@ -1217,6 +1269,7 @@ export function TrendGraphCanvas({
       const otherActive = selectedId
         ? activeIds.has(source === selectedId ? target : source)
         : false;
+      if (link.relation === "similarity") return selectedEdge && otherActive ? 1 : 0.7;
       return selectedEdge && otherActive ? 1.4 : 0.9;
     },
     [activeIds, selectedId],
@@ -1259,7 +1312,8 @@ export function TrendGraphCanvas({
             nodeCanvasObject={paintNodeAndLabels}
             linkColor={linkColor}
             linkWidth={linkWidth}
-            linkCurvature={(raw) => ((raw as LinkPoint).relation === "contains" ? 0.14 : 0)}
+            linkCurvature={0}
+            linkLineDash={(raw: object) => (isSimilarityLink(raw) ? [3, 3] : null)}
             onRenderFramePre={() => {
               frameNodes.current = [];
             }}
@@ -1270,7 +1324,7 @@ export function TrendGraphCanvas({
             cooldownTime={2_000}
             d3AlphaDecay={0.035}
             d3VelocityDecay={0.5}
-            minZoom={0.35}
+            minZoom={0.1}
             maxZoom={2.5}
             autoPauseRedraw={!dragging}
             enablePointerInteraction={false}
@@ -1281,33 +1335,40 @@ export function TrendGraphCanvas({
         )}
       </div>
 
-      <div className="absolute right-2 top-2 z-30 flex items-center gap-0.5 text-muted-foreground opacity-70 transition-opacity hover:opacity-100 max-sm:hidden">
+      <div
+        role="group"
+        aria-label="Graph view controls"
+        className="pointer-events-auto absolute bottom-12 end-3 z-30 flex items-center gap-0.5 rounded-lg border border-line bg-surface/90 p-0.5 text-fg-3 shadow-xs backdrop-blur transition-opacity hover:text-fg"
+      >
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="sm"
+          square
           aria-label="Zoom out"
           title="Zoom out"
-          className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+          className="text-fg-3 hover:text-fg"
           onClick={() => zoomBy(0.8)}
         >
           <Minus />
         </Button>
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="sm"
+          square
           aria-label="Zoom in"
           title="Zoom in"
-          className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+          className="text-fg-3 hover:text-fg"
           onClick={() => zoomBy(1.25)}
         >
           <Plus />
         </Button>
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="sm"
+          square
           aria-label="Fit graph to view"
           title="Fit graph to view"
-          className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+          className="text-fg-3 hover:text-fg"
           onClick={() => fitAll(reducedMotion ? 0 : 300)}
         >
           <Maximize2 />
@@ -1315,10 +1376,11 @@ export function TrendGraphCanvas({
         {selectedId && (
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="sm"
+            square
             aria-label="Focus selected node"
             title="Focus selected node"
-            className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+            className="text-fg-3 hover:text-fg"
             onClick={() => fitSelectionCamera(reducedMotion ? 0 : 450)}
           >
             <Crosshair />
@@ -1326,10 +1388,11 @@ export function TrendGraphCanvas({
         )}
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="sm"
+          square
           aria-label="Restart layout"
           title="Restart layout"
-          className="size-7 rounded-[3px] text-inherit hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+          className="text-fg-3 hover:text-fg"
           onClick={resetLayout}
         >
           <RotateCcw />

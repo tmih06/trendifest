@@ -1,0 +1,32 @@
+@trendifest/opendesk
+====================
+
+This package contains source-derived UI code from the OpenDesk web application.
+
+  Upstream:  https://github.com/useopendesk/opendesk
+  Commit:    9f7e79072bb41c8be2bd0a96eaa74aba1333ce3c
+  License:   Apache License 2.0 (see LICENSE in this directory)
+  Copyright: Copyright 2026 Mindroot Ltd
+
+Upstream files adapted (paths relative to the upstream repository):
+
+  web/src/styles/app.css            semantic light/dark tokens, base styles, utilities
+  web/src/app/AppLayout.tsx         shell frame, inset work panel, collapsed nav rail
+  web/src/app/Sidebar.tsx           full-height sidebar, scroll area, stable footer
+  web/src/app/sidebarParts.tsx      navigation row shapes, labels, counts, section headers
+  web/src/components/ui/button.tsx  Button
+  web/src/components/ui/badge.tsx   Badge
+  web/src/components/ui/dialog.tsx  Dialog
+  web/src/components/ui/spinner.tsx Spinner
+  web/src/lib/cn.ts                 class merge helper
+  web/src/lib/tones.ts              palette tone names
+  LICENSE                           copied verbatim
+
+Adaptations: the helpdesk application runtime (routing, session, i18n, realtime,
+assistant, billing, telemetry), its domain components and its scripts were not
+copied. Remaining components take their state from props. Motion is limited to
+short CSS transitions/animations that are disabled by prefers-reduced-motion,
+and Radix supplies dialog focus trapping, Escape handling and ARIA semantics.
+
+Changes made to the derived files are licensed under the Apache License 2.0 as
+part of this repository.

@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
 /**
- * The MVP is deliberately single-user: one password protects the whole
+ * The app is deliberately single-user: one password protects the whole
  * workspace, including static assets and the API. HTTP Basic is enough here
  * because the browser owns the login prompt and there is no account model.
  *

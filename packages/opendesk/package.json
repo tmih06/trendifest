@@ -1,0 +1,51 @@
+{
+  "name": "@trendifest/opendesk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lean UI library extracted from the OpenDesk web app: shell, sidebar, buttons, badges and dialogs.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./styles.css": "./src/styles.css"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.64.0",
+    "radix-ui": "^1.8.1",
+    "tailwind-merge": "^3.7.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "trendifest": {
+    "upstream": {
+      "repository": "https://github.com/useopendesk/opendesk",
+      "commit": "9f7e79072bb41c8be2bd0a96eaa74aba1333ce3c",
+      "license": "Apache-2.0",
+      "copiedFrom": [
+        "web/src/styles/app.css",
+        "web/src/app/AppLayout.tsx",
+        "web/src/app/Sidebar.tsx",
+        "web/src/app/sidebarParts.tsx",
+        "web/src/components/ui/button.tsx",
+        "web/src/components/ui/badge.tsx",
+        "web/src/components/ui/dialog.tsx",
+        "web/src/components/ui/spinner.tsx",
+        "web/src/lib/cn.ts",
+        "web/src/lib/tones.ts",
+        "LICENSE"
+      ]
+    }
+  }
+}

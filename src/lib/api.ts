@@ -1,12 +1,4 @@
-import type {
-  Alert,
-  Overview,
-  RangeKey,
-  SocialSignals,
-  TrendMap,
-  TrendAnalysis,
-  WatchlistItem,
-} from "../../shared/types.ts";
+import type { TrendMap } from "../../shared/types.ts";
 
 export class ApiClientError extends Error {
   readonly status: number;
@@ -54,83 +46,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-function query(params: Record<string, string>) {
-  return new URLSearchParams(params).toString();
-}
-
-export function fetchOverview(geo: string, range: RangeKey) {
-  return request<Overview>(`/api/overview?${query({ geo, range })}`);
-}
-
-export async function fetchWatchlistItems() {
-  const result = await request<{ items: WatchlistItem[] }>("/api/watchlist");
-  return result.items;
-}
-
-export function fetchAnalysis(terms: string[], geo: string, range: RangeKey) {
-  return request<TrendAnalysis>(`/api/analyze?${query({ terms: terms.join(","), geo, range })}`);
-}
-
-export async function fetchSuggestions(queryText: string, signal?: AbortSignal) {
-  const result = await request<{ suggestions: string[] }>(
-    `/api/suggest?${query({ q: queryText })}`,
-    { signal },
-  );
-  return result.suggestions;
-}
-
-export function createWatchlistItem(input: { term: string; geo: string; threshold: number }) {
-  return request<{ item: WatchlistItem }>("/api/watchlist", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-}
-
-export function deleteWatchlistItem(id: string) {
-  return request<{ item: WatchlistItem }>(`/api/watchlist/${id}`, { method: "DELETE" });
-}
-
-export function patchWatchlistThreshold(id: string, threshold: number) {
-  return request<{ item: WatchlistItem }>(`/api/watchlist/${id}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ threshold }),
-  });
-}
-
-export function readAlerts(id?: string) {
-  return request<{ alerts: Alert[]; unread: number }>("/api/alerts/read", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(id ? { id } : {}),
-  });
-}
-
-export function fetchSignals(hours: number) {
-  return request<SocialSignals>(`/api/signals?${query({ hours: String(hours) })}`);
-}
-
-export interface SearchResult {
-  uri: string;
-  permalink: string;
-  text: string;
-  authorHandle: string | null;
-  kind: string;
-  publishedAt: string;
-  score: number;
-}
-
-export function searchSignals(text: string, signal?: AbortSignal) {
-  return request<{ results: SearchResult[] }>(`/api/signals/search?${query({ q: text })}`, {
-    signal,
-  });
-}
-
 export interface CollectStatus {
+  /** False when no database is configured; collection then cannot run at all. */
   configured: boolean;
+  /** A backfill cycle is running right now, whether started by the timer or by hand. */
   backfilling: boolean;
   lastBackfillAt: string | null;
+  lastBackfill: IngestReport | null;
+  /** The live Jetstream tail is connected, so new posts arrive without polling. */
   tailConnected: boolean;
   tail: { seen: number; processed: number; dropped: number; sampleRate: number } | null;
   segments: number;
@@ -149,14 +72,18 @@ export interface IngestReport {
   errors: Array<{ segmentId: string; message: string }>;
 }
 
+export function fetchTrendMap(hours: number) {
+  return request<TrendMap>(`/api/trend-map?${new URLSearchParams({ hours: String(hours) })}`);
+}
+
+export function fetchCollectionStatus() {
+  return request<CollectStatus>("/api/collect/status");
+}
+
 export function collectNow(limit: number) {
-  return request<{ report: IngestReport; status: CollectStatus }>("/api/collect", {
+  return request<{ status: CollectStatus }>("/api/collect", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ limit }),
   });
-}
-
-export function fetchTrendMap(hours: number) {
-  return request<TrendMap>(`/api/trend-map?${query({ hours: String(hours) })}`);
 }

@@ -1,459 +1,773 @@
-import { ArrowUpRight, Info, RefreshCw, TrendingUp, Users } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Dialog,
+  Shell,
+  Sidebar,
+  SidebarItem,
+  SidebarSection,
+  cn,
+} from "@trendifest/opendesk";
+import {
+  Activity,
+  ArrowUpRight,
+  ChevronRight,
+  Circle,
+  Database,
+  Info,
+  Menu,
+  Moon,
+  Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRight,
+  Radio,
+  RefreshCw,
+  Sun,
+  Users,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { TrendMap, TrendMapNode } from "../../shared/types.ts";
 import { DbNotice } from "@/components/db-notice";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useTheme } from "@/hooks/use-app";
-import { useTrendMap } from "@/hooks/use-trends";
+import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-trends";
 import { formatRelative } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import type { GraphLink, GraphNode, NodeKind } from "@/pages/trend-graph.data";
-
-/**
- * The trend map: one picture of what the collector actually saw.
- *
- * Nodes are viewer segments and pattern clusters. Node size follows the
- * emergence score, so the largest circle answers "what might become a trend?".
- * Every edge is a collected observation, never an inferred similarity: the
- * "these two patterns are alike" claim lives in the Signals cluster view, not
- * here.
- */
+import type { GraphLink, GraphNode } from "@/lib/graph";
 
 const WINDOWS = [
   { hours: 24, label: "24h" },
   { hours: 72, label: "3d" },
   { hours: 168, label: "7d" },
 ] as const;
+const NO_EMPHASIS = new Set<string>();
 
-/**
- * Graph labels are capped: a 470px sentence centered on a circle covers every
- * hub name around it. The inspector and ranked list carry the full text, so the
- * canvas only needs enough to identify the node.
- */
-function graphLabel(label: string) {
-  const clean = label.replace(/\s+/g, " ").trim();
-  return clean.length <= 46 ? clean : `${clean.slice(0, 45).trimEnd()}…`;
-}
-
+/** Keep labels short on the canvas; the inspector retains the complete API label. */
 function toCanvas(map: TrendMap) {
-  const nodes: GraphNode[] = map.nodes.map((node) => ({
-    id: node.id,
-    kind: (node.kind === "pattern"
-      ? "pattern"
-      : node.kind === "pool"
-        ? "pool"
-        : "segment") as NodeKind,
-    label: node.kind === "pattern" ? graphLabel(node.label) : node.label,
-    description: node.description,
-    radius: node.radius * 0.6,
-    degree: map.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length,
-    hub: node.kind !== "pattern",
-    value: node.potential,
-    rising: (node.potential ?? 0) >= 40,
-    parentTerm: "trend map",
-    latest: null,
-    changePct: null,
-    x: node.x,
-    y: node.y,
-  }));
-
+  const nodes: GraphNode[] = map.nodes.map((node) => {
+    const label = node.label.replace(/\s+/g, " ").trim();
+    return {
+      id: node.id,
+      kind: node.kind,
+      label:
+        node.kind === "pattern" && label.length > 46 ? `${label.slice(0, 45).trimEnd()}…` : label,
+      description: node.description,
+      radius: node.radius * 0.6,
+      degree: map.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length,
+      hub: node.kind !== "pattern",
+    };
+  });
   const links: GraphLink[] = map.edges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
-    relation: "observed-in",
+    relation: edge.relation,
+    similarity: edge.similarity,
   }));
-
   return { nodes, links };
 }
 
+/** A heuristic score, deliberately not formatted as a probability. */
 function PotentialBadge({ node }: { node: TrendMapNode }) {
   if (node.potential === null) return null;
-  const variant = node.potential >= 60 ? "success" : node.potential >= 35 ? "warning" : "outline";
   return (
-    <Badge variant={variant} className="tabular-nums">
-      {node.potential}/100
+    <Badge tone={node.potential >= 60 ? "ok" : "neutral"} className="mono">
+      {node.potential}
+      <span className="text-fg-3">/100</span>
     </Badge>
   );
 }
 
-/** One row of the ranked list; doubles as the keyboard path into the map. */
-function RankedRow({
-  node,
-  rank,
-  selected,
-  onSelect,
-}: {
-  node: TrendMapNode;
-  rank: number;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const score = node.score;
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={cn(
-        "w-full rounded-md border border-border p-2.5 text-left transition-colors hover:bg-accent",
-        selected && "border-primary/40 bg-accent",
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <p className="line-clamp-2 text-[0.8125rem] leading-5 text-foreground">
-          <span className="mr-1.5 text-muted-foreground tabular-nums">{rank}.</span>
-          {node.label}
-        </p>
-        <PotentialBadge node={node} />
-      </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <Users aria-hidden="true" className="size-3" />
-          {node.authors} author{node.authors === 1 ? "" : "s"}
-        </span>
-        <span>{node.posts} posts</span>
-        {node.segments.length > 0 ? (
-          <span>{node.segments.join(", ")}</span>
-        ) : (
-          <span>discovery pool only</span>
-        )}
-        {score && score.velocity > 0.6 ? (
-          <span className="inline-flex items-center gap-1 text-success">
-            <TrendingUp aria-hidden="true" className="size-3" />
-            accelerating
-          </span>
-        ) : null}
-      </div>
-    </button>
-  );
-}
-
-/** Selected-node detail: the score broken into its parts, with no hidden math. */
+/** The selected pattern's evidence remains readable without interpreting the canvas. */
 function NodeDetail({ node }: { node: TrendMapNode }) {
   const score = node.score;
-  if (!score) {
-    return (
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-foreground">{node.label}</p>
-        <p className="text-[0.8125rem] leading-5 text-muted-foreground">{node.description}</p>
-        <p className="text-xs text-muted-foreground">
-          {node.posts} posts observed in this window. Segments are anchors, so they carry no score.
-        </p>
-      </div>
-    );
-  }
-
-  const parts = [
-    { label: "Reach", value: score.reach, hint: "distinct authors, log-scaled" },
-    { label: "Velocity", value: score.velocity, hint: "recent authors vs the prior window" },
-    { label: "Spread", value: score.spread, hint: "distinct audience segments" },
-    { label: "Persistence", value: score.persistence, hint: "how long it keeps producing" },
-    { label: "Diversity", value: score.diversity, hint: "authors per post" },
-  ];
-
   return (
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[0.9375rem] font-medium leading-5 text-foreground">{node.label}</p>
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="min-w-0 break-words text-[13px] font-medium leading-5 text-fg">
+          {node.label}
+        </h3>
         <PotentialBadge node={node} />
       </div>
-
-      <dl className="grid grid-cols-2 gap-2">
-        <div>
-          <dt className="text-xs text-muted-foreground">Authors</dt>
-          <dd className="numeric text-sm tabular-nums text-foreground">{score.authors}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">Posts</dt>
-          <dd className="numeric text-sm tabular-nums text-foreground">{score.posts}</dd>
-        </div>
-      </dl>
-
-      <div className="space-y-1.5">
-        {parts.map((part) => (
-          <div key={part.label} className="space-y-0.5">
-            <div className="flex items-baseline justify-between gap-2 text-xs">
-              <span className="text-muted-foreground" title={part.hint}>
-                {part.label}
-              </span>
-              <span className="numeric tabular-nums text-foreground">
-                {(part.value * 100).toFixed(0)}
-              </span>
+      <p className="text-[12px] leading-5 text-fg-3">{node.description}</p>
+      {score ? (
+        <>
+          <dl className="grid grid-cols-2 gap-3 rounded-lg bg-sunken p-3">
+            <div>
+              <dt className="text-[11px] text-fg-3">Independent authors</dt>
+              <dd className="mono mt-1 text-[17px] text-fg">{score.authors}</dd>
             </div>
-            <div className="h-1 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${Math.round(part.value * 100)}%` }}
-              />
+            <div>
+              <dt className="text-[11px] text-fg-3">Collected posts</dt>
+              <dd className="mono mt-1 text-[17px] text-fg">{score.posts}</dd>
             </div>
+          </dl>
+          <div className="space-y-2.5">
+            {[
+              { label: "Reach", value: score.reach },
+              { label: "Velocity", value: score.velocity },
+              { label: "Audience spread", value: score.spread },
+              { label: "Persistence", value: score.persistence },
+              { label: "Author diversity", value: score.diversity },
+            ].map((part) => (
+              <div key={part.label}>
+                <div className="mb-1 flex justify-between gap-2 text-[11px]">
+                  <span className="text-fg-3">{part.label}</span>
+                  <span className="mono text-fg-2">{Math.round(part.value * 100)}/100</span>
+                </div>
+                <div className="h-1 overflow-hidden rounded-full bg-active">
+                  <div
+                    className="h-full rounded-full bg-fg-2"
+                    style={{ width: `${part.value * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-
-      <p className="rounded-md border border-border bg-muted/40 p-2 text-xs leading-5 text-muted-foreground">
-        Evidence confidence ×{score.confidence.toFixed(2)}. A pattern needs at least five
-        independent authors to keep its full score; below that the score is reduced rather than
-        inflated by a small sample.
-      </p>
+          <p className="text-[11px] leading-5 text-fg-3">
+            Evidence multiplier ×{score.confidence.toFixed(2)}. Five independent authors are needed
+            for the full score. This is a ranking heuristic, not a prediction.
+          </p>
+        </>
+      ) : (
+        <p className="text-[12px] leading-5 text-fg-3">
+          {node.posts.toLocaleString()} posts observed. Audience hubs have no trend score.
+        </p>
+      )}
+      {node.kind === "pattern" && (
+        <section className="border-t border-line pt-4" aria-label="Source posts">
+          <h4 className="label-caps mb-2">Source posts</h4>
+          {node.examples?.length ? (
+            <ul className="space-y-2">
+              {node.examples.map((example) => (
+                <li key={example.uri} className="rounded-lg border border-line p-2.5">
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[10.5px] text-fg-3">
+                    <span className="min-w-0 truncate">
+                      {example.authorHandle ? `@${example.authorHandle}` : "Unknown handle"}
+                    </span>
+                    <Badge>{example.kind}</Badge>
+                  </div>
+                  <p className="break-words text-[11.5px] leading-5 text-fg-2">
+                    {example.text || "Media-only post"}
+                  </p>
+                  <a
+                    href={example.permalink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex min-h-6 items-center gap-1 text-[11px] text-fg underline underline-offset-4"
+                  >
+                    Open source post
+                    <ArrowUpRight className="size-3" aria-hidden="true" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[11px] text-fg-3">No source posts available in this window.</p>
+          )}
+        </section>
+      )}
     </div>
   );
 }
 
+/** One graph workspace: collection controls and evidence live beside the graph, never on separate routes. */
 export function TrendMapPage() {
-  const { theme } = useTheme();
+  const { theme, toggle } = useTheme();
   const [hours, setHours] = useState<number>(72);
+  const [audience, setAudience] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [collectionOpen, setCollectionOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const [desktopInspector, setDesktopInspector] = useState(true);
+  const [mobileInspector, setMobileInspector] = useState(false);
+  const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 1199px)").matches);
   const map = useTrendMap(hours);
-
+  const collection = useCollectionStatus();
+  const collect = useCollectNow();
   const data = map.data;
   const canvas = useMemo(() => (data ? toCanvas(data) : { nodes: [], links: [] }), [data]);
   const selected = data?.nodes.find((node) => node.id === selectedId) ?? null;
-
-  // Selection highlights, never dims: fading the rest of the map to 16% would
-  // make a 64/100 circle and a 14/100 circle look equally faint.
-  const activeIds = useMemo(() => new Set(canvas.nodes.map((node) => node.id)), [canvas.nodes]);
+  const connectedIds = useMemo(() => {
+    if (!audience) return new Set(canvas.nodes.map((node) => node.id));
+    const hubId = `segment:${audience}`;
+    return new Set([
+      hubId,
+      ...canvas.links.filter((edge) => edge.source === hubId).map((edge) => edge.target),
+    ]);
+  }, [audience, canvas]);
+  const patterns = useMemo(
+    () =>
+      (data?.nodes ?? [])
+        .filter((node) => node.kind === "pattern" && connectedIds.has(node.id))
+        .sort((a, b) => (b.potential ?? 0) - (a.potential ?? 0)),
+    [data, connectedIds],
+  );
+  const relatedPatterns = useMemo(
+    () =>
+      (data?.edges ?? [])
+        .flatMap((edge) => {
+          if (edge.relation !== "similarity" || !selectedId) return [];
+          const otherId =
+            edge.source === selectedId
+              ? edge.target
+              : edge.target === selectedId
+                ? edge.source
+                : null;
+          const node = data?.nodes.find((item) => item.id === otherId);
+          return node ? [{ node, similarity: edge.similarity ?? edge.weight }] : [];
+        })
+        .sort((a, b) => b.similarity - a.similarity),
+    [data, selectedId],
+  );
+  const audienceLabel =
+    data?.coverage.find((row) => row.segmentId === audience)?.label ?? "All audiences";
+  const status = collection.data;
+  const busy = collect.isPending || status?.backfilling === true;
+  const live = status?.configured === true && status.tailConnected;
+  const statusLabel = collection.isError
+    ? "Status unavailable"
+    : !status
+      ? "Connecting"
+      : !status.configured
+        ? "Database required"
+        : live
+          ? "Live feed"
+          : busy
+            ? "Collecting"
+            : "Feed disconnected";
+  const unconfigured =
+    map.error instanceof Error && "code" in map.error && map.error.code === "database_unconfigured";
 
   useEffect(() => {
-    // A window change invalidates every node id in the selection.
+    const media = window.matchMedia("(max-width: 1199px)");
+    const update = () => setNarrow(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
     setSelectedId(null);
   }, [hours]);
 
-  const loading = map.isLoading && !data;
-  const unconfigured =
-    map.isError &&
-    map.error instanceof Error &&
-    "code" in map.error &&
-    map.error.code === "database_unconfigured";
+  /** Filtering only changes emphasis; it must not restart the force simulation. */
+  function chooseAudience(id: string | null) {
+    setAudience(id);
+    setSelectedId(null);
+    setNavOpen(false);
+  }
+
+  /** Both the ranked list and canvas open the same details, including on narrow screens. */
+  function selectNode(id: string | null) {
+    setSelectedId(id);
+    if (id) {
+      if (!connectedIds.has(id)) setAudience(null);
+      if (narrow) setMobileInspector(true);
+      else setDesktopInspector(true);
+    }
+  }
+
+  const sidebar = (rail: boolean) => (
+    <Sidebar
+      collapsed={rail}
+      brand={
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-inverse text-inverse-fg">
+            <Network className="size-4" aria-hidden="true" />
+          </span>
+          {!rail && (
+            <span className="truncate text-[14px] font-semibold tracking-tight">
+              trendifest<span className="ms-1 text-fg-3">.</span>
+            </span>
+          )}
+        </div>
+      }
+      footer={
+        <div className="space-y-2">
+          <SidebarItem
+            icon={<Database />}
+            collapsed={rail}
+            onClick={() => {
+              setNavOpen(false);
+              setCollectionOpen(true);
+            }}
+            title="Collection status"
+          >
+            Collection status
+          </SidebarItem>
+          <SidebarItem
+            icon={theme === "dark" ? <Sun /> : <Moon />}
+            collapsed={rail}
+            onClick={toggle}
+            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          >
+            {theme === "dark" ? "Light appearance" : "Dark appearance"}
+          </SidebarItem>
+          <div className="sidebar-collapse">
+            <SidebarItem
+              icon={rail ? <PanelLeftOpen /> : <PanelLeftClose />}
+              collapsed={rail}
+              onClick={() => setCollapsed(!collapsed)}
+              title={rail ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {rail ? "Expand sidebar" : "Collapse sidebar"}
+            </SidebarItem>
+          </div>
+          {!rail && (
+            <p className="px-4 pb-1 text-[10px] leading-4 text-fg-3">Social signals, connected.</p>
+          )}
+        </div>
+      }
+    >
+      <SidebarSection label="Workspace" collapsed={rail}>
+        <SidebarItem
+          icon={<Network />}
+          active={!audience}
+          collapsed={rail}
+          onClick={() => chooseAudience(null)}
+          count={data?.nodes.filter((node) => node.kind === "pattern").length}
+          title="All audiences"
+        >
+          Trend graph
+        </SidebarItem>
+      </SidebarSection>
+      <SidebarSection label="Audience feeds" collapsed={rail}>
+        {(data?.coverage ?? []).map((row) => (
+          <SidebarItem
+            key={row.segmentId}
+            icon={row.segmentId === "discover" ? <Radio /> : <Circle className="size-3" />}
+            active={audience === row.segmentId}
+            collapsed={rail}
+            onClick={() => chooseAudience(row.segmentId)}
+            count={row.posts}
+            title={row.error ? `${row.label}: ${row.error}` : row.label}
+          >
+            {row.label}
+          </SidebarItem>
+        ))}
+        {!data && !rail && (
+          <p className="px-4 py-2 text-[12px] text-fg-3">Feeds appear after connection.</p>
+        )}
+      </SidebarSection>
+    </Sidebar>
+  );
+
+  const inspector = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-line px-4">
+        <div>
+          <h2 className="text-[12.5px] font-medium text-fg">
+            {selected ? "Pattern details" : "Highest potential"}
+          </h2>
+          <p className="mt-0.5 text-[10.5px] text-fg-3">
+            {selected
+              ? "Evidence behind the node"
+              : `${patterns.length} patterns · last ${hours} hours`}
+          </p>
+        </div>
+        {selected && (
+          <Button
+            variant="ghost"
+            square
+            aria-label="Clear node selection"
+            onClick={() => setSelectedId(null)}
+          >
+            <X />
+          </Button>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {selected && (
+          <div className="border-b border-line p-4">
+            <NodeDetail node={selected} />
+            {selected.kind === "pattern" && (
+              <div className="mt-4 border-t border-line pt-4">
+                <h3 className="label-caps mb-2">Similar patterns</h3>
+                {relatedPatterns.length === 0 ? (
+                  <p className="text-[11px] leading-5 text-fg-3">
+                    No displayed pattern meets the same-model similarity threshold.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {relatedPatterns.map(({ node, similarity }) => (
+                      <li key={node.id}>
+                        <button
+                          type="button"
+                          onClick={() => selectNode(node.id)}
+                          className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-start hover:bg-hover"
+                        >
+                          <span className="min-w-0 flex-1 break-words text-[11.5px] leading-5 text-fg-2">
+                            {node.label}
+                          </span>
+                          <span
+                            className="mono pt-0.5 text-[10.5px] text-fg-3"
+                            title="Cosine similarity"
+                          >
+                            {similarity.toFixed(3)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <ol className="p-2" aria-label="Patterns ranked by potential">
+          {patterns.map((node, index) => (
+            <li key={node.id}>
+              <button
+                type="button"
+                className={cn(
+                  "pattern-row group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-3 text-start hover:bg-hover",
+                  selectedId === node.id && "bg-active",
+                )}
+                aria-pressed={selectedId === node.id}
+                onClick={() => selectNode(selectedId === node.id ? null : node.id)}
+              >
+                <span className="mono pt-0.5 text-[10.5px] text-fg-3">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="line-clamp-2 block break-words text-[12px] leading-[18px] text-fg-2 group-hover:text-fg">
+                    {node.label}
+                  </span>
+                  <span className="mt-1.5 flex items-center gap-1 text-[10.5px] text-fg-3">
+                    <Users className="size-3" aria-hidden="true" />
+                    {node.authors} authors
+                    <span className="mx-1" aria-hidden="true">
+                      ·
+                    </span>
+                    {node.posts} posts
+                  </span>
+                </span>
+                <PotentialBadge node={node} />
+              </button>
+            </li>
+          ))}
+        </ol>
+        {data && patterns.length === 0 && (
+          <p className="p-4 text-[12px] leading-5 text-fg-3">
+            No patterns observed for this audience in this window. Try a wider window or collect
+            more posts.
+          </p>
+        )}
+      </div>
+      <p className="shrink-0 border-t border-line px-4 py-3 text-[10.5px] leading-4 text-fg-3">
+        Larger nodes mean higher potential. Scores rank collected evidence; they are not
+        predictions.
+      </p>
+    </div>
+  );
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex h-[38px] shrink-0 items-center gap-2 border-b border-border bg-muted px-2.5 text-[12px]">
-        <a href="#/graph" className="font-medium text-foreground hover:underline">
-          trendifest
-        </a>
-        <span className="text-muted-foreground/60" aria-hidden="true">
-          /
-        </span>
-        <span className="text-muted-foreground">Trend map</span>
-        <div className="ml-auto flex items-center gap-1">
-          <div className="flex items-center rounded-[4px] border border-border">
-            {WINDOWS.map((window) => (
-              <button
-                key={window.hours}
-                type="button"
-                onClick={() => setHours(window.hours)}
-                aria-pressed={hours === window.hours}
-                className={cn(
-                  "h-6 px-2 text-[11px] tabular-nums text-muted-foreground transition-colors hover:text-foreground",
-                  hours === window.hours && "bg-accent text-foreground",
-                )}
+    <>
+      <a className="skip-link" href="#graph-workspace">
+        Skip to graph
+      </a>
+      <Shell
+        collapsed={collapsed}
+        sidebar={sidebar(collapsed)}
+        header={
+          <div className="workspace-header flex min-w-0 flex-wrap items-center gap-2 px-3 py-2">
+            <Button
+              className="mobile-nav-trigger"
+              variant="ghost"
+              square
+              aria-label="Open audience sidebar"
+              onClick={() => setNavOpen(true)}
+            >
+              <Menu />
+            </Button>
+            <div className="flex min-w-0 items-center gap-2">
+              <Network className="size-4 text-fg-3" aria-hidden="true" />
+              <h1 className="text-[13px] font-medium">Trend graph</h1>
+              <ChevronRight className="header-breadcrumb size-3 text-fg-4" aria-hidden="true" />
+              <span className="header-breadcrumb max-w-40 truncate text-[12px] text-fg-3">
+                {audienceLabel}
+              </span>
+            </div>
+            <div className="ms-auto flex items-center gap-1.5">
+              <span className="header-live">
+                <Badge dot tone={live ? "ok" : "neutral"}>
+                  {statusLabel}
+                </Badge>
+              </span>
+              <Button
+                variant="ghost"
+                square
+                aria-label="Refresh the map"
+                disabled={map.isFetching}
+                onClick={() => void map.refetch()}
               >
-                {window.label}
-              </button>
-            ))}
+                <RefreshCw />
+              </Button>
+              <Button
+                variant="ghost"
+                square
+                aria-label="How the score works"
+                onClick={() => setAboutOpen(true)}
+              >
+                <Info />
+              </Button>
+              <Button
+                variant="ghost"
+                square
+                aria-label="Toggle pattern inspector"
+                aria-expanded={narrow ? mobileInspector : desktopInspector}
+                onClick={() =>
+                  narrow
+                    ? setMobileInspector(!mobileInspector)
+                    : setDesktopInspector(!desktopInspector)
+                }
+              >
+                <PanelRight />
+              </Button>
+            </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="How the score works"
-            title="How the score works"
-            className="size-6 rounded-[3px] [&_svg]:size-3.5"
-            onClick={() => setAboutOpen(true)}
-          >
-            <Info />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Refresh the map"
-            title="Refresh the map"
-            className="size-6 rounded-[3px] [&_svg]:size-3.5"
-            onClick={() => void map.refetch()}
-          >
-            <RefreshCw />
-          </Button>
-        </div>
-      </header>
-
-      <div className="relative flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section
-          aria-label="Trend map"
-          aria-describedby="map-description"
-          className="relative min-h-0 flex-1 overflow-hidden"
+        }
+      >
+        <div
+          id="graph-workspace"
+          tabIndex={-1}
+          className={cn("graph-workspace", desktopInspector && "with-inspector")}
         >
-          <p id="map-description" className="sr-only">
-            A graph of viewer segments and collected patterns. Larger pattern nodes have higher
-            emergence scores. The ranked list is the keyboard and screen-reader path.
-          </p>
-
-          {canvas.nodes.length > 0 ? (
-            <TrendGraphCanvas
-              theme={theme}
-              nodes={canvas.nodes}
-              links={canvas.links}
-              selectedId={selectedId}
-              activeIds={activeIds}
-              emphasisIds={new Set()}
-              // Labels on hover and selection only. With every label forced on,
-              // a 120-node map becomes a wall of overlapping text.
-              showContextLabels={false}
-              labelHubsAlways
-              // The map encodes score as size, so selecting a pattern must not
-              // zoom into it: that would hide the comparison being demonstrated.
-              autoFitSelection={false}
-              onSelect={setSelectedId}
-            />
-          ) : null}
-
-          {loading ? (
-            <div className="absolute inset-0 grid place-items-center">
-              <p className="text-sm text-muted-foreground">Building the map…</p>
-            </div>
-          ) : null}
-
-          {unconfigured ? (
-            <div className="absolute inset-0 grid place-items-center px-6">
-              <DbNotice />
-            </div>
-          ) : null}
-
-          {!loading && !unconfigured && data && data.nodes.length === 0 ? (
-            <div className="absolute inset-0 grid place-items-center px-6">
-              <div className="max-w-sm space-y-2 text-center">
-                <p className="text-sm font-medium text-foreground">Nothing collected yet</p>
-                <p className="text-[0.8125rem] leading-5 text-muted-foreground">
-                  Run a collection cycle on the Signals page; patterns appear here as posts are
-                  embedded and grouped.
+          <section
+            className="graph-surface relative min-h-0 min-w-0 overflow-hidden"
+            aria-label="Trend graph"
+            aria-describedby="graph-description"
+          >
+            <p id="graph-description" className="sr-only">
+              Collected patterns connected to audience feeds. Larger pattern nodes have higher
+              emergence scores. Use the pattern inspector to select nodes with the keyboard.
+            </p>
+            <div className="graph-toolbar pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium text-fg-2">{audienceLabel}</p>
+                <p className="mt-1 text-[11px] text-fg-3">
+                  {data ? `${patterns.length} patterns in view` : "Connecting to collected signals"}
                 </p>
-                <Button variant="outline" size="sm" onClick={() => void map.refetch()}>
-                  Refresh
+              </div>
+              <div
+                className="pointer-events-auto inline-flex rounded-lg border border-line bg-surface p-0.5"
+                aria-label="Observation window"
+              >
+                {WINDOWS.map((window) => (
+                  <Button
+                    key={window.hours}
+                    variant={hours === window.hours ? "subtle" : "ghost"}
+                    size="xs"
+                    aria-pressed={hours === window.hours}
+                    onClick={() => setHours(window.hours)}
+                  >
+                    {window.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            {canvas.nodes.length > 0 && (
+              <TrendGraphCanvas
+                theme={theme}
+                nodes={canvas.nodes}
+                links={canvas.links}
+                selectedId={selectedId}
+                activeIds={connectedIds}
+                emphasisIds={NO_EMPHASIS}
+                showContextLabels={false}
+                labelHubsAlways
+                autoFitSelection={false}
+                onSelect={selectNode}
+              />
+            )}
+            {map.isLoading && (
+              <div className="graph-state" role="status">
+                <Activity className="size-5 text-fg-3" aria-hidden="true" />
+                <p>Loading collected patterns…</p>
+              </div>
+            )}
+            {unconfigured && (
+              <div className="graph-state">
+                <DbNotice />
+              </div>
+            )}
+            {map.isError && !unconfigured && (
+              <div className="graph-error" role="alert">
+                <p>
+                  {data
+                    ? "Graph refresh failed. Showing the last collected data."
+                    : map.error.message}
+                </p>
+                <Button onClick={() => void map.refetch()}>Try again</Button>
+              </div>
+            )}
+            {data && patterns.length === 0 && !map.isError && (
+              <div className="graph-empty pointer-events-none">
+                <Network className="mx-auto mb-3 size-6 text-fg-3" aria-hidden="true" />
+                <p className="text-[13px] font-medium">No patterns in this view yet</p>
+                <p className="mt-1 text-[12px] text-fg-3">
+                  Choose another audience or collect more posts.
+                </p>
+                <Button
+                  className="pointer-events-auto mt-4"
+                  onClick={() => setCollectionOpen(true)}
+                >
+                  Collection status
                 </Button>
               </div>
+            )}
+            <div className="graph-footer pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-[10.5px] text-fg-3">
+              <span>
+                {data ? (
+                  <>
+                    {data.edges.filter((edge) => edge.relation === "similarity").length} similarity
+                    links
+                    <span className="footer-updated">
+                      {" "}
+                      · updated {formatRelative(data.generatedAt)}
+                    </span>
+                  </>
+                ) : (
+                  "Waiting for data"
+                )}
+              </span>
+              <span className="rounded bg-surface/90 px-1">Larger node · higher potential</span>
             </div>
-          ) : null}
-
-          {data ? (
-            <div className="pointer-events-none absolute bottom-2 left-2.5 z-20 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-              <span className="pointer-events-auto rounded-[3px] bg-background/80 px-1">
-                {data.nodes.filter((node) => node.kind === "pattern").length} patterns
-              </span>
-              <span className="pointer-events-auto rounded-[3px] bg-background/80 px-1">
-                {data.coverage.reduce((sum, row) => sum + row.posts, 0)} posts
-              </span>
-              <span className="pointer-events-auto rounded-[3px] bg-background/80 px-1">
-                larger node = higher potential
-              </span>
-            </div>
-          ) : null}
-        </section>
-
-        <aside
-          aria-label="Ranked patterns"
-          className="flex min-h-0 flex-col border-t border-border bg-muted lg:border-l lg:border-t-0"
-        >
-          <div className="shrink-0 space-y-1 border-b border-border px-3 py-2">
-            <h2 className="text-[13px] font-medium text-foreground">Largest potential</h2>
-            <p className="text-[11px] leading-4 text-muted-foreground">
-              Ranked by emergence score over the last {data?.hours ?? hours} hours.
-            </p>
-          </div>
-
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-            {selected ? (
-              <div className="rounded-md border border-border bg-background p-2.5">
-                <NodeDetail node={selected} />
-                {selected.kind === "pattern" ? (
-                  <a
-                    href="#/signals"
-                    className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                  >
-                    Inspect source posts
-                    <ArrowUpRight aria-hidden="true" className="size-3" />
-                  </a>
-                ) : null}
-              </div>
-            ) : null}
-
-            {(data?.top ?? []).map((node, index) => (
-              <RankedRow
-                key={node.id}
-                node={node}
-                rank={index + 1}
-                selected={node.id === selectedId}
-                onSelect={() => setSelectedId(node.id === selectedId ? null : node.id)}
-              />
-            ))}
-
-            {!loading && data && data.top.length === 0 ? (
-              <p className="px-2 py-4 text-xs leading-5 text-muted-foreground">
-                No pattern has more than one author yet. A single account posting repeatedly is not
-                counted as a trend.
-              </p>
-            ) : null}
-          </div>
-
-          {data ? (
-            <p className="shrink-0 border-t border-border px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-              Updated {formatRelative(data.generatedAt)}.{" "}
-              {data.method.velocityComparable
-                ? "Velocity compares two 6-hour windows."
-                : "Velocity is neutral until 12 hours of history exist."}
-            </p>
-          ) : null}
-        </aside>
-      </div>
-
-      <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>How the score is computed</DialogTitle>
-            <DialogDescription>
-              A transparent heuristic over collected evidence. It is not a probability and it is not
-              calibrated.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 text-[0.8125rem] leading-5 text-muted-foreground">
-            <p>
-              Five components, each normalized to 0–1 and weighted: reach (distinct authors,
-              log-scaled) 34%, velocity (recent versus prior authors) 26%, audience spread 18%,
-              persistence 12%, and author diversity 10%.
-            </p>
-            <p>
-              The weighted sum is then scaled by evidence volume: a pattern with one author keeps
-              30% of its score, five or more keep all of it. This is why a two-post cluster reads
-              low here even when its cosine similarity is high.
-            </p>
-            <p>
-              Distinct authors, not post count, drive reach and velocity. The first cluster measured
-              had 64 posts from a single account — a counter bot — and any ranking that put it first
-              would be wrong.
-            </p>
-            <p>
-              Circle area is the score, so a circle twice the radius is roughly four times the
-              score. Segments are fixed anchors: they carry no score because they are the frame, not
-              the finding.
-            </p>
-            {data && !data.method.velocityComparable ? (
-              <p className="rounded-md border border-warning/30 bg-warning/5 p-2 text-foreground">
-                Velocity is currently neutral: the collector has less than 12 hours of history, so a
-                prior window does not exist yet. Acceleration will become measurable as history
-                accumulates.
-              </p>
-            ) : null}
-          </div>
-        </DialogContent>
+          </section>
+          {desktopInspector && (
+            <aside
+              className="graph-inspector min-h-0 min-w-0 border-s border-line bg-surface"
+              aria-label="Pattern inspector"
+            >
+              {inspector}
+            </aside>
+          )}
+        </div>
+      </Shell>
+      <Dialog open={navOpen} onOpenChange={setNavOpen} title="Audience feeds" size="sm">
+        <div className="mobile-sidebar">{sidebar(false)}</div>
       </Dialog>
-    </div>
+      <Dialog
+        open={mobileInspector && narrow}
+        onOpenChange={setMobileInspector}
+        title="Pattern inspector"
+        size="sm"
+      >
+        <div className="mobile-inspector">{inspector}</div>
+      </Dialog>
+      <Dialog
+        open={aboutOpen}
+        onOpenChange={setAboutOpen}
+        title="How trend potential works"
+        description="A transparent ranking heuristic over collected evidence, not a probability."
+      >
+        <div className="space-y-4 text-[12.5px] leading-5 text-fg-2">
+          <p>
+            Solid edges mean an audience feed observed a pattern. Dashed edges connect patterns with
+            similar embedding centroids, compared only within the same model, modality, and native
+            dimension.
+          </p>
+          <p>
+            Similarity links use cosine thresholds of 0.75 for text and 0.78 for images or audio.
+            Each pattern has at most three similarity links. These are affinity heuristics, not
+            probabilities or proof that two posts mean the same thing.
+          </p>
+          <dl className="space-y-2">
+            {Object.entries(
+              data?.method.weights ?? {
+                reach: 0.34,
+                velocity: 0.26,
+                spread: 0.18,
+                persistence: 0.12,
+                diversity: 0.1,
+              },
+            ).map(([label, weight]) => (
+              <div className="flex justify-between gap-4" key={label}>
+                <dt className="capitalize">{label}</dt>
+                <dd className="mono">{Math.round(weight * 100)}%</dd>
+              </div>
+            ))}
+          </dl>
+          <p>
+            The weighted result is reduced when evidence is limited. Five independent authors are
+            needed for the full score. Larger pattern nodes have higher scores; audience hubs carry
+            no score. Connections do not inflate the score.
+          </p>
+          <p className="rounded-lg bg-sunken p-3">
+            {data?.method.velocityComparable
+              ? "Velocity compares distinct authors in the latest and preceding six-hour windows."
+              : "Velocity stays neutral until at least twelve hours of observation history are available."}
+          </p>
+          <p className="text-[11px] text-fg-3">
+            Audience feeds are collection contexts, not verified viewer demographics. Feed selection
+            cannot prove a poster’s age.
+          </p>
+        </div>
+      </Dialog>
+      <Dialog
+        open={collectionOpen}
+        onOpenChange={setCollectionOpen}
+        title="Collection status"
+        description="Live social feeds, local embeddings, and your Postgres database."
+        footer={
+          <Button
+            variant="primary"
+            icon={<RefreshCw />}
+            loading={busy}
+            disabled={!status?.configured}
+            onClick={() => collect.mutate(25)}
+          >
+            Collect now
+          </Button>
+        }
+      >
+        <div className="space-y-4 text-[12px] leading-5 text-fg-2">
+          <div className="flex items-center justify-between gap-3">
+            <span>Bluesky feed</span>
+            <Badge tone={live ? "ok" : "neutral"} dot>
+              {statusLabel}
+            </Badge>
+          </div>
+          <p>
+            {status?.lastBackfillAt
+              ? `Last collection ${formatRelative(status.lastBackfillAt)}.`
+              : "No completed collection reported."}{" "}
+            The graph refreshes every two minutes; feed status refreshes separately.
+          </p>
+          {collection.isError && (
+            <p role="alert" className="text-danger-fg">
+              {collection.error.message}
+            </p>
+          )}
+          {collect.isError && (
+            <p role="alert" className="text-danger-fg">
+              {collect.error.message}
+            </p>
+          )}
+          <p role="status" className="text-fg-3">
+            {busy
+              ? "A collection cycle is running. This can take time while media is embedded."
+              : status?.lastBackfill
+                ? `Last completed cycle: processed ${status.lastBackfill.stored} posts and ${status.lastBackfill.vectors} vectors. ${status.lastBackfill.errors.length} feed errors.`
+                : collect.isSuccess
+                  ? "Collection accepted. Waiting for updated status."
+                  : ""}
+          </p>
+          {status?.lastErrors && status.lastErrors.length > 0 && (
+            <ul className="space-y-1 rounded-lg bg-sunken p-3" aria-label="Collection errors">
+              {status.lastErrors.map((error, index) => (
+                <li key={`${error.segmentId}:${index}`} className="break-words">
+                  {error.segmentId}: {error.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {unconfigured && <DbNotice />}
+        </div>
+      </Dialog>
+    </>
   );
 }

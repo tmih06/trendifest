@@ -1,9 +1,8 @@
 import { SQL } from "bun";
 
 /**
- * Postgres + pgvector access for social collection. The keyword/tabular MVP
- * keeps its JSON store; social observations need real indexes and ANN search,
- * so they live here instead of growing `server/store.ts` into a database.
+ * Postgres + pgvector access for social collection. Observations need real
+ * indexes and ANN search, so they live here rather than in a JSON file.
  *
  * The connection is lazy: importing this module must not open a socket, or
  * `bun test` and `bun run build` would require a database to be running.

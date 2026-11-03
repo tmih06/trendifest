@@ -1,36 +1,23 @@
-import { Database, ExternalLink } from "lucide-react";
+import { Database } from "lucide-react";
 
-/**
- * Shown when social collection has no database. Names the two concrete steps
- * instead of the abstract requirement, because "configure the environment" is
- * not a recovery instruction.
- */
+/** Recoverable setup state: keep the exact local database instructions in the graph. */
 export function DbNotice() {
   return (
-    <div className="max-w-md space-y-2.5 text-center">
-      <p className="text-sm font-medium text-foreground">No collection database</p>
-      <p className="text-[0.8125rem] leading-5 text-muted-foreground">
-        Social collection stores posts, vectors, and clusters in Postgres with pgvector. Start one
-        and point the app at it:
+    <div className="w-full max-w-md space-y-3 text-start">
+      <div className="flex items-center gap-2 text-[13px] font-medium text-fg">
+        <Database className="size-4" aria-hidden="true" />
+        Connect your collection database
+      </div>
+      <p className="text-[12px] leading-5 text-fg-3">
+        Posts, embeddings, and pattern clusters are stored in Postgres with pgvector. Start the
+        database and add these settings to your local .env file.
       </p>
-      <pre className="overflow-x-auto rounded-md border border-border bg-muted/50 p-2.5 text-left text-[11px] leading-5 text-foreground">
-        <code>{`docker compose up -d
-# then add to .env:
-TRENDIFEST_DATABASE_URL=postgres://trendifest:trendifest@127.0.0.1:55433/trendifest
-TRENDIFEST_SOCIAL=1`}</code>
+      <pre className="mono overflow-x-auto rounded-lg border border-line bg-sunken p-3 text-[10.5px] leading-5 text-fg-2">
+        <code>{`docker compose up -d\n# .env\nTRENDIFEST_DATABASE_URL=postgres://trendifest:trendifest@127.0.0.1:55433/trendifest\nTRENDIFEST_SOCIAL=1`}</code>
       </pre>
-      <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-        <Database aria-hidden="true" className="size-3" />
-        Restart <code className="rounded bg-muted px-1">bun dev</code> after saving.
-        <a
-          href="https://github.com/pgvector/pgvector"
-          target="_blank"
-          rel="noreferrer noopener"
-          className="inline-flex items-center gap-0.5 text-primary hover:underline"
-        >
-          pgvector
-          <ExternalLink aria-hidden="true" className="size-3" />
-        </a>
+      <p className="text-[11px] leading-5 text-fg-3">
+        Restart <code className="mono rounded bg-hover px-1">bun dev</code> after saving, then open
+        Collection status to collect posts.
       </p>
     </div>
   );

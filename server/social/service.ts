@@ -1,7 +1,6 @@
 import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
 import type { SegmentCoverage, SocialSignals } from "../../shared/types.ts";
 import { databaseConfigured } from "../db.ts";
-import { BlueskyError } from "./bluesky.ts";
 import { ingestSegments, socialSignals, startTail } from "./pipeline.ts";
 import type { IngestReport } from "./pipeline.ts";
 
@@ -24,6 +23,7 @@ export interface SocialServiceStatus {
   configured: boolean;
   backfilling: boolean;
   lastBackfillAt: string | null;
+  /** The most recent completed cycle, so an operator can inspect what it did. */
   lastBackfill: IngestReport | null;
   lastErrors: Array<{ segmentId: string; message: string }>;
   tailConnected: boolean;
@@ -42,12 +42,12 @@ let errorLog: Array<{ segmentId: string; message: string }> = [];
 
 /**
  * Run one backfill cycle. Re-entrancy is guarded by `backfilling`: a slow cycle
- * covering video downloads must not stack behind the interval timer.
- */
-/**
- * `limitPerSegment` counts posts *accepted* per segment, and ingestion now
- * walks up to three pages to find unseen ones. 25 keeps niche feeds producing
- * patterns without turning a cycle into a long media-embedding run.
+ * covering video downloads must not stack behind the interval timer, and a
+ * concurrent call returns null so the API can report "already running".
+ *
+ * `limitPerSegment` counts posts *accepted* per segment, and ingestion walks up
+ * to three pages to find unseen ones. 25 keeps niche feeds producing patterns
+ * without turning a cycle into a long media-embedding run.
  */
 export async function runBackfill(limitPerSegment = 25): Promise<IngestReport | null> {
   // A concurrent cycle returns null rather than a half-made report, so the API
@@ -65,6 +65,10 @@ export async function runBackfill(limitPerSegment = 25): Promise<IngestReport | 
     for (const error of report.errors) lastErrors.set(error.segmentId, error.message);
     errorLog = [...lastErrors.entries()].map(([segmentId, message]) => ({ segmentId, message }));
     return report;
+  } catch (error) {
+    lastErrors.set("collection", error instanceof Error ? error.message : String(error));
+    errorLog = [...lastErrors.entries()].map(([segmentId, message]) => ({ segmentId, message }));
+    throw error;
   } finally {
     backfilling = false;
   }
@@ -72,8 +76,8 @@ export async function runBackfill(limitPerSegment = 25): Promise<IngestReport | 
 
 /**
  * Start the tail and the backfill timer. No database means social collection is
- * unavailable, which is a supported deployment (the keyword MVP needs no DB);
- * callers see `configured: false` rather than a background crash.
+ * unavailable, which is a supported deployment; callers see `configured: false`
+ * rather than a background crash.
  */
 export function startSocialCollection() {
   if (!databaseConfigured()) return status();
@@ -140,5 +144,3 @@ export async function signalsWithCoverage(windowHours = DEFAULT_WINDOW_HOURS) {
 export function socialHealth() {
   return { configured: databaseConfigured(), segments: VIEWER_SEGMENTS.length };
 }
-
-export { BlueskyError };
