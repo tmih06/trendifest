@@ -27,6 +27,12 @@ The socket lives in a per-run private temporary directory, removed on shutdown
 together with both server process groups. This development setup requires Unix
 socket support (Linux/macOS).
 
+The landing page is at `/`; **Vào Đồ Thị Live** opens the workspace at `/app`.
+`/map`, `#app`, and `?view=app` also open the workspace. Its **Trang chủ** action
+returns to the landing page, and browser Back/Forward follows those routes.
+Both pages share the stored `trendifest-theme` preference. Direct workspace
+loads defer the landing-page module and the optional development toolbar.
+
 `bun run dev:api` still starts the standalone TCP API on port 8787.
 `bun run dev:web` can proxy to that server when started separately. Production serves the
 built frontend and API together on port 8787 (or `PORT`) and refuses to move

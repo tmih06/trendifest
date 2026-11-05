@@ -30,13 +30,36 @@ body {
   background: var(--chrome);
   color: var(--fg);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 15px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
+}
+
+/* Striped horizontal dash pattern for browser native scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: repeating-linear-gradient(
+    to bottom,
+    currentColor 0px,
+    currentColor 2px,
+    transparent 2px,
+    transparent 5px
+  );
+  color: var(--line-strong);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  color: var(--fg);
 }
 
 :focus-visible {
@@ -309,12 +332,6 @@ a {
   }
 }
 
-.theme-switching *,
-.theme-switching *::before,
-.theme-switching *::after {
-  transition: none !important;
-}
-
 @media (max-width: 1199px) {
   .graph-inspector {
     display: none;
@@ -357,6 +374,118 @@ a {
   }
   .graph-empty {
     inset-block-end: 116px;
+  }
+}
+
+/* Lindy-inspired ambient motion & data streams */
+@keyframes shimmer-gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes float-gentle-1 {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+@keyframes float-gentle-2 {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(8px) rotate(-1deg);
+  }
+}
+
+@keyframes dash-stream {
+  to {
+    stroke-dashoffset: -36;
+  }
+}
+
+.animate-shimmer-gradient {
+  background-size: 200% 200%;
+  animation: shimmer-gradient 8s ease-in-out infinite;
+}
+
+.animate-float-1 {
+  animation: float-gentle-1 5s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: float-gentle-2 6.5s ease-in-out infinite;
+}
+
+.animate-dash-stream {
+  animation: dash-stream 1.8s linear infinite;
+}
+
+/* Continuous sliding marquee tracks */
+@keyframes marquee-scroll-left {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes marquee-scroll-right {
+  0% {
+    transform: translate3d(-50%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-marquee-track-left {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll-left 32s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-track-right {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll-right 32s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-track-left:hover,
+.animate-marquee-track-right:hover {
+  animation-play-state: paused;
+}
+
+/* View Transitions API: Rectangle wipe reveal (beui.dev) */
+html[data-beui-vt="rect"]::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html[data-beui-vt="rect"]::view-transition-new(root) {
+  mix-blend-mode: normal;
+  animation: beui-rect-reveal 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes beui-rect-reveal {
+  from {
+    clip-path: var(--beui-vt-from, inset(0 0 100% 0));
+  }
+  to {
+    clip-path: inset(0 0 0 0);
   }
 }
 

@@ -15,6 +15,7 @@ import ArrowUpRight from "lucide-react/icons/arrow-up-right";
 import ChevronRight from "lucide-react/icons/chevron-right";
 import Circle from "lucide-react/icons/circle";
 import Database from "lucide-react/icons/database";
+import Home from "lucide-react/icons/home";
 import Info from "lucide-react/icons/info";
 import Menu from "lucide-react/icons/menu";
 import Moon from "lucide-react/icons/moon";
@@ -39,9 +40,9 @@ import {
 } from "react";
 import type { SocialSource, TopicExample, TrendMapNode } from "../../shared/types.ts";
 import { DbNotice } from "@/components/db-notice";
+import { ThemeToggle, useThemeToggle } from "@/components/motion/theme-toggle";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
 import { TopicBoard } from "@/components/topic-board";
-import { useTheme } from "@/hooks/use-app";
 import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-trends";
 import { compactNumber, formatRelative, topicSearchText } from "@/lib/format";
 import { toCanvas } from "@/lib/graph";
@@ -293,8 +294,9 @@ function TopicInspectorBody({
 }
 
 /** One graph workspace: collection controls and evidence live beside the graph, never on separate routes. */
-export function TrendMapPage() {
-  const { theme, toggle } = useTheme();
+export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
+  const { isDark, toggle: toggleTheme } = useThemeToggle({ start: "top-down" });
+  const theme = isDark ? "dark" : "light";
   const [hours, setHours] = useState<number>(DEFAULT_HOURS);
   const [view, setView] = useState<"graph" | "board">("graph");
   const workspaceHeading = useRef<HTMLHeadingElement>(null);
@@ -501,12 +503,12 @@ export function TrendMapPage() {
             Collection status
           </SidebarItem>
           <SidebarItem
-            icon={theme === "dark" ? <Sun /> : <Moon />}
+            icon={isDark ? <Sun /> : <Moon />}
             collapsed={rail}
-            onClick={toggle}
-            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            onClick={toggleTheme}
+            title={isDark ? "Switch to light theme" : "Switch to dark theme"}
           >
-            {theme === "dark" ? "Light appearance" : "Dark appearance"}
+            {isDark ? "Light appearance" : "Dark appearance"}
           </SidebarItem>
           <div className="sidebar-collapse">
             <SidebarItem
@@ -863,6 +865,23 @@ export function TrendMapPage() {
               </span>
             </div>
             <div className="ms-auto flex items-center gap-1.5">
+              <ThemeToggle
+                className="size-7 rounded-md text-fg-3 hover:text-fg hover:bg-chrome-hover transition-colors"
+                iconClassName="size-3.5"
+                start="top-down"
+              />
+              {onNavigateHome && (
+                <Button
+                  variant="secondary"
+                  size="xs"
+                  aria-label="Về trang giới thiệu"
+                  onClick={onNavigateHome}
+                  className="gap-1 text-[11px] me-1"
+                >
+                  <Home className="size-3" />
+                  <span className="hidden sm:inline">Trang chủ</span>
+                </Button>
+              )}
               <span className="header-live">
                 <Badge dot tone={healthy ? "ok" : "neutral"}>
                   {statusLabel}
