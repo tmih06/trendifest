@@ -224,6 +224,14 @@ bun run ci
 and types without modifying files; `test` runs the complete Bun test suite;
 `build` typechecks and emits the production bundle. The individual commands
 remain available for focused checks.
+The CI test timeout is two minutes per test to allow the first embedding model
+download on a cold runner; the default `bun test` timeout is unchanged.
+
+GitHub Actions runs `.github/workflows/ci.yml` on every push and pull request,
+and supports manual dispatch. It installs the pinned Bun toolchain and FFmpeg,
+starts an isolated pgvector/Postgres service, caches downloaded embedding models,
+then runs `bun run ci` with database integration tests enabled. No collection
+database credentials or repository secrets are required.
 
 Set `TRENDIFEST_TEST_DATABASE_URL` to a disposable database (see below) when
 running CI to include the database integration tests. Without it, Bun reports

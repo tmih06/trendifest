@@ -13,7 +13,7 @@
     "build": "tsc --noEmit && vp build",
     "start": "NODE_ENV=production bun server/index.ts",
     "check": "vp check",
-    "ci": "bun run check && bun run test && bun run build",
+    "ci": "bun run check && bun run test --timeout 120000 && bun run build",
     "fmt": "vp fmt",
     "postinstall": "bun scripts/build-obi-graph.ts",
     "test": "bun test"
