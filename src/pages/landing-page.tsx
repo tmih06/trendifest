@@ -23,11 +23,14 @@ import {
   MessageSquare,
   Network,
   PlayCircle,
+  Radio,
   Shield,
   ShieldCheck,
   Sparkles,
+  Star,
   TrendingUp,
   Users,
+  Video,
   X,
   Zap,
 } from "lucide-react";
@@ -41,6 +44,104 @@ export interface LandingPageProps {
 /* ------------------------------------------------------------------ *
  * Static data for specs & storytelling                               *
  * ------------------------------------------------------------------ */
+
+interface DataStreamNode {
+  name: string;
+  category: string;
+  icon: typeof Sparkles;
+  color: string;
+  top: string;
+  left?: string;
+  right?: string;
+  anim: string;
+  delay: string;
+}
+
+const DATA_STREAM_LEFT: DataStreamNode[] = [
+  {
+    name: "Bluesky Jetstream",
+    category: "AT Protocol v2 Tail",
+    icon: Radio,
+    color: "#38bdf8",
+    top: "10%",
+    left: "2%",
+    anim: "animate-float-1",
+    delay: "0s",
+  },
+  {
+    name: "Threads Graph API",
+    category: "Meta Multi-post Stream",
+    icon: MessageSquare,
+    color: "#f43f5e",
+    top: "28%",
+    left: "5%",
+    anim: "animate-float-2",
+    delay: "1.2s",
+  },
+  {
+    name: "TikTok Research API",
+    category: "Viral Audio Signals",
+    icon: Video,
+    color: "#22d3ee",
+    top: "48%",
+    left: "3%",
+    anim: "animate-float-1",
+    delay: "2.4s",
+  },
+  {
+    name: "CapCut Templates",
+    category: "Video Remix Clusters",
+    icon: Film,
+    color: "#e879f9",
+    top: "68%",
+    left: "6%",
+    anim: "animate-float-2",
+    delay: "0.8s",
+  },
+];
+
+const DATA_STREAM_RIGHT: DataStreamNode[] = [
+  {
+    name: "Hawkes Point Process",
+    category: "Diffusion Forecasting",
+    icon: TrendingUp,
+    color: "#34d399",
+    top: "10%",
+    right: "2%",
+    anim: "animate-float-2",
+    delay: "0.5s",
+  },
+  {
+    name: "CLIP ViT-B/32",
+    category: "Multimodal Embeddings",
+    icon: Eye,
+    color: "#fbbf24",
+    top: "28%",
+    right: "5%",
+    anim: "animate-float-1",
+    delay: "1.8s",
+  },
+  {
+    name: "Temporal GNN",
+    category: "Dynamic Link Prediction",
+    icon: Network,
+    color: "#a78bfa",
+    top: "48%",
+    right: "3%",
+    anim: "animate-float-2",
+    delay: "0.3s",
+  },
+  {
+    name: "Demucs Audio Stems",
+    category: "PeakNetFP Fingerprint",
+    icon: Headphones,
+    color: "#818cf8",
+    top: "68%",
+    right: "6%",
+    anim: "animate-float-1",
+    delay: "2.1s",
+  },
+];
 
 interface MarketStat {
   value: string;
@@ -344,6 +445,9 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
   // Simulated live graph window
   const [graphWindow, setGraphWindow] = useState<string>("24h");
 
+  // Interactive timeline step (0 to 3)
+  const [activeTimelineStep, setActiveTimelineStep] = useState<number>(2);
+
   // Keep dark theme active on body for the Obsidian aesthetic
   useEffect(() => {
     document.documentElement.classList.add("dark");
@@ -441,11 +545,81 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* 2. Hero Section (Inspired by Lindy Tile 1 & 2 + Obsidian)    */}
       {/* ------------------------------------------------------------ */}
       <section className="relative pt-36 pb-24 px-4 sm:px-6 overflow-hidden flex flex-col items-center text-center">
-        {/* Subtle background glow */}
+        {/* Subtle background atmospheric glow */}
         <div
           aria-hidden="true"
-          className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[360px] bg-[#a78bfa]/10 blur-[140px] pointer-events-none rounded-full"
+          className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[720px] h-[400px] bg-gradient-to-b from-[#a78bfa]/20 via-[#60a5fa]/10 to-transparent blur-[140px] pointer-events-none rounded-full"
         />
+
+        {/* Left Data Stream Wing (Directly inspired by Lindy Hero Integration Stream) */}
+        <div
+          aria-hidden="true"
+          className="hidden xl:block absolute left-0 top-24 bottom-48 w-80 pointer-events-none z-10"
+        >
+          {DATA_STREAM_LEFT.map((node) => {
+            const Icon = node.icon;
+            return (
+              <div
+                key={node.name}
+                style={{ top: node.top, left: node.left, animationDelay: node.delay }}
+                className={cn(
+                  "absolute pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-full",
+                  "bg-[#242424]/85 backdrop-blur-md border border-[#383838] shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
+                  "hover:scale-105 hover:border-[#a78bfa]/70 hover:shadow-[0_0_24px_rgba(167,139,250,0.3)] transition-all duration-300",
+                  node.anim,
+                )}
+              >
+                <span
+                  className="flex size-7 items-center justify-center rounded-full bg-white/5 border border-white/10 shrink-0"
+                  style={{ color: node.color }}
+                >
+                  <Icon className="size-3.5" />
+                </span>
+                <div className="text-left leading-none pr-1">
+                  <div className="text-[13px] font-bold text-white tracking-tight">{node.name}</div>
+                  <div className="text-[10.5px] font-mono text-[#888888] mt-0.5">
+                    {node.category}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Right Data Stream Wing (Directly inspired by Lindy Hero Integration Stream) */}
+        <div
+          aria-hidden="true"
+          className="hidden xl:block absolute right-0 top-24 bottom-48 w-80 pointer-events-none z-10"
+        >
+          {DATA_STREAM_RIGHT.map((node) => {
+            const Icon = node.icon;
+            return (
+              <div
+                key={node.name}
+                style={{ top: node.top, right: node.right, animationDelay: node.delay }}
+                className={cn(
+                  "absolute pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-full",
+                  "bg-[#242424]/85 backdrop-blur-md border border-[#383838] shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
+                  "hover:scale-105 hover:border-[#a78bfa]/70 hover:shadow-[0_0_24px_rgba(167,139,250,0.3)] transition-all duration-300",
+                  node.anim,
+                )}
+              >
+                <span
+                  className="flex size-7 items-center justify-center rounded-full bg-white/5 border border-white/10 shrink-0"
+                  style={{ color: node.color }}
+                >
+                  <Icon className="size-3.5" />
+                </span>
+                <div className="text-left leading-none pr-1">
+                  <div className="text-[13px] font-bold text-white tracking-tight">{node.name}</div>
+                  <div className="text-[10.5px] font-mono text-[#888888] mt-0.5">
+                    {node.category}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
         {/* Eyebrow Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#a78bfa]/10 border border-[#a78bfa]/30 text-[#a78bfa] text-[13.5px] font-medium mb-6">
@@ -453,10 +627,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           <span>Dự án Khởi nghiệp Sáng tạo ĐHQG Hà Nội (RnD to Startup 2026)</span>
         </div>
 
-        {/* Display Headline */}
+        {/* Display Headline with Shimmering Gradient */}
         <h1 className="max-w-5xl text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-[#f7f7f7] leading-[1.12] mb-6">
           Trinh sát và dự báo sớm xu hướng mạng xã hội{" "}
-          <span className="text-[#a78bfa] underline decoration-[#a78bfa]/30 underline-offset-8">
+          <span className="bg-gradient-to-r from-[#c084fc] via-[#a78bfa] to-[#60a5fa] bg-clip-text text-transparent animate-shimmer-gradient underline decoration-[#a78bfa]/30 underline-offset-8">
             trước khi trở thành hiện tượng đại chúng.
           </span>
         </h1>
@@ -470,10 +644,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         </p>
 
         {/* Dual CTA Buttons */}
-        <div className="flex flex-col sm:flex-row items-center gap-4 mb-6 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row items-center gap-4 mb-5 w-full sm:w-auto">
           <button
             onClick={onOpenApp}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-semibold bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] px-7 py-3.5 rounded-full shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap shrink-0"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-semibold bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] px-8 py-3.5 rounded-full shadow-[0_10px_30px_rgba(167,139,250,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap shrink-0"
           >
             <Compass className="size-5 shrink-0" />
             <span>Trải nghiệm Đồ Thị Trực Tiếp</span>
@@ -487,8 +661,27 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           </button>
         </div>
 
-        {/* Micro-trust & Rating Badge */}
-        <div className="flex flex-wrap items-center justify-center gap-3 text-[14px] text-[#999999] mb-12">
+        {/* Microcopy & Rating Badge (Lindy Hero Social Proof) */}
+        <div className="flex flex-col items-center gap-2.5 mb-10">
+          <div className="text-[13.5px] text-[#aaaaaa]">
+            Miễn phí trải nghiệm Open Source • Thiết lập trinh sát dưới 2 phút
+          </div>
+          <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#262626]/80 border border-[#383838] shadow-md backdrop-blur text-[13px] text-[#dadada]">
+            <span className="flex items-center gap-0.5 text-amber-400">
+              <Star className="size-3.5 fill-amber-400 text-amber-400" />
+              <Star className="size-3.5 fill-amber-400 text-amber-400" />
+              <Star className="size-3.5 fill-amber-400 text-amber-400" />
+              <Star className="size-3.5 fill-amber-400 text-amber-400" />
+              <Star className="size-3.5 fill-amber-400 text-amber-400" />
+            </span>
+            <span className="font-bold text-white">4.9 / 5.0</span>
+            <span className="text-[#666]">•</span>
+            <span className="text-[#aaaaaa]">Đánh giá Xuất sắc từ Hội đồng Khoa học RTS 2026</span>
+          </div>
+        </div>
+
+        {/* Micro-trust Proof Badges */}
+        <div className="flex flex-wrap items-center justify-center gap-3 text-[14px] text-[#888888] mb-12">
           <span>✓ 100% Local Vector Inference</span>
           <span>•</span>
           <span>✓ Không gửi dữ liệu cộng đồng ra ngoài</span>
@@ -679,7 +872,8 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y2="150"
                   stroke="#a78bfa"
                   strokeWidth="2.5"
-                  strokeDasharray="6 3"
+                  strokeDasharray="8 4"
+                  className="animate-dash-stream"
                 />
                 <line
                   x1="280"
@@ -688,15 +882,18 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y2="130"
                   stroke="url(#linkGrad)"
                   strokeWidth="2.5"
+                  strokeDasharray="8 4"
+                  className="animate-dash-stream"
                 />
                 <line
                   x1="280"
                   y1="150"
                   x2="280"
                   y2="300"
-                  stroke="rgba(167,139,250,0.3)"
+                  stroke="rgba(167,139,250,0.4)"
                   strokeWidth="1.5"
-                  strokeDasharray="4 2"
+                  strokeDasharray="6 3"
+                  className="animate-dash-stream"
                 />
 
                 {/* Community Hub Nodes */}
@@ -805,10 +1002,19 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                 <circle cx="330" cy="350" r="4" fill="#555" />
                 <circle cx="570" cy="270" r="4" fill="#555" />
 
-                {/* High Potential Emerging Pattern: capcut_remix_09 */}
-                <circle cx="280" cy="150" r="38" fill="url(#nodeGlow)" />
+                {/* High Potential Emerging Pattern: capcut_remix_09 with Radar Rings */}
+                <circle cx="280" cy="150" r="44" fill="url(#nodeGlow)" />
+                <circle
+                  cx="280"
+                  cy="150"
+                  r="28"
+                  fill="#a78bfa"
+                  fillOpacity="0.2"
+                  className="animate-ping"
+                  style={{ animationDuration: "2.8s" }}
+                />
                 <g className="animate-pulse">
-                  <circle cx="280" cy="150" r="20" fill="#a78bfa" fillOpacity="0.3" />
+                  <circle cx="280" cy="150" r="18" fill="#a78bfa" fillOpacity="0.35" />
                   <circle
                     cx="280"
                     cy="150"
@@ -986,10 +1192,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               <div
                 key={stat.label}
                 className={cn(
-                  "p-7 rounded-xl border transition-all",
+                  "p-7 rounded-xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
                   stat.highlight
-                    ? "bg-[#2a2438] border-[#a78bfa]/50 shadow-lg"
-                    : "bg-[#262626] border-[#363636]",
+                    ? "bg-[#2a2438] border-[#a78bfa]/50 shadow-lg hover:border-[#a78bfa]"
+                    : "bg-[#262626] border-[#363636] hover:border-[#a78bfa]/50",
                 )}
               >
                 <div className="text-4xl sm:text-5xl font-extrabold text-[#f7f7f7] tracking-tight mb-2.5">
@@ -1129,38 +1335,84 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             </p>
           </div>
 
-          {/* 4-Step Progressive Timeline Cards */}
+          {/* 4-Step Progressive Timeline Cards (Interactive Step Selection) */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {TIMELINE_STEPS.map((step, idx) => (
-              <div
-                key={idx}
-                className="flex flex-col justify-between p-6 sm:p-7 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/60 transition-colors relative"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-3xl font-black font-mono text-[#a78bfa]">
-                      {step.time}
+            {TIMELINE_STEPS.map((step, idx) => {
+              const isSelected = activeTimelineStep === idx;
+              return (
+                <div
+                  key={idx}
+                  onClick={() => setActiveTimelineStep(idx)}
+                  className={cn(
+                    "flex flex-col justify-between p-6 sm:p-7 rounded-2xl border transition-all duration-300 cursor-pointer text-left relative",
+                    isSelected
+                      ? "bg-[#2c243d] border-[#a78bfa] shadow-[0_0_30px_rgba(167,139,250,0.22)] -translate-y-1.5 ring-1 ring-[#a78bfa]/50"
+                      : "bg-[#262626] border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1",
+                  )}
+                >
+                  {isSelected && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-[#a78bfa] text-[#141416] text-[11px] font-bold uppercase tracking-wider shadow">
+                      Đang khảo sát
                     </span>
-                    <span className="text-[12px] font-mono px-2.5 py-0.5 rounded bg-[#1a1a1a] text-[#888888] border border-[#333333]">
-                      Bước 0{idx + 1}
-                    </span>
+                  )}
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-3xl font-black font-mono text-[#a78bfa]">
+                        {step.time}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[12px] font-mono px-2.5 py-0.5 rounded border",
+                          isSelected
+                            ? "bg-[#a78bfa]/20 text-[#a78bfa] border-[#a78bfa]/40 font-semibold"
+                            : "bg-[#1a1a1a] text-[#888888] border-[#333333]",
+                        )}
+                      >
+                        Bước 0{idx + 1}
+                      </span>
+                    </div>
+                    <div className="inline-block text-[13px] font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded mb-3">
+                      {step.badge}
+                    </div>
+                    <h3 className="text-[18px] font-bold text-white mb-2.5 leading-snug">
+                      {step.title}
+                    </h3>
+                    <p className="text-[15px] text-[#aaaaaa] leading-relaxed mb-5">
+                      {step.description}
+                    </p>
                   </div>
-                  <div className="inline-block text-[13px] font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded mb-3">
-                    {step.badge}
-                  </div>
-                  <h3 className="text-[18px] font-bold text-white mb-2.5 leading-snug">
-                    {step.title}
-                  </h3>
-                  <p className="text-[15px] text-[#aaaaaa] leading-relaxed mb-5">
-                    {step.description}
-                  </p>
-                </div>
 
-                <div className="pt-4 border-t border-[#333333] text-[13.5px] font-mono text-[#c4b5fd]">
-                  {step.signal}
+                  <div className="pt-4 border-t border-[#333333] text-[13.5px] font-mono text-[#c4b5fd]">
+                    {step.signal}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Active Step Telemetry Deep-dive Bar */}
+          <div className="mt-8 p-5 sm:p-6 rounded-2xl bg-[#262626] border border-[#383838] flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-[#a78bfa]/20 text-[#a78bfa] shrink-0">
+                <Sparkles className="size-5 animate-pulse" />
+              </span>
+              <div>
+                <div className="text-[12.5px] font-mono uppercase tracking-wider text-[#a78bfa] font-semibold">
+                  Mô phỏng dữ liệu thời gian thực: {TIMELINE_STEPS[activeTimelineStep].time}
+                </div>
+                <div className="text-[15.5px] font-semibold text-white mt-0.5">
+                  {TIMELINE_STEPS[activeTimelineStep].title} —{" "}
+                  {TIMELINE_STEPS[activeTimelineStep].signal}
                 </div>
               </div>
-            ))}
+            </div>
+            <button
+              onClick={onOpenApp}
+              className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#a78bfa] hover:text-white px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors whitespace-nowrap shrink-0"
+            >
+              <span>Xem trực quan trên Map</span>
+              <ArrowRight className="size-4" />
+            </button>
           </div>
         </div>
       </section>
@@ -1189,14 +1441,14 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             return (
               <div
                 key={pillar.number}
-                className="p-8 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 transition-all flex flex-col justify-between"
+                className="p-8 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <span className="flex size-11 items-center justify-center rounded-lg bg-[#a78bfa]/15 border border-[#a78bfa]/30 text-[#a78bfa]">
+                    <span className="flex size-11 items-center justify-center rounded-lg bg-[#a78bfa]/15 border border-[#a78bfa]/30 text-[#a78bfa] group-hover:scale-110 group-hover:bg-[#a78bfa]/25 transition-all duration-300">
                       <Icon className="size-5.5" />
                     </span>
-                    <span className="font-mono text-3xl font-bold text-[#555555]">
+                    <span className="font-mono text-3xl font-bold text-[#555555] group-hover:text-[#a78bfa]/50 transition-colors duration-300">
                       {pillar.number}
                     </span>
                   </div>
@@ -1344,7 +1596,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
         {/* Visual Vocabulary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
-          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636]">
+          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300">
             <div className="text-[13px] font-mono text-[#a78bfa] mb-1.5 font-bold">
               MÀU SẮC (COLOR)
             </div>
@@ -1354,7 +1606,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               cộng đồng.
             </p>
           </div>
-          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636]">
+          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300">
             <div className="text-[13px] font-mono text-[#a78bfa] mb-1.5 font-bold">
               KÍCH THƯỚC (SIZE)
             </div>
@@ -1364,7 +1616,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               Persistence.
             </p>
           </div>
-          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636]">
+          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300">
             <div className="text-[13px] font-mono text-[#a78bfa] mb-1.5 font-bold">
               HÌNH DÁNG (SHAPE)
             </div>
@@ -1374,7 +1626,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               (Liên kết).
             </p>
           </div>
-          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636]">
+          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300">
             <div className="text-[13px] font-mono text-[#a78bfa] mb-1.5 font-bold">
               INSPECTOR DRAWER
             </div>
@@ -1423,10 +1675,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           {/* 3 Pillar Cards (Lindy Tile 8 style) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Card 1: Compliant */}
-            <div className="p-8 rounded-2xl bg-[#262626] border border-[#363636] flex flex-col justify-between">
+            <div className="p-8 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group">
               <div>
                 <div className="flex items-center gap-2.5 mb-3.5 text-emerald-400">
-                  <FileCheck2 className="size-5.5" />
+                  <FileCheck2 className="size-5.5 group-hover:scale-110 transition-transform duration-300" />
                   <span className="text-[18px] font-bold text-white">Chuẩn mực Pháp lý VN</span>
                 </div>
                 <p className="text-[15.5px] text-[#aaaaaa] leading-relaxed mb-6">
@@ -1455,10 +1707,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             </div>
 
             {/* Card 2: Access-First */}
-            <div className="p-8 rounded-2xl bg-[#262626] border border-[#363636] flex flex-col justify-between">
+            <div className="p-8 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group">
               <div>
                 <div className="flex items-center gap-2.5 mb-3.5 text-[#a78bfa]">
-                  <Globe2 className="size-5.5" />
+                  <Globe2 className="size-5.5 group-hover:scale-110 transition-transform duration-300" />
                   <span className="text-[18px] font-bold text-white">Kết nối Access-First</span>
                 </div>
                 <p className="text-[15.5px] text-[#aaaaaa] leading-relaxed mb-6">
@@ -1483,10 +1735,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             </div>
 
             {/* Card 3: Deletion Compliance & 100% Local */}
-            <div className="p-8 rounded-2xl bg-[#262626] border border-[#363636] flex flex-col justify-between">
+            <div className="p-8 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group">
               <div>
                 <div className="flex items-center gap-2.5 mb-3.5 text-cyan-400">
-                  <Lock className="size-5.5" />
+                  <Lock className="size-5.5 group-hover:scale-110 transition-transform duration-300" />
                   <span className="text-[18px] font-bold text-white">
                     Quyền Lãng Quên & Local AI
                   </span>
@@ -1566,10 +1818,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* 13. Grand Final CTA Banner (Lindy Tile 10 Aura Card)         */}
       {/* ------------------------------------------------------------ */}
       <section className="py-24 px-4 sm:px-6">
-        <div className="max-w-5xl mx-auto rounded-3xl bg-gradient-to-b from-[#2e2642] to-[#1e1e1e] border border-[#a78bfa]/40 p-10 sm:p-20 text-center relative overflow-hidden shadow-2xl">
+        <div className="max-w-5xl mx-auto rounded-3xl bg-gradient-to-b from-[#2e2642] to-[#1e1e1e] border border-[#a78bfa]/40 p-10 sm:p-20 text-center relative overflow-hidden shadow-2xl group hover:border-[#a78bfa]/70 transition-all duration-500">
           <div
             aria-hidden="true"
-            className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[250px] bg-[#a78bfa]/20 blur-[120px] pointer-events-none rounded-full"
+            className="absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-[340px] bg-gradient-to-b from-[#c084fc]/25 via-[#a78bfa]/20 to-transparent blur-[130px] pointer-events-none rounded-full animate-pulse"
           />
 
           <div className="relative z-10">

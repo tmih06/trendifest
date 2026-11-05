@@ -306,6 +306,62 @@ a {
   }
 }
 
+/* Lindy-inspired ambient motion & data streams */
+@keyframes shimmer-gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes float-gentle-1 {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+@keyframes float-gentle-2 {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(8px) rotate(-1deg);
+  }
+}
+
+@keyframes dash-stream {
+  to {
+    stroke-dashoffset: -36;
+  }
+}
+
+.animate-shimmer-gradient {
+  background-size: 200% 200%;
+  animation: shimmer-gradient 8s ease-in-out infinite;
+}
+
+.animate-float-1 {
+  animation: float-gentle-1 5s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: float-gentle-2 6.5s ease-in-out infinite;
+}
+
+.animate-dash-stream {
+  animation: dash-stream 1.8s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
