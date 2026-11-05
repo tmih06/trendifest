@@ -362,6 +362,44 @@ a {
   animation: dash-stream 1.8s linear infinite;
 }
 
+/* Continuous sliding marquee tracks */
+@keyframes marquee-scroll-left {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes marquee-scroll-right {
+  0% {
+    transform: translate3d(-50%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-marquee-track-left {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll-left 32s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-track-right {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll-right 32s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-track-left:hover,
+.animate-marquee-track-right:hover {
+  animation-play-state: paused;
+}
+
 /* View Transitions API: Rectangle wipe reveal (beui.dev) */
 html[data-beui-vt="rect"]::view-transition-old(root) {
   animation: none;

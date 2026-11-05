@@ -207,6 +207,16 @@ const DATA_SOURCES = [
     category: "Phân cụm đa chiều",
     icon: Cpu,
   },
+  {
+    name: "CLIP ViT-B/32",
+    category: "Nhúng đa phương thức",
+    icon: Eye,
+  },
+  {
+    name: "Demucs Audio Stems",
+    category: "Vân tay âm thanh",
+    icon: Headphones,
+  },
 ];
 
 const AUDIENCE_SEGMENTS = [
@@ -251,6 +261,20 @@ const AUDIENCE_SEGMENTS = [
     icon: Film,
     desc: "Thảo luận điện ảnh, show thực tế & thần tượng",
     color: "#a3e635",
+  },
+  {
+    id: "campus",
+    name: "Đời sống Gen Z",
+    icon: Clock,
+    desc: "Học đường, sinh viên & nhịp điệu thường nhật",
+    color: "#38bdf8",
+  },
+  {
+    id: "creator",
+    name: "Creator & AI Tech",
+    icon: Zap,
+    desc: "Xu hướng CapCut, prompt AI & mẹo sáng tạo",
+    color: "#f59e0b",
   },
 ];
 
@@ -1308,7 +1332,9 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             ))}
           </div>
 
-          {/* Protocol & Data Sources Proof Bar */}
+          {/* ------------------------------------------------------------ */}
+          {/* Protocol & Data Sources Sliding Card Track                   */}
+          {/* ------------------------------------------------------------ */}
           <div className="mt-16 pt-10 border-t border-neutral-200 dark:border-[#333333]">
             <div className="text-center mb-6">
               <span className="uppercase tracking-wider font-mono text-[12.5px] text-neutral-500 dark:text-[#999999] font-semibold">
@@ -1316,32 +1342,48 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-              {DATA_SOURCES.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div
-                    key={item.name}
-                    className="flex flex-col items-center justify-center p-4 rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] shadow-sm hover:border-purple-300 dark:hover:border-[#a78bfa]/50 hover:-translate-y-0.5 transition-all text-center group"
-                  >
-                    <span className="flex size-8 items-center justify-center rounded-lg bg-purple-50 dark:bg-white/5 border border-purple-200/60 dark:border-white/10 text-purple-700 dark:text-[#a78bfa] mb-2.5 group-hover:scale-110 transition-transform shrink-0">
-                      <Icon className="size-4" />
-                    </span>
-                    <span className="text-[13.5px] font-bold text-neutral-900 dark:text-white leading-tight mb-1">
-                      {item.name}
-                    </span>
-                    <span className="text-[11px] font-mono text-neutral-500 dark:text-[#888888] leading-tight">
-                      {item.category}
-                    </span>
-                  </div>
-                );
-              })}
+            {/* Sliding Track with Gradient Masks */}
+            <div className="relative w-full overflow-hidden py-3">
+              {/* Left & Right Gradient Fade Edges */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 left-0 w-16 sm:w-28 bg-gradient-to-r from-neutral-100/95 dark:from-[#222222] to-transparent z-10"
+              />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 right-0 w-16 sm:w-28 bg-gradient-to-l from-neutral-100/95 dark:from-[#222222] to-transparent z-10"
+              />
+
+              <div className="flex animate-marquee-track-left gap-4 py-1">
+                {/* 2 Sets of clones for seamless infinite loop */}
+                {[...DATA_SOURCES, ...DATA_SOURCES].map((item, idx) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={`source-${item.name}-${idx}`}
+                      className="w-56 sm:w-64 p-5 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] shadow-sm hover:shadow-lg hover:border-purple-400 dark:hover:border-[#a78bfa]/60 hover:-translate-y-1.5 transition-all duration-300 flex flex-col items-center justify-center text-center shrink-0 group select-none cursor-default"
+                    >
+                      <span className="flex size-10 items-center justify-center rounded-xl bg-purple-50 dark:bg-white/5 border border-purple-200/60 dark:border-white/10 text-purple-700 dark:text-[#a78bfa] mb-3 group-hover:scale-110 group-hover:bg-purple-100 dark:group-hover:bg-white/10 transition-all shrink-0">
+                        <Icon className="size-5" />
+                      </span>
+                      <div className="text-[14.5px] sm:text-[15px] font-bold text-neutral-900 dark:text-white leading-tight mb-1 group-hover:text-purple-700 dark:group-hover:text-[#a78bfa] transition-colors">
+                        {item.name}
+                      </div>
+                      <div className="text-[12px] sm:text-[12.5px] font-mono text-neutral-500 dark:text-[#888888] leading-tight">
+                        {item.category}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* Audience Segments Bar */}
+          {/* ------------------------------------------------------------ */}
+          {/* Audience Segments Sliding Card Track                         */}
+          {/* ------------------------------------------------------------ */}
           <div className="mt-14 pt-8 border-t border-neutral-200 dark:border-[#333333]">
-            <div className="text-center mb-7">
+            <div className="text-center mb-6">
               <span className="uppercase tracking-wider font-mono text-[13px] text-purple-700 dark:text-[#a78bfa] font-semibold">
                 Phân tầng Khán giả Thực chứng (Viewer Segments)
               </span>
@@ -1349,29 +1391,44 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                 Quan sát trực tiếp luồng văn hóa ngách thay vì suy đoán nhân khẩu học
               </h3>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-              {AUDIENCE_SEGMENTS.map((seg) => {
-                const Icon = seg.icon;
-                return (
-                  <div
-                    key={seg.id}
-                    className="p-4 rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-purple-300 dark:hover:border-[#a78bfa]/50 transition-colors text-center flex flex-col items-center shadow-sm"
-                  >
-                    <span
-                      className="flex size-10 items-center justify-center rounded-lg bg-neutral-100 dark:bg-white/5 mb-2.5"
-                      style={{ color: seg.color }}
+
+            {/* Sliding Track with Gradient Masks (Opposite direction for mesmerizing parallax) */}
+            <div className="relative w-full overflow-hidden py-3">
+              {/* Left & Right Gradient Fade Edges */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 left-0 w-16 sm:w-28 bg-gradient-to-r from-neutral-100/95 dark:from-[#222222] to-transparent z-10"
+              />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 right-0 w-16 sm:w-28 bg-gradient-to-l from-neutral-100/95 dark:from-[#222222] to-transparent z-10"
+              />
+
+              <div className="flex animate-marquee-track-right gap-4 py-1">
+                {/* 2 Sets of clones for seamless infinite loop */}
+                {[...AUDIENCE_SEGMENTS, ...AUDIENCE_SEGMENTS].map((seg, idx) => {
+                  const Icon = seg.icon;
+                  return (
+                    <div
+                      key={`segment-${seg.id}-${idx}`}
+                      className="w-56 sm:w-64 p-5 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] shadow-sm hover:shadow-lg hover:border-purple-400 dark:hover:border-[#a78bfa]/60 hover:-translate-y-1.5 transition-all duration-300 flex flex-col items-center justify-center text-center shrink-0 group select-none cursor-default"
                     >
-                      <Icon className="size-5" />
-                    </span>
-                    <span className="text-[14px] font-bold text-neutral-900 dark:text-white mb-1.5">
-                      {seg.name}
-                    </span>
-                    <span className="text-[12.5px] text-neutral-600 dark:text-[#999999] leading-snug line-clamp-2">
-                      {seg.desc}
-                    </span>
-                  </div>
-                );
-              })}
+                      <span
+                        className="flex size-10 items-center justify-center rounded-xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 mb-3 group-hover:scale-110 transition-all shrink-0"
+                        style={{ color: seg.color }}
+                      >
+                        <Icon className="size-5" />
+                      </span>
+                      <div className="text-[14.5px] sm:text-[15px] font-bold text-neutral-900 dark:text-white leading-tight mb-1 group-hover:text-purple-700 dark:group-hover:text-[#a78bfa] transition-colors">
+                        {seg.name}
+                      </div>
+                      <div className="text-[12px] sm:text-[12.5px] text-neutral-500 dark:text-[#888888] leading-tight line-clamp-2">
+                        {seg.desc}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
