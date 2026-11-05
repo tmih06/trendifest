@@ -17,9 +17,20 @@ cp .env.example .env
 bun dev
 ```
 
-Open the web URL printed by the development command. API and web ports advance
-to a free port in development; production refuses to move silently. The bundled
-Postgres listens on `127.0.0.1:55433` and uses a persistent Docker volume.
+Open the URL printed by `bun dev` (default `http://localhost:5180`). It uses
+**one TCP port** for the frontend, hot reload, and `/api` requests. Vite reverse
+proxies `/api` to a private Unix socket; the API opens no development TCP port.
+Only the printed port needs forwarding. Set `PORT=5200 bun dev` to choose a
+different starting port; occupied ports advance to the next available one.
+The socket lives in a per-run private temporary directory, removed on shutdown
+together with both server process groups. This development setup requires Unix
+socket support (Linux/macOS).
+
+`bun run dev:api` still starts the standalone TCP API on port 8787.
+`bun run dev:web` can proxy to that server when started separately. Production serves the
+built frontend and API together on port 8787 (or `PORT`) and refuses to move
+silently. The bundled Postgres listens on `127.0.0.1:55433` and uses a persistent
+Docker volume.
 
 ```dotenv
 TRENDIFEST_DATABASE_URL=postgres://trendifest:trendifest@127.0.0.1:55433/trendifest
@@ -66,12 +77,31 @@ public health endpoint. Protect the deployment with HTTPS.
 The initial force layout settles offscreen. Live relaxation stops after at most
 two seconds; unchanged-topology refreshes preserve positions and camera.
 Reduced-motion mode displays the settled layout without live relaxation.
+
 The graph polls every two minutes; collection status polls every fifteen seconds.
 Manual collection returns HTTP 202 immediately with its running status. Media
 inference continues in the collector rather than holding an HTTP request open.
 Poll `/api/collect/status` for completion, the last report, or errors; the UI
 refreshes the graph when the completion timestamp changes. Concurrent collection
 requests return HTTP 409.
+
+### Graph library
+
+Rendering, force layout, hit testing, selection, pan/zoom, node dragging, and
+view controls come from [obi-graph](https://github.com/tmih06/obi-graph), pinned
+to Git revision `08bbc78` in `package.json` and `bun.lock`. There is no embedded
+engine copy. `src/lib/graph.ts` adapts API data to its public node/link types;
+`src/components/trend-graph-canvas.tsx` supplies Trendifest's degree-based colors
+and physics configuration. `src/styles.css` imports `obi-graph/styles.css` and
+maps its scoped theme tokens and toolbar placement to the shell.
+
+The library is not yet published on npm, and its Git checkout omits the exported
+`dist/` files. `bun install` runs `scripts/build-obi-graph.ts` to emit the bundle,
+declarations, and stylesheet inside the installed dependency using the app's
+Bun/TypeScript toolchain. Keep dev dependencies installed for this step:
+`@types/d3-force` is needed to emit upstream declarations, while `d3-force`
+itself is owned by the library. Do not skip install scripts before building.
+Library upgrades are explicit Git-pin updates followed by `bun install`.
 
 ### Relationships
 
@@ -164,7 +194,7 @@ The package adapts OpenDesk's shell, inset work panel, compact sidebar/rail,
 Button, Badge, Dialog, theme tokens, Geist/Geist Mono fonts, and Lucide icon
 conventions. Helpdesk routing, authentication, chat, billing, telemetry, and AI
 assistant services are not imported. Components take Trendifest state through
-props; the graph is our own canvas renderer with a `d3-force` layout.
+props; graph interaction and rendering come from the external `obi-graph` library.
 
 Upstream paths, the pinned revision, and modification notices are recorded in
 `packages/opendesk/NOTICE` and package metadata. The full upstream license is
@@ -186,10 +216,18 @@ then exercise the graph. There is no floating Git dependency.
 ## Development
 
 ```bash
-bun run check
-bun run build
-bun test
+bun install --frozen-lockfile
+bun run ci
 ```
+
+`ci` fails on the first unsuccessful step: `check` verifies formatting, lint,
+and types without modifying files; `test` runs the complete Bun test suite;
+`build` typechecks and emits the production bundle. The individual commands
+remain available for focused checks.
+
+Set `TRENDIFEST_TEST_DATABASE_URL` to a disposable database (see below) when
+running CI to include the database integration tests. Without it, Bun reports
+those tests as skipped; a successful CI command does not imply database coverage.
 
 ### Visual feedback with Agentation
 
@@ -213,9 +251,9 @@ never point that variable at the collection database.
 
 ```bash
 docker compose exec postgres createdb -U trendifest trendifest_test
-TRENDIFEST_TEST_DATABASE_URL=postgres://trendifest:trendifest@127.0.0.1:55433/trendifest_test bun test
+TRENDIFEST_TEST_DATABASE_URL=postgres://trendifest:trendifest@127.0.0.1:55433/trendifest_test bun run ci
 ```
 
 `server/social` owns collection, embedding, clustering, and map assembly;
 `src/pages/trend-map.tsx` wires the workspace; `src/components/trend-graph-canvas.tsx`
-owns graph interaction; `packages/opendesk` owns the imported UI layer.
+configures `obi-graph`; `packages/opendesk` owns the imported UI layer.

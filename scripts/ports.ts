@@ -1,12 +1,11 @@
 import { createServer } from "node:net";
 
 /**
- * Port selection for the development servers.
+ * Port selection for the public development listener.
  *
- * `bun dev` runs two processes that must agree on the API port: the API binds
- * it and Vite proxies `/api` to it. The port is therefore chosen once, here,
- * before either child starts. Letting the API pick its own fallback port would
- * leave the proxy pointing at whatever was there before.
+ * `bun dev` selects Vite's TCP port before spawning it; the API uses a private
+ * Unix socket and needs no port allocation. Probes use the same loopback
+ * interface as Vite, so occupied ports can be skipped before either child starts.
  */
 
 const HOST = "127.0.0.1";

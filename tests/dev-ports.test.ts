@@ -3,9 +3,9 @@ import { createServer, type Server } from "node:net";
 import { findAvailablePort, isPortFree, readPortEnv } from "../scripts/ports";
 
 /**
- * Port selection is the contract between `scripts/dev.ts` and the Vite proxy: a
- * wrong answer here makes the app load but every API call fail, which is harder
- * to diagnose than a crash on start.
+ * The public development listener must skip occupied ports without silently
+ * choosing one that is also busy. The API has no TCP port under `bun dev`;
+ * Vite reaches it through a private Unix socket.
  */
 
 const blockers: Server[] = [];

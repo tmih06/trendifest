@@ -1,23 +1,20 @@
 @import "tailwindcss";
 @import "@trendifest/opendesk/styles.css";
+@import "obi-graph/styles.css";
 @source "../packages/opendesk/src";
 
 /* The graph keeps its semantic palette while the shell owns the surface tokens. */
 :root {
   --graph-node-focused: #7048e8;
   --graph-node: #737373;
-  --graph-node-attachment: #737373;
   --graph-line: #737373;
   --graph-text: var(--fg-3);
-  --background-primary: var(--surface);
-  --text-normal: var(--fg);
   --font-sans: "Geist Variable", "Geist", sans-serif;
 }
 
 .dark {
   --graph-node-focused: #a78bfa;
   --graph-node: #b3b3b3;
-  --graph-node-attachment: #b3b3b3;
   --graph-line: #a3a3a3;
 }
 
@@ -81,6 +78,29 @@ a {
 .graph-surface {
   background: var(--surface);
   isolation: isolate;
+}
+
+/* Map library tokens to the shell; defaults on .graph-canvas otherwise win
+   over inherited root tokens. Keep controls clear of the inspector and footer. */
+.trend-graph {
+  --graph-surface: var(--surface);
+  --graph-foreground: var(--fg);
+  --graph-text: var(--fg-3);
+  --graph-line: inherit;
+  --graph-node: inherit;
+  --graph-accent: var(--graph-node-focused);
+  --graph-font-sans: var(--font-sans);
+  --graph-control-surface: var(--surface);
+  --graph-control-line: var(--line);
+  --graph-control-fg: var(--fg-3);
+  --graph-control-fg-hover: var(--fg);
+  --graph-control-hover: var(--hover);
+  --graph-control-shadow: var(--od-shadow-float);
+}
+
+.trend-graph .graph-canvas__toolbar {
+  inset-block-start: auto;
+  inset-block-end: 48px;
 }
 
 .graph-inspector {

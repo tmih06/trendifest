@@ -27,13 +27,13 @@ import {
   X,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
-import type { TrendMap, TrendMapNode } from "../../shared/types.ts";
+import type { TrendMapNode } from "../../shared/types.ts";
 import { DbNotice } from "@/components/db-notice";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
 import { useTheme } from "@/hooks/use-app";
 import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-trends";
 import { compactNumber, formatRelative } from "@/lib/format";
-import type { GraphLink, GraphNode } from "@/lib/graph";
+import { toCanvas } from "@/lib/graph";
 
 const Dialog = lazy(() =>
   import("@trendifest/opendesk/dialog").then((module) => ({ default: module.Dialog })),
@@ -44,33 +44,6 @@ const WINDOWS = [
   { hours: 72, label: "3d" },
   { hours: 168, label: "7d" },
 ] as const;
-const NO_EMPHASIS = new Set<string>();
-
-/** Keep labels short on the canvas; the inspector retains the complete API label. */
-function toCanvas(map: TrendMap) {
-  const nodes: GraphNode[] = map.nodes.map((node) => {
-    const label = node.label.replace(/\s+/g, " ").trim();
-    return {
-      id: node.id,
-      kind: node.kind,
-      label:
-        node.kind === "pattern" && label.length > 46 ? `${label.slice(0, 45).trimEnd()}…` : label,
-      description: node.description,
-      radius: node.radius * 0.6,
-      degree: map.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length,
-      media: node.kind === "pattern" ? (node.kind_ ?? "text") : undefined,
-      hub: node.kind !== "pattern",
-    };
-  });
-  const links: GraphLink[] = map.edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    relation: edge.relation,
-    similarity: edge.similarity,
-  }));
-  return { nodes, links };
-}
 
 /** A heuristic score, deliberately not formatted as a probability. */
 function PotentialBadge({ node }: { node: TrendMapNode }) {
@@ -590,9 +563,6 @@ export function TrendMapPage() {
                 links={canvas.links}
                 selectedId={selectedId}
                 activeIds={connectedIds}
-                emphasisIds={NO_EMPHASIS}
-                showContextLabels={false}
-                autoFitSelection
                 onSelect={selectNode}
               />
             )}

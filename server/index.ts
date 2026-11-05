@@ -18,6 +18,8 @@ import { buildTrendMap } from "./social/trend-map.ts";
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
 const PRODUCTION = process.env.NODE_ENV === "production";
+// Managed development uses no API TCP port; production keeps its TCP listener.
+const API_SOCKET = PRODUCTION ? undefined : process.env.API_SOCKET;
 
 if (PRODUCTION && !AUTH_ENABLED) {
   console.error("TRENDIFEST_PASSWORD is required when NODE_ENV=production.");
@@ -136,15 +138,9 @@ async function serveStatic(url: URL) {
 }
 
 /**
- * Bind the API port.
- *
- * In development a taken port is normal (a stale dev server, another project's
- * process) and must not kill the workspace, so the server walks forward to the
- * next free port and prints what it got. `scripts/dev.ts` already picks a free
- * port, so this is the safety net for a direct `bun server/index.ts`.
- *
- * In production, falling back would silently move the API away from whatever a
- * supervisor, reverse proxy, or firewall expects. There it fails loudly.
+ * Bind the standalone API's TCP port. Direct development starts may fall
+ * forward; production fails rather than silently moving a deployment listener.
+ * `bun dev` bypasses TCP entirely and binds its private Unix socket instead.
  */
 function listen(port: number) {
   for (let offset = 0; offset < 20; offset += 1) {
@@ -166,7 +162,9 @@ function listen(port: number) {
   process.exit(1);
 }
 
-const { server, port: boundPort } = listen(PORT);
+const { server, port: boundPort } = API_SOCKET
+  ? { server: Bun.serve({ unix: API_SOCKET, fetch }), port: null }
+  : listen(PORT);
 
 /**
  * Drain in-flight requests on a supervisor's stop signal instead of dropping
@@ -179,6 +177,8 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 }
 
 async function fetch(request: Request) {
+  // Unix listeners use per-request timeouts; retain the TCP API's 60-second allowance.
+  if (API_SOCKET) server.timeout(request, 60);
   const url = new URL(request.url);
 
   // Health is intentionally public so a supervisor can probe the process;
@@ -213,7 +213,9 @@ async function fetch(request: Request) {
 }
 
 console.log(
-  `Trendifest API listening on http://127.0.0.1:${boundPort} (${PRODUCTION ? "production" : "development"})`,
+  API_SOCKET
+    ? "Trendifest API connected to the private development socket."
+    : `Trendifest API listening on http://127.0.0.1:${boundPort} (${PRODUCTION ? "production" : "development"})`,
 );
 console.log(AUTH_ENABLED ? "Password protection: on" : "Password protection: off (development)");
 
