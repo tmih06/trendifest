@@ -148,7 +148,6 @@ interface MarketStat {
   value: string;
   label: string;
   description: string;
-  highlight?: boolean;
 }
 
 const MARKET_STATS: MarketStat[] = [
@@ -163,7 +162,6 @@ const MARKET_STATS: MarketStat[] = [
     label: "Cảnh báo sớm trước đỉnh sóng",
     description:
       "Nhận diện đốm lửa bộc phát ngay từ cộng đồng ngách trước khi xuất hiện trên Google Trends.",
-    highlight: true,
   },
   {
     value: "100%",
@@ -1268,12 +1266,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             {MARKET_STATS.map((stat) => (
               <div
                 key={stat.label}
-                className={cn(
-                  "p-7 rounded-xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
-                  stat.highlight
-                    ? "bg-purple-50 dark:bg-[#2a2438] border-purple-200 dark:border-[#a78bfa]/50 shadow-lg hover:border-[#a78bfa]"
-                    : "bg-white dark:bg-[#262626] border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50",
-                )}
+                className="p-7 rounded-xl border border-neutral-200 dark:border-[#363636] bg-white dark:bg-[#262626] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-purple-300 dark:hover:border-[#a78bfa]/50"
               >
                 <div className="text-4xl sm:text-5xl font-extrabold text-neutral-900 dark:text-[#f7f7f7] tracking-tight mb-2.5">
                   {stat.value}
