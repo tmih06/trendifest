@@ -20,8 +20,12 @@
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",
+    "@nodable/entities": "^3.1.0",
     "@tanstack/react-query": "^5.105.0",
     "@trendifest/opendesk": "workspace:*",
+    "fast-xml-parser": "^5.12.0",
+    "franc-min": "6.2.0",
+    "htmlparser2": "^12.0.0",
     "lucide-react": "^1.64.0",
     "obi-graph": "github:tmih06/obi-graph#08bbc78",
     "react": "^19.3.1",

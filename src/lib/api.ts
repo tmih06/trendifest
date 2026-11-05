@@ -1,4 +1,4 @@
-import type { TrendMap } from "../../shared/types.ts";
+import type { CollectionStatus, TrendMap } from "../../shared/types.ts";
 
 export class ApiClientError extends Error {
   readonly status: number;
@@ -46,42 +46,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export interface CollectStatus {
-  /** False when no database is configured; collection then cannot run at all. */
-  configured: boolean;
-  /** A backfill cycle is running right now, whether started by the timer or by hand. */
-  backfilling: boolean;
-  lastBackfillAt: string | null;
-  lastBackfill: IngestReport | null;
-  /** The live Jetstream tail is connected, so new posts arrive without polling. */
-  tailConnected: boolean;
-  tail: { seen: number; processed: number; dropped: number; sampleRate: number } | null;
-  segments: number;
-  lastErrors: Array<{ segmentId: string; message: string }>;
-}
-
-export interface IngestReport {
-  segments: number;
-  fetched: number;
-  stored: number;
-  observations: number;
-  vectors: number;
-  unvectorized: number;
-  clusters: number;
-  skippedLanguage: number;
-  errors: Array<{ segmentId: string; message: string }>;
-}
-
 export function fetchTrendMap(hours: number) {
   return request<TrendMap>(`/api/trend-map?${new URLSearchParams({ hours: String(hours) })}`);
 }
 
 export function fetchCollectionStatus() {
-  return request<CollectStatus>("/api/collect/status");
+  return request<CollectionStatus>("/api/collect/status");
 }
 
 export function collectNow(limit: number) {
-  return request<{ status: CollectStatus }>("/api/collect", {
+  return request<{ status: CollectionStatus }>("/api/collect", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ limit }),

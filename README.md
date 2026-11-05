@@ -1,7 +1,7 @@
 # Trendifest
 
-A social trend graph: collect real posts from audience-oriented Bluesky feeds,
-embed their content locally, group similar posts, and compare emerging patterns.
+A Vietnamese-first discussion graph: collect bounded public thread excerpts
+from VOZ and Otofun, embed content locally, and compare related activity.
 The graph is the entire application. There is no Google Trends dashboard,
 forecasting workspace, watchlist, alerts system, or separate Signals page.
 
@@ -39,8 +39,8 @@ TRENDIFEST_SOCIAL=1
 
 Models download lazily into `.cache/transformers` on first use. Inference stays
 local; post content is not sent to an external inference API. Feed/media fetching
-still reaches Bluesky and its media hosts. Initial collection can take longer
-while weights load and media is decoded.
+still reaches the configured forums and source-hosted attachment URLs. Initial
+collection can take longer while weights load and media is decoded.
 
 For production, configure `TRENDIFEST_PASSWORD`, run `bun run build`, then
 `bun start`. Basic authentication protects the application and APIs except the
@@ -48,31 +48,31 @@ public health endpoint. Protect the deployment with HTTPS.
 
 ## Graph workspace
 
-- **Audience sidebar:** emphasize patterns actually observed by a selected feed.
-  Filtering does not restart the layout. Counts are observed posts, not measured
-  audience sizes. Click a section heading to fold its rows; the icon-only rail
-  keeps every row available.
+- **Source sidebar:** emphasize patterns actually observed in VOZ or Otofun.
+  Filtering does not restart the layout. Counts are collected thread excerpts,
+  not audience sizes or downloaded reply counts. Source accounts are not
+  verified distinct people across networks.
 - **Observation window:** 24 hours, 3 days, or 7 days, with a sliding active
   indicator that respects reduced motion.
 - **Graph:** three independent encodings: **colour** is the connection count
   (pale for a single link, saturated purple as links accumulate), **size** is
   the trend potential, and **shape** is the pattern's content type — circle for
   text, rounded square for image, triangle for video, diamond for audio, and
-  pentagon for links. Audience hubs are neutral greys. Selecting a node frames
+  pentagon for links. Source hubs are neutral greys. Selecting a node frames
   only that node and its direct neighbours.
   Pan and zoom cover a wide range; wheel zoom is eased rather than stepped.
   Background mouse, pen, and single-touch pans glide to a stop after release.
   A new press, zoom, or camera control interrupts the glide. Holding still
   before release, multi-touch gestures, and reduced-motion mode do not fling.
-- **Pattern inspector:** keyboard-accessible ranking, score breakdown, source
-  posts with Bluesky links, and neighboring patterns with cosine similarity.
+- **Pattern inspector:** keyboard-accessible ranking, score breakdown, bounded
+  source excerpts with original-thread links and explicit source identity.
   The desktop inspector floats above the graph without resizing its canvas;
   close it from the panel or toggle it beside the observation-window selector.
   Expansion and collapse slide and fade, respecting reduced motion.
-- **Collection status:** real tail/backfill state, upstream errors, and a manual
-  collection action. A disconnected feed is never labeled live.
+- **Collection status:** bounded polling state, per-source results/errors, and a
+  manual collection action. No fictional live-stream connection is reported.
 - **Appearance:** light/dark preference, collapsible desktop sidebar, mobile
-  audience and inspector dialogs.
+  source and inspector dialogs.
 
 The initial force layout settles offscreen. Live relaxation stops after at most
 two seconds; unchanged-topology refreshes preserve positions and camera.
@@ -84,6 +84,45 @@ inference continues in the collector rather than holding an HTTP request open.
 Poll `/api/collect/status` for completion, the last report, or errors; the UI
 refreshes the graph when the completion timestamp changes. Concurrent collection
 requests return HTTP 409.
+
+### Vietnamese input policy
+
+The source catalog is `shared/segments.ts`: VOZ's public discussion RSS and
+Otofun's public community RSS. Each cycle makes one conditional request per
+source, with a default budget of 20 records and a hard cap of 25 per source.
+There is no global stream, multi-page historical crawl, or catch-all Discover
+pool. Feed responses are capped at 1 MB before parsing.
+
+`server/social/input.ts` is the common gate for every adapter: normalize
+Vietnamese Unicode and whitespace, cap text at 2,000 characters and attachments
+at four, then check language before storage or inference. `franc-min` compares
+all its candidate languages; Vietnamese must rank first with a separation
+margin. At least 25 letters are required after removing URLs and mentions.
+English posts mentioning Vietnam, short/ambiguous content, and malformed,
+future or older-than-30-day dates are rejected. This is heuristic detection,
+not a measured accuracy guarantee; unaccented slang and code-switching can be
+missed.
+
+The feeds contain first-post excerpts and reply counts, not complete threads
+or reply texts. RSS timestamps are marked as **activity**, not verified
+publication dates. Quotes, script/style content and raw feed HTML are not
+stored. Only source-hosted HTTPS image attachments are eligible for extraction;
+arbitrary third-party media is not fetched from RSS.
+
+Post IDs and account identities are namespaced by source. Repeated delivery
+does not re-embed unchanged content; edits invalidate old derived evidence.
+Identical content on independent sources remains separate evidence. Only the
+latest measured counters are retained; missing likes/shares remain unknown,
+not zero. Successful collection cycles expire input beyond the 30-day maximum
+map window, removing its derived vectors and repairing affected centroids.
+Disappearance from a rolling feed does **not** prove a source deletion.
+
+Research, exact endpoints, live probe evidence, access/permission limitations,
+the previous-corpus audit, and the verified export are recorded in
+[`docs/research/vietnamese-public-sources.md`](docs/research/vietnamese-public-sources.md).
+Free API keys do not by themselves establish permission for cross-source
+analytics; YouTube, Reddit, Threads and TikTok access constraints are covered
+there. No paid scraping or challenge bypass is used.
 
 ### Graph library
 
@@ -105,8 +144,8 @@ Library upgrades are explicit Git-pin updates followed by `bun install`.
 
 ### Relationships
 
-Solid edges mean **an audience feed observed a pattern**. The general Discover
-pool does not establish adoption by an additional niche audience.
+Solid edges mean **a configured source context observed the pattern**. They do
+not establish a person's demographics, exposure, or causal cross-platform adoption.
 
 Dashed edges mean **two displayed patterns have similar embedding centroids**.
 Only clusters with the same modality space, model, and native dimension are
@@ -116,21 +155,21 @@ with stable ID tie-breaking and at most three similarity edges per pattern.
 Weak or incompatible pairs remain unlinked. These thresholds are heuristics,
 not calibrated probabilities or proof of identical meaning.
 
-The map shows up to 90 patterns, with stratified audience coverage before the
-remaining slots go to the strongest scores. It does not render every collected
-post as a separate node. The inspector includes up to three distinct source
-posts per pattern, excluding deleted and out-of-window posts, plus measured
-engagement: the latest likes and reposts/quotes across the pattern's members.
+The map shows up to 90 patterns, with stratified source coverage before the
+remaining slots go to the strongest scores. It does not render every reply
+as a node. Each pattern carries at most three 600-character source excerpts.
+An unused duplicate `top` array is no longer sent. Missing engagement metrics
+are displayed as unknown; a measured reply count is never relabeled as likes.
 
 ### Emergence score
 
-| Component   | Weight | Evidence                                            |
-| ----------- | ------ | --------------------------------------------------- |
-| Reach       | 34%    | Distinct authors, log-scaled                        |
-| Velocity    | 26%    | Recent authors versus the preceding six-hour window |
-| Spread      | 18%    | Distinct collection audiences, excluding Discover   |
-| Persistence | 12%    | Pattern publication span                            |
-| Diversity   | 10%    | Authors per post                                    |
+| Component   | Weight | Evidence                                          |
+| ----------- | ------ | ------------------------------------------------- |
+| Reach       | 34%    | Source-qualified accounts, log-scaled             |
+| Velocity    | 26%    | Latest source activity versus the prior six hours |
+| Spread      | 18%    | Distinct observed collection contexts             |
+| Persistence | 12%    | Activity span, not verified publication span      |
+| Diversity   | 10%    | Source accounts per collected excerpt             |
 
 An evidence multiplier reduces small-sample scores: `0.3 + 0.7 × min(1, authors / 5)`.
 Velocity stays neutral until twelve hours of observation history exist.
@@ -172,14 +211,14 @@ is excluded from clustering, sampled video frames stay searchable but do not
 cluster, media extraction failure does not discard a post's usable text, and
 deletes remove derived vectors and memberships.
 
-### Audience and language limitations
+### Source and language limitations
 
-Feeds are collection contexts, not verified demographics. The catalog uses a
-declared youth-culture audience prior; it cannot establish that a poster or
-viewer is Gen Z. The language gate trusts post language tags: explicit
-non-English-only tags are skipped, while untagged posts are currently accepted.
-It is not strict English-language detection. Historical records are not
-retroactively verified for age or language.
+Forum activity is a biased sample of Vietnamese-language discussion, not all
+Vietnamese social media, a verified Gen-Z audience, or a firehose of replies.
+The existing similarity thresholds were investigated on the former corpus,
+not calibrated on Vietnamese RSS excerpts. Language detection and emergence
+scores remain explicit heuristics. The selected feeds offer no deletion stream;
+an upstream takedown cannot be inferred from a feed page no longer listing it.
 
 ## OpenDesk UI library
 
@@ -208,8 +247,8 @@ then exercise the graph. There is no floating Git dependency.
 | ------------------------------- | -------------------------------------------------------- |
 | `GET /api/health`               | Public process and collection health                     |
 | `GET /api/trend-map?hours=72`   | Scored nodes, observed/similarity edges, source examples |
-| `GET /api/collect/status`       | Collector configuration, tail state, and errors          |
-| `POST /api/collect`             | Manual backfill; JSON `{ "limit": 25 }`                  |
+| `GET /api/collect/status`       | Polling state, per-source results, and errors            |
+| `POST /api/collect`             | Bounded source poll; JSON `{ "limit": 25 }`              |
 | `GET /api/signals?hours=72`     | Operational cluster/coverage data                        |
 | `GET /api/signals/search?q=...` | Local text/image vector retrieval                        |
 

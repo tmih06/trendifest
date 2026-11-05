@@ -20,7 +20,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PanelRight,
-  Radio,
   RefreshCw,
   Sun,
   Users,
@@ -72,11 +71,11 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
         <>
           <dl className="grid grid-cols-2 gap-3 rounded-lg bg-sunken p-3">
             <div>
-              <dt className="text-[11px] text-fg-3">Independent authors</dt>
+              <dt className="text-[11px] text-fg-3">Source accounts</dt>
               <dd className="mono mt-1 text-[17px] text-fg">{score.authors}</dd>
             </div>
             <div>
-              <dt className="text-[11px] text-fg-3">Collected posts</dt>
+              <dt className="text-[11px] text-fg-3">Thread excerpts</dt>
               <dd className="mono mt-1 text-[17px] text-fg">{score.posts}</dd>
             </div>
             <div>
@@ -96,7 +95,7 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
             {[
               { label: "Reach", value: score.reach },
               { label: "Velocity", value: score.velocity },
-              { label: "Audience spread", value: score.spread },
+              { label: "Source coverage", value: score.spread },
               { label: "Persistence", value: score.persistence },
               { label: "Author diversity", value: score.diversity },
             ].map((part) => (
@@ -115,27 +114,30 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
             ))}
           </div>
           <p className="text-[11px] leading-5 text-fg-3">
-            Evidence multiplier ×{score.confidence.toFixed(2)}. Five independent authors are needed
-            for the full score. This is a ranking heuristic, not a prediction.
+            Evidence multiplier ×{score.confidence.toFixed(2)}. Five source accounts are needed for
+            the full score. Accounts on different sites are not verified distinct people.
           </p>
         </>
       ) : (
         <p className="text-[12px] leading-5 text-fg-3">
-          {node.posts.toLocaleString()} posts observed. Audience hubs have no trend score.
+          {node.posts.toLocaleString()} excerpts observed. Source hubs have no trend score.
         </p>
       )}
       {node.kind === "pattern" && (
-        <section className="border-t border-line pt-4" aria-label="Source posts">
-          <h4 className="label-caps mb-2">Source posts</h4>
+        <section className="border-t border-line pt-4" aria-label="Source excerpts">
+          <h4 className="label-caps mb-2">Source excerpts</h4>
+          <p className="mb-2 text-[11px] leading-5 text-fg-3">
+            RSS excerpts, not every reply. Feed dates reflect activity, not verified publication.
+          </p>
           {node.examples?.length ? (
             <ul className="space-y-2">
               {node.examples.map((example) => (
                 <li key={example.uri} className="rounded-lg border border-line p-2.5">
                   <div className="mb-1 flex items-center justify-between gap-2 text-[10.5px] text-fg-3">
                     <span className="min-w-0 truncate">
-                      {example.authorHandle ? `@${example.authorHandle}` : "Unknown handle"}
+                      {example.authorHandle ?? "Unknown author"}
                     </span>
-                    <Badge>{example.kind}</Badge>
+                    <Badge>{example.source === "voz" ? "VOZ" : "Otofun"}</Badge>
                   </div>
                   <p className="break-words text-[11.5px] leading-5 text-fg-2">
                     {example.text || "Media-only post"}
@@ -146,14 +148,14 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
                     rel="noopener noreferrer"
                     className="mt-2 inline-flex min-h-6 items-center gap-1 text-[11px] text-fg underline underline-offset-4"
                   >
-                    Open source post
+                    Open original thread
                     <ArrowUpRight className="size-3" aria-hidden="true" />
                   </a>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-[11px] text-fg-3">No source posts available in this window.</p>
+            <p className="text-[11px] text-fg-3">No source excerpts available in this window.</p>
           )}
         </section>
       )}
@@ -165,7 +167,7 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
 export function TrendMapPage() {
   const { theme, toggle } = useTheme();
   const [hours, setHours] = useState<number>(72);
-  const [audience, setAudience] = useState<string | null>(null);
+  const [sourceId, setSourceId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -182,13 +184,13 @@ export function TrendMapPage() {
   const canvas = useMemo(() => (data ? toCanvas(data) : { nodes: [], links: [] }), [data]);
   const selected = data?.nodes.find((node) => node.id === selectedId) ?? null;
   const connectedIds = useMemo(() => {
-    if (!audience) return new Set(canvas.nodes.map((node) => node.id));
-    const hubId = `segment:${audience}`;
+    if (!sourceId) return new Set(canvas.nodes.map((node) => node.id));
+    const hubId = `segment:${sourceId}`;
     return new Set([
       hubId,
       ...canvas.links.filter((edge) => edge.source === hubId).map((edge) => edge.target),
     ]);
-  }, [audience, canvas]);
+  }, [sourceId, canvas]);
   const patterns = useMemo(
     () =>
       (data?.nodes ?? [])
@@ -213,22 +215,30 @@ export function TrendMapPage() {
         .sort((a, b) => b.similarity - a.similarity),
     [data, selectedId],
   );
-  const audienceLabel =
-    data?.coverage.find((row) => row.segmentId === audience)?.label ?? "All audiences";
+  const sourceLabel =
+    data?.coverage.find((row) => row.segmentId === sourceId)?.label ?? "All sources";
   const status = collection.data;
   const busy = collect.isPending || status?.backfilling === true;
-  const live = status?.configured === true && status.tailConnected;
+  const healthy =
+    status?.configured === true &&
+    status.enabled &&
+    status.lastBackfillAt !== null &&
+    status.lastErrors.length === 0;
   const statusLabel = collection.isError
     ? "Status unavailable"
     : !status
       ? "Connecting"
       : !status.configured
         ? "Database required"
-        : live
-          ? "Live feed"
-          : busy
-            ? "Collecting"
-            : "Feed disconnected";
+        : busy
+          ? "Collecting"
+          : status.lastErrors.length
+            ? "Source errors"
+            : !status.enabled
+              ? "Polling paused"
+              : healthy
+                ? "Polling active"
+                : "Waiting for first poll";
   const unconfigured =
     map.error instanceof Error && "code" in map.error && map.error.code === "database_unconfigured";
 
@@ -250,8 +260,8 @@ export function TrendMapPage() {
   }, [hours]);
 
   /** Filtering only changes emphasis; it must not restart the force simulation. */
-  function chooseAudience(id: string | null) {
-    setAudience(id);
+  function chooseSource(id: string | null) {
+    setSourceId(id);
     setSelectedId(null);
     setNavOpen(false);
   }
@@ -260,7 +270,7 @@ export function TrendMapPage() {
   function selectNode(id: string | null) {
     setSelectedId(id);
     if (id) {
-      if (!connectedIds.has(id)) setAudience(null);
+      if (!connectedIds.has(id)) setSourceId(null);
       if (narrow) setMobileInspector(true);
       else setDesktopInspector(true);
     }
@@ -306,23 +316,23 @@ export function TrendMapPage() {
       <div className="od-sidebar-section">
         <SidebarItem
           icon={<Network />}
-          active={!audience}
+          active={!sourceId}
           collapsed={rail}
-          onClick={() => chooseAudience(null)}
+          onClick={() => chooseSource(null)}
           count={data?.nodes.filter((node) => node.kind === "pattern").length}
-          title="All audiences"
+          title="All sources"
         >
           Trend graph
         </SidebarItem>
       </div>
-      <SidebarSection label="Audience feeds" collapsed={rail}>
+      <SidebarSection label="Vietnamese sources" collapsed={rail}>
         {(data?.coverage ?? []).map((row) => (
           <SidebarItem
             key={row.segmentId}
-            icon={row.segmentId === "discover" ? <Radio /> : <Circle className="size-3" />}
-            active={audience === row.segmentId}
+            icon={<Circle className="size-3" />}
+            active={sourceId === row.segmentId}
             collapsed={rail}
-            onClick={() => chooseAudience(row.segmentId)}
+            onClick={() => chooseSource(row.segmentId)}
             count={row.posts}
             title={row.error ? `${row.label}: ${row.error}` : row.label}
           >
@@ -419,11 +429,11 @@ export function TrendMapPage() {
                   </span>
                   <span className="mt-1.5 flex items-center gap-1 text-[10.5px] text-fg-3">
                     <Users className="size-3" aria-hidden="true" />
-                    {node.authors} authors
+                    Source accounts: {node.authors}
                     <span className="mx-1" aria-hidden="true">
                       ·
                     </span>
-                    {node.posts} posts
+                    Excerpts: {node.posts}
                   </span>
                 </span>
                 <PotentialBadge node={node} />
@@ -433,8 +443,8 @@ export function TrendMapPage() {
         </ol>
         {data && patterns.length === 0 && (
           <p className="p-4 text-[12px] leading-5 text-fg-3">
-            No patterns observed for this audience in this window. Try a wider window or collect
-            more posts.
+            No patterns observed for this source in this window. Try a wider window or collect more
+            Vietnamese excerpts.
           </p>
         )}
       </div>
@@ -459,7 +469,7 @@ export function TrendMapPage() {
               className="mobile-nav-trigger"
               variant="ghost"
               square
-              aria-label="Open audience sidebar"
+              aria-label="Open source sidebar"
               onClick={() => setNavOpen(true)}
             >
               <Menu />
@@ -469,12 +479,12 @@ export function TrendMapPage() {
               <h1 className="text-[13px] font-medium">Trend graph</h1>
               <ChevronRight className="header-breadcrumb size-3 text-fg-4" aria-hidden="true" />
               <span className="header-breadcrumb max-w-40 truncate text-[12px] text-fg-3">
-                {audienceLabel}
+                {sourceLabel}
               </span>
             </div>
             <div className="ms-auto flex items-center gap-1.5">
               <span className="header-live">
-                <Badge dot tone={live ? "ok" : "neutral"}>
+                <Badge dot tone={healthy ? "ok" : "neutral"}>
                   {statusLabel}
                 </Badge>
               </span>
@@ -506,12 +516,12 @@ export function TrendMapPage() {
             aria-describedby="graph-description"
           >
             <p id="graph-description" className="sr-only">
-              Collected patterns connected to audience feeds. Larger pattern nodes have higher
-              emergence scores. Use the pattern inspector to select nodes with the keyboard.
+              Vietnamese discussion patterns connected to their source feeds. Larger nodes have
+              higher heuristic scores. Use the inspector to select nodes with the keyboard.
             </p>
             <div className="graph-toolbar pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-3 p-4">
               <div className="min-w-0">
-                <p className="text-[11px] font-medium text-fg-2">{audienceLabel}</p>
+                <p className="text-[11px] font-medium text-fg-2">{sourceLabel}</p>
                 <p className="mt-1 text-[11px] text-fg-3">
                   {data ? `${patterns.length} patterns in view` : "Connecting to collected signals"}
                 </p>
@@ -592,7 +602,7 @@ export function TrendMapPage() {
                 <Network className="mx-auto mb-3 size-6 text-fg-3" aria-hidden="true" />
                 <p className="text-[13px] font-medium">No patterns in this view yet</p>
                 <p className="mt-1 text-[12px] text-fg-3">
-                  Choose another audience or collect more posts.
+                  Choose another source or collect more Vietnamese excerpts.
                 </p>
                 <Button
                   className="pointer-events-auto mt-4"
@@ -652,7 +662,7 @@ export function TrendMapPage() {
       </Shell>
       {dialogsEnabled && (
         <Suspense fallback={null}>
-          <Dialog open={navOpen} onOpenChange={setNavOpen} title="Audience feeds" size="sm">
+          <Dialog open={navOpen} onOpenChange={setNavOpen} title="Vietnamese sources" size="sm">
             <div className="mobile-sidebar">{sidebar(false)}</div>
           </Dialog>
           <Dialog
@@ -671,7 +681,7 @@ export function TrendMapPage() {
           >
             <div className="space-y-4 text-[12.5px] leading-5 text-fg-2">
               <p>
-                Solid edges mean an audience feed observed a pattern. Dashed edges connect patterns
+                Solid edges mean a source feed observed a pattern. Dashed edges connect patterns
                 with similar embedding centroids, compared only within the same model, modality, and
                 native dimension.
               </p>
@@ -697,18 +707,18 @@ export function TrendMapPage() {
                 ))}
               </dl>
               <p>
-                The weighted result is reduced when evidence is limited. Five independent authors
-                are needed for the full score. Larger pattern nodes have higher scores; audience
-                hubs carry no score. Connections do not inflate the score.
+                The weighted result is reduced when evidence is limited. Five source accounts are
+                needed for the full score. Larger pattern nodes have higher scores; source hubs
+                carry no score. Connections do not inflate the score.
               </p>
               <p className="rounded-lg bg-sunken p-3">
                 {data?.method.velocityComparable
-                  ? "Velocity compares distinct authors in the latest and preceding six-hour windows."
+                  ? "Velocity compares source accounts by thread activity in consecutive six-hour windows, not verified new publications."
                   : "Velocity stays neutral until at least twelve hours of observation history are available."}
               </p>
               <p className="text-[11px] text-fg-3">
-                Audience feeds are collection contexts, not verified viewer demographics. Feed
-                selection cannot prove a poster’s age.
+                Forum excerpts are a sampled collection, not a census of Vietnamese users. Account
+                names do not establish a person's age or cross-platform identity.
               </p>
             </div>
           </Dialog>
@@ -716,7 +726,7 @@ export function TrendMapPage() {
             open={collectionOpen}
             onOpenChange={setCollectionOpen}
             title="Collection status"
-            description="Live social feeds, local embeddings, and your Postgres database."
+            description="Vietnamese RSS sources, bounded local inference, and Postgres storage."
             footer={
               <Button
                 variant="primary"
@@ -731,16 +741,37 @@ export function TrendMapPage() {
           >
             <div className="space-y-4 text-[12px] leading-5 text-fg-2">
               <div className="flex items-center justify-between gap-3">
-                <span>Bluesky feed</span>
-                <Badge tone={live ? "ok" : "neutral"} dot>
+                <span>Vietnamese source polling</span>
+                <Badge tone={healthy ? "ok" : "neutral"} dot>
                   {statusLabel}
                 </Badge>
               </div>
+              <dl className="space-y-2" aria-label="Source collection results">
+                {(data?.coverage ?? []).map((source) => {
+                  const result = status?.lastBackfill?.sources.find(
+                    (item) => item.segmentId === source.segmentId,
+                  );
+                  return (
+                    <div key={source.segmentId} className="flex items-start justify-between gap-3">
+                      <dt>{source.label}</dt>
+                      <dd className="text-end text-fg-3">
+                        {result?.error
+                          ? "Unavailable"
+                          : result
+                            ? `${result.stored} stored · ${result.duplicates} unchanged`
+                            : busy
+                              ? "Collecting"
+                              : "Not collected"}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
               <p>
                 {status?.lastBackfillAt
                   ? `Last collection ${formatRelative(status.lastBackfillAt)}.`
                   : "No completed collection reported."}{" "}
-                The graph refreshes every two minutes; feed status refreshes separately.
+                Sources are polled every ten minutes; the graph refreshes every two minutes.
               </p>
               {collection.isError && (
                 <p role="alert" className="text-danger-fg">
@@ -756,7 +787,7 @@ export function TrendMapPage() {
                 {busy
                   ? "A collection cycle is running. This can take time while media is embedded."
                   : status?.lastBackfill
-                    ? `Last completed cycle: processed ${status.lastBackfill.stored} posts and ${status.lastBackfill.vectors} vectors. ${status.lastBackfill.errors.length} feed errors.`
+                    ? `Last cycle: ${status.lastBackfill.stored} stored, ${status.lastBackfill.duplicates} unchanged, ${status.lastBackfill.skippedLanguage + status.lastBackfill.skippedQuality} rejected. ${status.lastBackfill.errors.length} source errors.`
                     : collect.isSuccess
                       ? "Collection accepted. Waiting for updated status."
                       : ""}

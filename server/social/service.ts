@@ -1,146 +1,97 @@
 import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
-import type { SegmentCoverage, SocialSignals } from "../../shared/types.ts";
+import type {
+  CollectionStatus,
+  IngestReport,
+  SegmentCoverage,
+  SocialSignals,
+} from "../../shared/types.ts";
 import { databaseConfigured } from "../db.ts";
-import { ingestSegments, socialSignals, startTail } from "./pipeline.ts";
-import type { IngestReport } from "./pipeline.ts";
+import { ingestSegments, socialSignals } from "./pipeline.ts";
 
-/**
- * Background ingest scheduling and read caching.
- *
- * Two collection paths run together:
- * - periodic feed backfill, which supplies engagement counts and reaches posts
- *   the live tail dropped during a disconnect;
- * - the live Jetstream tail, which supplies new posts without polling.
- *
- * Segment errors are retained in `lastErrors` so the API can report "unknown"
- * for a failed segment instead of implying it observed zero posts.
- */
-
-const BACKFILL_INTERVAL_MS = 10 * 60 * 1000;
-const DEFAULT_WINDOW_HOURS = 72;
-
-export interface SocialServiceStatus {
-  configured: boolean;
-  backfilling: boolean;
-  lastBackfillAt: string | null;
-  /** The most recent completed cycle, so an operator can inspect what it did. */
-  lastBackfill: IngestReport | null;
-  lastErrors: Array<{ segmentId: string; message: string }>;
-  tailConnected: boolean;
-  /** What the live tail saw versus processed; null when the tail is not running. */
-  tail: { seen: number; processed: number; dropped: number; sampleRate: number } | null;
-  segments: number;
-}
-
-let timer: ReturnType<typeof setInterval> | null = null;
-let tail: ReturnType<typeof startTail> | null = null;
+/** Equal, bounded public-feed polls replace the unfiltered whole-network stream. */
+const POLL_INTERVAL_MS = 10 * 60 * 1000;
+let timer: NodeJS.Timeout | undefined;
 let backfilling = false;
 let lastBackfillAt: string | null = null;
 let lastBackfill: IngestReport | null = null;
-const lastErrors = new Map<string, string>();
-let errorLog: Array<{ segmentId: string; message: string }> = [];
+let lastErrors: Array<{ segmentId: string; message: string }> = [];
 
-/**
- * Run one backfill cycle. Re-entrancy is guarded by `backfilling`: a slow cycle
- * covering video downloads must not stack behind the interval timer, and a
- * concurrent call returns null so the API can report "already running".
- *
- * `limitPerSegment` counts posts *accepted* per segment, and ingestion walks up
- * to three pages to find unseen ones. 25 keeps niche feeds producing patterns
- * without turning a cycle into a long media-embedding run.
- */
-export async function runBackfill(limitPerSegment = 25): Promise<IngestReport | null> {
-  // A concurrent cycle returns null rather than a half-made report, so the API
-  // can say "already running" instead of reporting a stale success.
+/** A manual request and the timer share one flight; overlapping cycles return null. */
+export async function runBackfill(limitPerSegment = 20): Promise<IngestReport | null> {
   if (backfilling) return null;
   backfilling = true;
   try {
     const report = await ingestSegments({ limitPerSegment });
     lastBackfill = report;
     lastBackfillAt = new Date().toISOString();
-
-    // Errors are per segment and replace the previous cycle's, so a fixed
-    // segment stops showing an error without any explicit clearing step.
-    lastErrors.clear();
-    for (const error of report.errors) lastErrors.set(error.segmentId, error.message);
-    errorLog = [...lastErrors.entries()].map(([segmentId, message]) => ({ segmentId, message }));
+    lastErrors = report.errors;
     return report;
   } catch (error) {
-    lastErrors.set("collection", error instanceof Error ? error.message : String(error));
-    errorLog = [...lastErrors.entries()].map(([segmentId, message]) => ({ segmentId, message }));
+    lastErrors = [
+      { segmentId: "collection", message: error instanceof Error ? error.message : String(error) },
+    ];
     throw error;
   } finally {
     backfilling = false;
   }
 }
 
-/**
- * Start the tail and the backfill timer. No database means social collection is
- * unavailable, which is a supported deployment; callers see `configured: false`
- * rather than a background crash.
- */
+/** Start once only when a database is configured; no public stream is opened. */
 export function startSocialCollection() {
-  if (!databaseConfigured()) return status();
-  if (!tail) {
-    tail = startTail({
-      onError: (error) => {
-        console.warn("Social tail error:", error.message);
-      },
+  if (!databaseConfigured() || timer !== undefined) return status();
+  const poll = () => {
+    void runBackfill().catch((error: unknown) => {
+      console.warn(
+        "Public feed collection failed:",
+        error instanceof Error ? error.message : String(error),
+      );
     });
-  }
-  if (!timer) {
-    timer = setInterval(() => {
-      void runBackfill().catch((error: unknown) => {
-        // The interval must survive a database blip; the next cycle retries.
-        console.warn(
-          "Social backfill failed:",
-          error instanceof Error ? error.message : String(error),
-        );
-      });
-    }, BACKFILL_INTERVAL_MS);
-    void runBackfill().catch(() => undefined);
-  }
+  };
+  timer = setInterval(poll, POLL_INTERVAL_MS);
+  poll();
   return status();
 }
 
+/** Stop future polls; an accepted in-flight cycle retains its single-flight ownership. */
 export function stopSocialCollection() {
-  if (timer !== null) {
-    clearInterval(timer);
-    timer = null;
-  }
-  tail?.stop();
-  tail = null;
+  clearInterval(timer);
+  timer = undefined;
 }
 
-export function status(): SocialServiceStatus {
+/** Report polling state, not a fictional live socket or guaranteed source availability. */
+export function status(): CollectionStatus {
   return {
     configured: databaseConfigured(),
+    enabled: timer !== undefined,
     backfilling,
     lastBackfillAt,
     lastBackfill,
-    lastErrors: errorLog,
-    tailConnected: tail?.open ?? false,
-    tail: tail?.counters ?? null,
+    lastErrors,
     segments: VIEWER_SEGMENTS.length,
   };
 }
 
-/**
- * Signals with per-segment failure attached. Coverage rows for a failed segment
- * carry `error`, so the client can label them unknown instead of zero.
- */
-export async function signalsWithCoverage(windowHours = DEFAULT_WINDOW_HOURS) {
+/** Preserve known counts while marking collection failures, including in graph responses. */
+export function coverageWithErrors(coverage: SegmentCoverage[]): SegmentCoverage[] {
+  return coverage.map((row) => {
+    const error = lastErrors.find((item) => item.segmentId === row.segmentId);
+    return error ? { ...row, error: error.message } : row;
+  });
+}
+
+export async function signalsWithCoverage(windowHours = 72) {
   const signals = await socialSignals(windowHours);
   return {
     ...signals,
-    coverage: signals.coverage.map((row): SegmentCoverage => {
-      const message = lastErrors.get(row.segmentId);
-      return message && row.posts === 0 ? { ...row, error: message } : row;
-    }),
+    coverage: coverageWithErrors(signals.coverage),
   } satisfies SocialSignals;
 }
 
-/** Sanity check used by the health route: surface an unconfigured DB early. */
+/** Cheap health status; importing this module never creates a database connection. */
 export function socialHealth() {
-  return { configured: databaseConfigured(), segments: VIEWER_SEGMENTS.length };
+  return {
+    configured: databaseConfigured(),
+    enabled: timer !== undefined,
+    segments: VIEWER_SEGMENTS.length,
+  };
 }

@@ -4,9 +4,10 @@ import type { ApiError } from "../shared/types.ts";
 import { ApiFailure } from "./api-error.ts";
 import { AUTH_ENABLED, authorize } from "./auth.ts";
 import { DatabaseMissingError } from "./db.ts";
-import { BlueskyError } from "./social/bluesky.ts";
 import { searchAcrossSpaces } from "./social/pipeline.ts";
+import { MAX_POSTS_PER_SOURCE } from "./social/input.ts";
 import {
+  coverageWithErrors,
   runBackfill,
   signalsWithCoverage,
   socialHealth,
@@ -74,7 +75,9 @@ async function handleApi(request: Request, url: URL) {
   }
 
   if (url.pathname === "/api/trend-map" && request.method === "GET") {
-    return json(await buildTrendMap(readWindowHours(url)));
+    const map = await buildTrendMap(readWindowHours(url));
+    map.coverage = coverageWithErrors(map.coverage);
+    return json(map);
   }
 
   if (url.pathname === "/api/signals/search" && request.method === "GET") {
@@ -87,8 +90,12 @@ async function handleApi(request: Request, url: URL) {
   if (url.pathname === "/api/collect" && request.method === "POST") {
     const body = await readJson(request);
     const limit = typeof body.limit === "number" ? Math.round(body.limit) : 8;
-    if (limit < 1 || limit > 50) {
-      throw new ApiFailure(400, "Collect between 1 and 50 posts per segment", "invalid_limit");
+    if (limit < 1 || limit > MAX_POSTS_PER_SOURCE) {
+      throw new ApiFailure(
+        400,
+        `Collect between 1 and ${MAX_POSTS_PER_SOURCE} excerpts per source`,
+        "invalid_limit",
+      );
     }
     const current = status();
     if (!current.configured) throw new DatabaseMissingError();
@@ -193,7 +200,7 @@ async function fetch(request: Request) {
       if (error instanceof ApiFailure) {
         return apiError(error.status, error.message, error.code);
       }
-      if (error instanceof DatabaseMissingError || error instanceof BlueskyError) {
+      if (error instanceof DatabaseMissingError) {
         return apiError(error.status, error.message, error.code);
       }
       console.error(`API ${request.method} ${url.pathname} failed:`, error);
@@ -220,12 +227,12 @@ console.log(
 console.log(AUTH_ENABLED ? "Password protection: on" : "Password protection: off (development)");
 
 // Social collection is opt-in: it needs a database, downloads models on first
-// use, and reaches the public Bluesky network.
+// use, and polls the public Vietnamese discussion feeds.
 if (process.env.TRENDIFEST_SOCIAL === "1") {
   const social = startSocialCollection();
   console.log(
     social.configured
-      ? `Social collection: ${social.segments} viewer segments`
+      ? `Social collection: ${social.segments} Vietnamese source feeds`
       : "Social collection: disabled (TRENDIFEST_DATABASE_URL is not set)",
   );
 }

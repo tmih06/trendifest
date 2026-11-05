@@ -1,8 +1,10 @@
-import { ADOPTION_SEGMENTS, VIEWER_SEGMENTS } from "../../shared/segments.ts";
+import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
 import type {
   ClusterExample,
   PostKind,
   SocialSignals,
+  SocialSource,
+  SourceTimeKind,
   TrendMap,
   TrendMapEdge,
   TrendMapNode,
@@ -62,23 +64,22 @@ interface ClusterStatsRow {
   kind: string;
   media_count: number;
   observed_span_hours: number;
-  likes: string | number;
-  shares: string | number;
+  likes: string | number | null;
+  shares: string | number | null;
 }
 
 /**
  * Components, each normalized to 0..1 before weighting so a single long-running
  * cluster cannot dominate through raw volume.
  *
- * - reach: distinct authors, log-scaled. Ten independent creators is the first
- *   evidence of replication; one account posting ten times is not.
- * - velocity: recent authors against the preceding window. Only authors count,
- *   so a burst of reposts from one account cannot look like acceleration.
- * - spread: distinct collection segments. Discover is excluded upstream, so a
- *   general trending pool cannot inflate this.
- * - persistence: how long the pattern has kept producing members.
- * - diversity: authors per post. A ratio near 1 means every post is a different
- *   person; a ratio near 0 means mechanical repetition.
+ * - reach: distinct source-qualified accounts, log-scaled. Account names are
+ *   not verified people and are never merged across sites.
+ * - velocity: source activity in consecutive windows; RSS activity is not
+ *   verified original publication.
+ * - spread: distinct observed source contexts, normalized by the catalog size.
+ * - persistence: the activity span represented by current members.
+ * - diversity: source accounts per excerpt; one account repeating itself
+ *   must not outrank evidence from multiple source accounts.
  *
  * A support factor then scales the weighted sum by evidence volume. Without it a
  * brand-new two-post cluster scored 65/100: velocity is 1.0 whenever there is no
@@ -106,7 +107,7 @@ function scoreCluster(row: ClusterStatsRow): TrendScore {
         ? 1
         : 0
       : Math.min(1, recentAuthors / (priorAuthors * 2));
-  const spread = Math.min(1, (row.segments?.length ?? 0) / 3);
+  const spread = Math.min(1, (row.segments?.length ?? 0) / Math.max(1, VIEWER_SEGMENTS.length));
   const ageHours = Math.max(0, (row.last_seen.getTime() - row.first_seen.getTime()) / 3_600_000);
   const persistence = Math.min(1, ageHours / 12);
   const diversity = posts === 0 ? 0 : authors / posts;
@@ -138,23 +139,27 @@ function radiusFor(potential: number) {
 
 export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
   const db = await getDb();
-  const adoptionIds = ADOPTION_SEGMENTS.map((segment) => segment.id);
+  const adoptionIds = VIEWER_SEGMENTS.map((segment) => segment.id);
 
   const rows = (await db`
     WITH members AS (
       SELECT c.id AS cluster_id, c.space::text AS space,
-             p.id AS post_id, p.author_did, p.published_at, p.media, p.kind
+             p.id AS post_id, p.author_id, p.source, p.published_at, p.media, p.kind
       FROM clusters c
       JOIN cluster_members cm ON cm.cluster_id = c.id
       JOIN posts p ON p.id = cm.post_id
       WHERE c.archived_at IS NULL
         AND p.deleted_at IS NULL
         AND p.published_at > now() - ${`${hours} hours`}::interval
+        AND EXISTS (
+          SELECT 1 FROM observations o WHERE o.post_id = p.id
+            AND o.segment_id = ANY(${adoptionIds}::text[])
+        )
     ),
     agg AS (
       SELECT cluster_id,
              count(DISTINCT post_id)::int AS posts,
-             count(DISTINCT author_did)::int AS authors,
+             count(DISTINCT NULLIF(author_id, source || ':unknown'))::int AS authors,
              count(DISTINCT post_id) FILTER (
                WHERE published_at > now() - ${`${VELOCITY_WINDOW_HOURS} hours`}::interval
              )::int AS recent,
@@ -162,10 +167,10 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
                WHERE published_at <= now() - ${`${VELOCITY_WINDOW_HOURS} hours`}::interval
                  AND published_at > now() - ${`${VELOCITY_WINDOW_HOURS * 2} hours`}::interval
              )::int AS prior,
-             count(DISTINCT author_did) FILTER (
+             count(DISTINCT NULLIF(author_id, source || ':unknown')) FILTER (
                WHERE published_at > now() - ${`${VELOCITY_WINDOW_HOURS} hours`}::interval
              )::int AS recent_authors,
-             count(DISTINCT author_did) FILTER (
+             count(DISTINCT NULLIF(author_id, source || ':unknown')) FILTER (
                WHERE published_at <= now() - ${`${VELOCITY_WINDOW_HOURS} hours`}::interval
                  AND published_at > now() - ${`${VELOCITY_WINDOW_HOURS * 2} hours`}::interval
              )::int AS prior_authors,
@@ -190,7 +195,7 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
               AND jsonb_array_length(m.media) > 0) AS media_count,
            -- The latest snapshot per member, so a pattern's reach is measured
            -- engagement rather than assumed from post count.
-           (SELECT coalesce(sum(latest.likes), 0)::bigint
+           (SELECT sum(latest.likes)::bigint
               FROM members m
               CROSS JOIN LATERAL (
                 SELECT ms.likes FROM metric_snapshots ms
@@ -198,7 +203,8 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
                 ORDER BY ms.captured_at DESC LIMIT 1
               ) latest
              WHERE m.cluster_id = a.cluster_id) AS likes,
-           (SELECT coalesce(sum(latest.reposts + latest.quotes), 0)::bigint
+           (SELECT sum(coalesce(latest.reposts, 0) + coalesce(latest.quotes, 0))
+                   FILTER (WHERE latest.reposts IS NOT NULL OR latest.quotes IS NOT NULL)::bigint
               FROM members m
               CROSS JOIN LATERAL (
                 SELECT ms.reposts, ms.quotes FROM metric_snapshots ms
@@ -218,8 +224,8 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
       kind: string;
       media_count: number;
       observed_span_hours: number;
-      likes: string | number;
-      shares: string | number;
+      likes: string | number | null;
+      shares: string | number | null;
     }
   >;
 
@@ -244,7 +250,7 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
 
   const chosen: typeof scored = [];
   const taken = new Set<string>();
-  for (const segment of VIEWER_SEGMENTS.filter((item) => item.scope === "collection")) {
+  for (const segment of VIEWER_SEGMENTS) {
     const owned = scored.filter(
       (item) => !taken.has(item.row.cluster_id) && (item.row.segments ?? []).includes(segment.id),
     );
@@ -268,7 +274,7 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
   const nodes: TrendMapNode[] = [];
   const edges: TrendMapEdge[] = [];
 
-  const segmentNodes = VIEWER_SEGMENTS.filter((segment) => segment.scope === "collection");
+  const segmentNodes = VIEWER_SEGMENTS;
   segmentNodes.forEach((segment) => {
     nodes.push({
       id: `segment:${segment.id}`,
@@ -294,8 +300,8 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
       label: label.slice(0, 90),
       description:
         `${score.posts} post${score.posts === 1 ? "" : "s"} from ${score.authors} ` +
-        `author${score.authors === 1 ? "" : "s"} across ${observed.length || 1} ` +
-        `audience${observed.length === 1 ? "" : "s"}.`,
+        `source account${score.authors === 1 ? "" : "s"} across ${observed.length} ` +
+        `collection context${observed.length === 1 ? "" : "s"}.`,
       radius: radiusFor(score.potential),
       potential: score.potential,
       posts: score.posts,
@@ -305,19 +311,15 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
       clusterId: row.cluster_id,
       kind_: row.kind,
       mediaCount: Number(row.media_count),
-      likes: Number(row.likes),
-      shares: Number(row.shares),
+      likes: row.likes === null ? undefined : Number(row.likes),
+      shares: row.shares === null ? undefined : Number(row.shares),
       firstSeenAt: row.first_seen.toISOString(),
       lastSeenAt: row.last_seen.toISOString(),
     });
 
-    // A pattern observed by no collection segment still belongs to the map via
-    // Discover; it is attached to the discovery hub so nothing is unreachable.
-    // The attachment list is deduplicated because a post can carry several
-    // spans (text plus images), which would otherwise emit duplicate edges and
-    // collide on React keys.
-    const attachment = [...new Set(observed.length > 0 ? observed : ["discover"])];
-    for (const segmentId of attachment) {
+    // Only directly observed collection contexts create edges; there is no
+    // synthetic Discover attachment or whole-network pool in this corpus.
+    for (const segmentId of new Set(observed)) {
       edges.push({
         id: `segment:${segmentId}>cluster:${row.cluster_id}`,
         source: `segment:${segmentId}`,
@@ -328,23 +330,7 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
     }
   }
 
-  // Discovery is a hub too, but it is drawn as a whole-network pool: a pattern
-  // reaching it says nothing about crossing, so it is visually distinct.
-  nodes.push({
-    id: "segment:discover",
-    kind: "pool",
-    label: "Discover",
-    description: "Bluesky's general trending pool. Reaching it is not audience adoption.",
-    // Every unmapped pattern attaches here, so the pool is drawn larger than a
-    // niche segment: it is visibly the busiest hub, not just another anchor.
-    radius: 16,
-    potential: null,
-    posts: coverage.find((row) => row.segmentId === "discover")?.posts ?? 0,
-    authors: 0,
-    segments: ["discover"],
-  });
-
-  // Compare only displayed patterns, at most 780 pairs. Padding gives storage
+  // Compare only displayed patterns. Padding gives storage
   // one width, not one semantic space: model, space and native dimension must
   // all match. Thresholds are affinity heuristics, never calibrated confidence.
   const clusterIds = clusterNodes.map((node) => node.clusterId!);
@@ -360,7 +346,7 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
       (SELECT min(o.observed_at) FROM observations o WHERE o.post_id = p.id) AS observed_at
     FROM clusters c
     CROSS JOIN LATERAL (
-      SELECT DISTINCT p.id, p.permalink, p.body, p.author_handle, p.kind,
+      SELECT DISTINCT p.id, p.permalink, p.source, p.time_kind, p.body, p.author_handle, p.kind,
         p.published_at, jsonb_array_length(p.media) AS media_count
       FROM cluster_members cm JOIN posts p ON p.id = cm.post_id
       WHERE cm.cluster_id = c.id AND p.deleted_at IS NULL
@@ -372,6 +358,8 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
           cluster_id: string;
           id: string;
           permalink: string;
+          source: SocialSource;
+          time_kind: SourceTimeKind;
           body: string;
           author_handle: string | null;
           kind: PostKind;
@@ -386,7 +374,9 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
     items.push({
       uri: example.id,
       permalink: example.permalink,
-      text: example.body,
+      source: example.source,
+      timeKind: example.time_kind,
+      text: example.body.slice(0, 600),
       authorHandle: example.author_handle,
       kind: example.kind,
       mediaCount: Number(example.media_count),
@@ -427,17 +417,15 @@ export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
     similarityDegree.set(pair.source, sourceDegree + 1);
     similarityDegree.set(pair.target, targetDegree + 1);
   }
-  const byPotential = [...clusterNodes].sort((a, b) => (b.potential ?? 0) - (a.potential ?? 0));
 
   return {
     hours,
     generatedAt: new Date().toISOString(),
     nodes: [...nodes, ...clusterNodes],
     edges,
-    top: byPotential.slice(0, 12),
     coverage,
     method: {
-      version: 1,
+      version: 2,
       velocityWindowHours: VELOCITY_WINDOW_HOURS,
       weights: { reach: 0.34, velocity: 0.26, spread: 0.18, persistence: 0.12, diversity: 0.1 },
       // False until the collector has two comparable windows; the panel says so

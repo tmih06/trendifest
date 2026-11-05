@@ -1,6 +1,8 @@
 # Early-trend intelligence: feasibility and proposed design
 
-Research checked 2026-10-28. This is a research/design proposal, not implemented functionality. The current application is the Google Trends MVP described in the README. Platform access, policies, prices, and model availability must be rechecked before integrating them. Policy observations below are engineering constraints, not legal advice.
+Research checked 2026-10-28. This is a historical research/design proposal, not the current implementation contract. Platform access, policies, prices, and model availability must be rechecked before integrating them. Policy observations below are engineering constraints, not legal advice.
+
+**Source-selection update (2026-11-05):** The running application now collects bounded Vietnamese VOZ and Otofun excerpts. The [Vietnamese public-source research](vietnamese-public-sources.md) supersedes this proposal's Bluesky-first source recommendation. See the [README](../../README.md) for implemented behavior; calibrated breakout prediction remains unimplemented research.
 
 ## 1. Decision
 
