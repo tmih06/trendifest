@@ -1,0 +1,3 @@
+[test]
+# Applies even to direct `bun test path/to/file.test.ts` invocations.
+preload = ["./tests/database-safety.ts"]

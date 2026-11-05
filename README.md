@@ -424,8 +424,12 @@ for optional MCP integration and licensing.
 ### Database tests
 
 Database integration tests are skipped unless `TRENDIFEST_TEST_DATABASE_URL`
-points to a **disposable, separate database**. Tests truncate its public tables;
-never point that variable at the collection database.
+points to a **disposable, separate database**. Tests truncate its public tables.
+`bunfig.toml` preloads a fail-closed safety guard, including direct `bun test`
+invocations: the collection database and demo copies are rejected before any
+test runs. Allowed names are `trendifest_test`, `trendifest_*_ci_*`, and
+`trendifest_*_scratch`. With no test URL, the application database URL is cleared
+inside the test process so `.env` cannot accidentally supply the live corpus.
 
 ```bash
 docker compose exec postgres createdb -U trendifest trendifest_test
