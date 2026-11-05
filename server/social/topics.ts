@@ -7,6 +7,7 @@ import type {
   SourceTimeKind,
   TrendScore,
 } from "../../shared/types.ts";
+import { type TopicSupport, measureTopicSupport } from "./topic-trend.ts";
 
 /**
  * Specific-topic grouping: turn individual collected records into the concrete
@@ -204,8 +205,13 @@ function isStopWord(token: string) {
   return FUNCTION_WORDS.has(token) || ENGLISH_FUNCTION_WORDS.has(token) || CONTEXT_NOUNS.has(token);
 }
 
-/** One record with the extracted evidence the rules need. */
-interface PreparedRecord {
+/**
+ * One record with the extracted evidence the rules need. Exported so a caller
+ * that scores many pairs of the same records (a review guard) can prepare each
+ * record once and pass the tuple to `topicPairScore`, instead of re-extracting
+ * every name and phrase per pair.
+ */
+export interface PreparedRecord {
   evidence: TopicEvidence;
   /** Informative phrases cached once per record, not rebuilt for every pair. */
   phrases: Set<string>;
@@ -461,7 +467,12 @@ function readingText(evidence: TopicEvidence) {
   return `${title} ${body}`;
 }
 
-function prepare(evidence: TopicEvidence): PreparedRecord {
+/**
+ * Extract once, compare many times. Pure and deterministic: the same record
+ * always yields the same prepared evidence, so a caller may cache it and still
+ * get exactly the verdict `topicPairScore` gives with an internal prepare.
+ */
+export function prepare(evidence: TopicEvidence): PreparedRecord {
   const text = readingText(evidence);
   const tokens = contentTokens(text);
   const entities = namedEntities(text);
@@ -857,6 +868,15 @@ function topicIdFor(seed: TopicEvidence) {
 }
 
 /**
+ * The deterministic id an automatically grouped topic gets before it has any
+ * persisted identity: a hash of its earliest record's source identity, stable
+ * while the topic grows and identical on every device and every restart.
+ */
+export function seedTopicId(seed: TopicEvidence) {
+  return topicIdFor(seed);
+}
+
+/**
  * A source-grounded label: a real title that names the event, not a generated
  * summary and not a body paragraph. News headlines are written to name the
  * event, so they win; otherwise the representative's own title is used, and a
@@ -1090,6 +1110,29 @@ export function groupSpecificTopics(records: readonly TopicEvidence[]): TopicGro
   return sized;
 }
 
+/**
+ * Build one topic from an explicit member set, using exactly the rules the
+ * automatic partition uses for labels, representative evidence and counts.
+ *
+ * A persisted assignment is authoritative: when the projection has to rebuild
+ * a group around records whose catalog membership is already known (or whose
+ * members were split or merged by a reviewer), it must derive the same label and
+ * counts the partition would, and it must not silently reshape the member set.
+ */
+export function buildTopicGroup(members: readonly TopicEvidence[], id?: string): TopicGroup {
+  const ordered = [...members].sort(compareEvidence);
+  const prepared = ordered.map(prepare);
+  const representative = medoid(prepared).evidence;
+  const seed = ordered[0]!;
+  return {
+    id: id ?? topicIdFor(seed),
+    label: labelFor(representative, ordered),
+    representative,
+    members: ordered,
+    ...describeGroup(prepared),
+  };
+}
+
 /** Options shared by scoring and radius so the two cannot drift apart. */
 export interface TopicScoreOptions {
   /** Reference instant; defaults to now, injected by tests. */
@@ -1101,6 +1144,8 @@ export interface TopicScoreOptions {
    * velocity window, growth is unmeasured and stays neutral.
    */
   observedSpanHours?: number;
+  /** Shared qualified independent support, reused by the trend explanation. */
+  support?: TopicSupport;
 }
 
 export const VELOCITY_WINDOW_HOURS = 6;
@@ -1113,9 +1158,9 @@ export const VELOCITY_WINDOW_HOURS = 6;
  * - reach: independent evidence (community accounts + news publishers), log
  *   scaled. A publisher is not a person and an account is not a verified
  *   person; neither is merged across sources.
- * - velocity: records *first collected* in consecutive windows. Collection
- *   growth is measured; an old forum thread bumped today is not publication
- *   growth, which is why this uses `firstCollectedAt`, not `publishedAt`.
+ * - velocity: independent accounts/publishers first collected in consecutive
+ *   windows, backed by a fresh source publication. Archive imports and forum
+ *   activity cannot manufacture growth; unavailable history stays neutral.
  * - spread: distinct observed collection contexts, normalized by the catalog.
  * - persistence: how long the topic has been observable at all.
  * - diversity: independent sources per record. One account reposting itself
@@ -1133,10 +1178,12 @@ export function scoreTopic(group: TopicGroup, options: TopicScoreOptions = {}): 
   const priorStart = recentStart - windowHours * 3_600_000;
   let recent = 0;
   let prior = 0;
-  for (const member of group.members) {
-    const collected = member.firstCollectedAt.getTime();
-    if (collected > recentStart) recent += 1;
-    else if (collected > priorStart) prior += 1;
+  const measured = options.support ?? measureTopicSupport(group, now);
+  for (const units of [measured.accounts, measured.publishers]) {
+    for (const collected of units.values()) {
+      if (collected > recentStart && collected <= now.getTime()) recent += 1;
+      else if (collected > priorStart && collected <= recentStart) prior += 1;
+    }
   }
 
   // Growth needs two comparable windows. Until the collector has that much

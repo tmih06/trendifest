@@ -1,3 +1,5 @@
+import type { TopicAttention, TopicEntity, TopicTrend } from "./intelligence.ts";
+
 /**
  * Wire types shared by the Bun API and the React client. These are the only
  * shapes that cross the network.
@@ -219,6 +221,11 @@ export interface TrendMapNode {
   firstSeenAt: string;
   lastSeenAt: string;
   examples: TopicExample[];
+  /** Measured collection history; unknown baselines stay explicit. */
+  trend: TopicTrend;
+  /** Independent publisher attention is not community momentum. */
+  attention: TopicAttention;
+  entityIds: string[];
 }
 
 export interface TrendMapEdge {
@@ -237,6 +244,13 @@ export interface TrendMap {
   nodes: TrendMapNode[];
   edges: TrendMapEdge[];
   coverage: SegmentCoverage[];
+  /** Deduplicated entity catalog; nodes carry IDs rather than repeated aliases. */
+  entities: TopicEntity[];
+  intelligence: {
+    startedAt: string;
+    lastSnapshotAt: string | null;
+    refreshing: boolean;
+  };
   stats: {
     posts: number;
     topics: number;

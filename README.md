@@ -87,14 +87,14 @@ not production latency guarantees; the collector continued receiving new input.
 - **Workspace sidebar:** switch between **Trend graph** and **Topic board**.
   Both use the same source/time filters and query cache; changing views does not
   download another map. **All sources** clears the source filter independently.
-- **Topic board:** a potential-ranked table with full Vietnamese titles, scores,
-  separate community and publisher counts, sources and last-seen times. Search
-  without accents and browse 80 rows per page; sticky controls stay available
-  while scrolling. Select a title or **View evidence** for the score breakdown
-  and original records. Desktop details reserve space beside the table; mobile
-  details use the accessible inspector dialog. Narrow screens can scroll the
-  table horizontally without hiding columns. Ranking uses the graph's existing
-  heuristic, not invented popularity tiers; there is no introductory hero block.
+- **Topic board:** a native table with canonical global ranks, rising/sustained/
+  fading phases, real rank movement, hourly sparklines, new independent support,
+  and separate news/community attention. Unknown history is explicit, not zero.
+  Search without accents, filter phases, sort measurements, and browse 80 rows
+  per page. **Entity filters** match Vietnamese names and aliases, with people,
+  organisations, places, and products kept separate (including model versions).
+  Controls stay outside the bounded table scroller; all columns remain reachable
+  horizontally. Select a title or **View evidence** for the inspector.
 - **Source sidebar:** filter evidence from VOZ, Otofun, Google News VN, Người
   Việt, VnExpress, Tuổi Trẻ, Thanh Niên, or Dân trí. Counts are collected records,
   not audiences or replies. News publishers are not community accounts;
@@ -117,6 +117,10 @@ not production latency guarantees; the collector continued receiving new input.
   and original links even when the selected topic is on another ranking page.
   The desktop inspector floats above the graph; its toggle and expansion respect
   reduced motion. Map limitations remain available in a native disclosure.
+  **Source timeline** lazily loads 40 original records per page. Publication,
+  forum activity, first collection, and last observation are distinct fields,
+  displayed in ICT (UTC+7). Explanations cite measured support and disclose
+  sampling/identity limits; no generated narrative or invented audience is used.
 - **Collection status:** bounded polling state, per-source results/errors, and a
   manual collection action. No fictional live-stream connection is reported.
 - **Appearance:** light/dark preference, collapsible desktop sidebar, mobile
@@ -262,11 +266,11 @@ examples. Vectors never leave the endpoint. `pendingEmbeddings` exposes missing
 or stale model/hash rows; `limited` exposes actual candidate/display truncation.
 
 Vector parsing, indexed grouping, scoring, and relationships run in a dedicated
-worker, not the HTTP event loop. Four single-flight snapshots bound the cache.
-Database tuple revisions invalidate it on edits, deletes, vector replacements,
-observations, metrics, and history changes; a minute bucket refreshes rolling
-windows and scores even without writes. Cache hits keep the original
-`generatedAt`. This internal cache does not change the HTTP `no-store` policy.
+worker, not the HTTP event loop. Eight single-flight snapshots bound the cache.
+Evidence, membership, label, and review revisions invalidate projections.
+Snapshot-only writes do not trigger regrouping; a minute bucket refreshes rolling
+windows. Cache hits keep the original `generatedAt`. This internal cache does
+not change the HTTP `no-store` policy.
 The worker stays referenced during work and becomes unreferenced when idle,
 so collection scripts and tests can finish naturally.
 
@@ -279,13 +283,13 @@ the live corpus continues changing.
 
 ### Emergence score
 
-| Component   | Weight | Evidence                                                |
-| ----------- | ------ | ------------------------------------------------------- |
-| Reach       | 34%    | Independent community accounts + publishers, log-scaled |
-| Velocity    | 26%    | First collections in consecutive six-hour windows       |
-| Spread      | 18%    | Distinct observed collection contexts                   |
-| Persistence | 12%    | Local collection/observation span                       |
-| Diversity   | 10%    | Independent accounts + publishers per evidence record   |
+| Component   | Weight | Evidence                                                  |
+| ----------- | ------ | --------------------------------------------------------- |
+| Reach       | 34%    | Independent community accounts + publishers, log-scaled   |
+| Velocity    | 26%    | Fresh independent support in consecutive six-hour windows |
+| Spread      | 18%    | Distinct observed collection contexts                     |
+| Persistence | 12%    | Local collection/observation span                         |
+| Diversity   | 10%    | Independent accounts + publishers per evidence record     |
 
 The evidence multiplier is `0.3 + 0.7 × min(1, (accounts + publishers) / 5)`.
 News and community counts remain separate in the inspector. Identical copied
@@ -293,11 +297,20 @@ content and syndicated headlines cannot multiply support. Node radius grows
 monotonically with potential; multiple independent posts about one release
 strengthen one larger node, rather than creating more disconnected dots.
 
-Velocity stays neutral until twelve hours of known first-collection history
-exist. Schema upgrades assign older records their cutover time rather than
-inventing historical collection dates. Collection growth is not measured social
-reach, and a forum bump is not a newly published post. Connections do not boost
-scores. This ranks collected evidence for inspection, not predicted popularity.
+Velocity stays neutral until the topic has actual hourly observations covering
+two six-hour windows, without a gap longer than 75 minutes. A monitoring start
+date, old imported articles, or one old sample cannot establish comparability.
+Ranks compare the real six-hour observation, not the latest poll. History stores
+actual observation times (not reconstructed publication-time popularity), one
+sample per hour/window, retained for 72 hours. The map carries the latest 12
+points; detail exposes retained history on demand.
+
+Growth uses the earliest collection of each independent known account/publisher.
+A source publication must be discovered within 12 hours to qualify; activity-only
+forum timestamps and archival imports cannot boost velocity or fresh support.
+Rising means faster new independent support than the prior window, sustained
+means a stable rate, and fading means a slowing/absent rate. These are sampled
+evidence directions, not predicted popularity. Relationships do not boost scores.
 
 ## Local multimodal embeddings
 
@@ -374,14 +387,15 @@ then exercise the graph. There is no floating Git dependency.
 
 ## API
 
-| Endpoint                        | Purpose                                                  |
-| ------------------------------- | -------------------------------------------------------- |
-| `GET /api/health`               | Public process and collection health                     |
-| `GET /api/trend-map?hours=72`   | Scored nodes, observed/similarity edges, source examples |
-| `GET /api/collect/status`       | Polling state, per-source results, and errors            |
-| `POST /api/collect`             | Bounded source poll; JSON `{ "limit": 25 }`              |
-| `GET /api/signals?hours=72`     | Operational cluster/coverage data                        |
-| `GET /api/signals/search?q=...` | Local text/image vector retrieval                        |
+| Endpoint                                          | Purpose                                                             |
+| ------------------------------------------------- | ------------------------------------------------------------------- |
+| `GET /api/health`                                 | Public process and collection health                                |
+| `GET /api/trend-map?hours=72`                     | Scored nodes, observed/similarity edges, source examples            |
+| `GET /api/topics/:id?hours=168&offset=0&limit=40` | Paginated source timeline, measured history, entities, review state |
+| `GET /api/collect/status`                         | Polling state, per-source results, and errors                       |
+| `POST /api/collect`                               | Bounded source poll; JSON `{ "limit": 25 }`                         |
+| `GET /api/signals?hours=72`                       | Operational cluster/coverage data                                   |
+| `GET /api/signals/search?q=...`                   | Local text/image vector retrieval                                   |
 
 ## Development
 

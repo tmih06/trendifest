@@ -9,6 +9,7 @@ import type {
 import { databaseConfigured, getDb } from "../db.ts";
 import { clampCollectionLimit, DEFAULT_COLLECTION_LIMIT } from "./input.ts";
 import { ingestSegments, socialSignals } from "./pipeline.ts";
+import { refreshIntelligence } from "./intelligence-service.ts";
 
 /** Finite provider polls; a session lock also coordinates independent server/CLI processes. */
 const POLL_INTERVAL_MS = 10 * 60 * 1000;
@@ -81,6 +82,18 @@ export async function runBackfill(
           progress = { ...progress, ...update, updatedAt: new Date().toISOString() };
         },
       });
+      // The CLI awaits this finite phase before closing its DB pool. A failed
+      // projection must not misreport already-durable source collection as lost.
+      try {
+        await refreshIntelligence(true);
+      } catch (error) {
+        console.warn(
+          "Post-collection topic intelligence failed:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      // Publish the completion watermark only after materialization, so client
+      // invalidation cannot cache the previous graph as this cycle's result.
       lastBackfill = report;
       lastBackfillAt = new Date().toISOString();
       lastErrors = report.errors;

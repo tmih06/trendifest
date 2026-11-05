@@ -52,6 +52,13 @@ const Dialog = lazy(() =>
   import("@trendifest/opendesk/dialog").then((module) => ({ default: module.Dialog })),
 );
 
+/** Selected-topic analysis stays off the landing and initial graph entry path. */
+const TopicIntelligencePanel = lazy(() =>
+  import("@/components/topic-intelligence").then((module) => ({
+    default: module.TopicIntelligencePanel,
+  })),
+);
+
 /** Default to a week so a topic reported days ago is still inside the window. */
 const DEFAULT_HOURS = 168;
 
@@ -347,20 +354,24 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
         : { nodes: [], links: [] },
     [data, visibleIds],
   );
+  // The projection's canonical potential/id order also defines stored ranks.
+  // Filtering must not silently renumber ranks used by movement comparisons.
+  const rankById = useMemo(
+    () => new Map((data?.nodes ?? []).map((node, index) => [node.id, index + 1])),
+    [data],
+  );
   const topics = useMemo(
-    () =>
-      (data?.nodes ?? [])
-        .filter((node) => visibleIds.has(node.id))
-        .sort(
-          (a, b) =>
-            b.potential - a.potential || b.posts - a.posts || a.label.localeCompare(b.label),
-        ),
+    () => (data?.nodes ?? []).filter((node) => visibleIds.has(node.id)),
     [data, visibleIds],
   );
   const searchableTopics = useMemo(
     () =>
-      topics.map((node, index) => ({ node, rank: index + 1, text: topicSearchText(node.label) })),
-    [topics],
+      topics.map((node) => ({
+        node,
+        rank: rankById.get(node.id)!,
+        text: topicSearchText(node.label),
+      })),
+    [topics, rankById],
   );
   const matchingTopics = useMemo(() => {
     const query = topicSearchText(topicQuery).trim();
@@ -654,6 +665,20 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
         {selected && (
           <div className="border-b border-line p-4">
             <NodeDetail node={selected} sourceLabels={sourceLabels} />
+            <Suspense
+              fallback={
+                <p role="status" className="mt-4 text-[12px] text-fg-3">
+                  Loading topic intelligence…
+                </p>
+              }
+            >
+              <TopicIntelligencePanel
+                key={`${selected.id}:${hours}`}
+                node={selected}
+                hours={hours}
+                entities={data?.entities ?? []}
+              />
+            </Suspense>
             <div className="mt-4 border-t border-line pt-4">
               <h3 className="label-caps mb-2">Related topics</h3>
               {relatedTopics.length === 0 ? (
@@ -1021,6 +1046,8 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
                   key={`${sourceId}:${hours}`}
                   topics={topics}
                   selectedId={selectedId}
+                  entities={data.entities}
+                  rankById={rankById}
                   sourceLabels={sourceLabels}
                   generatedAt={data.generatedAt}
                   limited={data.stats.limited}

@@ -12,9 +12,12 @@ import {
   signalsWithCoverage,
   socialHealth,
   startSocialCollection,
+  stopSocialCollection,
   status,
 } from "./social/service.ts";
 import { buildTrendMap } from "./social/trend-map.ts";
+import { getTopicDetail } from "./social/topic-intelligence.ts";
+import { startTopicIntelligence, stopTopicIntelligence } from "./social/intelligence-service.ts";
 import { compressibleResponse, staticFileResponse } from "./compression.ts";
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
@@ -57,12 +60,32 @@ function readWindowHours(url: URL) {
   return Math.round(hours);
 }
 
+/** Mutations accept JSON objects; arrays and null are not request contracts. */
 async function readJson(request: Request) {
+  let body: unknown;
   try {
-    return (await request.json()) as Record<string, unknown>;
+    body = await request.json();
   } catch {
     throw new ApiFailure(400, "Request body must be valid JSON", "invalid_json");
   }
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    throw new ApiFailure(400, "Request body must be a JSON object", "invalid_json");
+  }
+  return body as Record<string, unknown>;
+}
+
+/** Decode bounded resource IDs without turning malformed URLs into a 500. */
+function readResourceId(encoded: string) {
+  let id: string;
+  try {
+    id = decodeURIComponent(encoded);
+  } catch {
+    throw new ApiFailure(400, "Resource ID is not valid URL encoding", "invalid_id");
+  }
+  if (!id || id.length > 200 || /[\u0000-\u001f/]/u.test(id)) {
+    throw new ApiFailure(400, "Choose a valid resource ID", "invalid_id");
+  }
+  return id;
 }
 
 async function handleApi(request: Request, url: URL) {
@@ -82,6 +105,29 @@ async function handleApi(request: Request, url: URL) {
   if (url.pathname === "/api/trend-map" && request.method === "GET") {
     const map = await buildTrendMap(readWindowHours(url));
     return json(request, { ...map, coverage: coverageWithErrors(map.coverage) });
+  }
+
+  const topicPath = /^\/api\/topics\/([^/]+)$/u.exec(url.pathname);
+  if (topicPath && request.method === "GET") {
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    const limit = Number(url.searchParams.get("limit") ?? "40");
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 100
+    ) {
+      throw new ApiFailure(
+        400,
+        "Use a nonnegative offset and a limit between 1 and 100",
+        "invalid_page",
+      );
+    }
+    return json(
+      request,
+      await getTopicDetail(readResourceId(topicPath[1]!), readWindowHours(url), offset, limit),
+    );
   }
 
   if (url.pathname === "/api/signals/search" && request.method === "GET") {
@@ -183,6 +229,8 @@ const { server, port: boundPort } = API_SOCKET
  */
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
+    stopTopicIntelligence();
+    stopSocialCollection();
     void server.stop().then(() => process.exit(0));
   });
 }
@@ -235,6 +283,10 @@ console.log(
     : `Trendifest API listening on http://127.0.0.1:${boundPort} (${PRODUCTION ? "production" : "development"})`,
 );
 console.log(AUTH_ENABLED ? "Password protection: on" : "Password protection: off (development)");
+
+// Cached projections and measured history advance off-request, even when feeds
+// are paused. This call never delays the listener's readiness announcement.
+startTopicIntelligence();
 
 // Social collection is opt-in: it needs a database, downloads models on first
 // use, and polls public Vietnamese discussion and explicitly labelled news.

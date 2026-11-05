@@ -1,4 +1,5 @@
 import { SQL } from "bun";
+import { INTELLIGENCE_SCHEMA } from "./social/intelligence-schema.ts";
 
 /**
  * Postgres + pgvector access for social collection. Observations need real
@@ -182,6 +183,8 @@ function migrationSql() {
     ALTER TABLE clusters ADD COLUMN IF NOT EXISTS archived_at timestamptz;
     CREATE INDEX IF NOT EXISTS clusters_active_idx
       ON clusters (space, last_seen_at DESC) WHERE archived_at IS NULL;
+
+    ${INTELLIGENCE_SCHEMA}
 
   `;
 }
