@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
 import type { TopicDetail } from "../shared/intelligence.ts";
 import { closeDb, getDb } from "../server/db.ts";
 import {
@@ -664,12 +665,12 @@ describe.skipIf(!enabled)("persisted topic intelligence", () => {
     expect(page.entities.length).toBeGreaterThan(0);
     expect(page.review.lockedRecords).toBe(0);
 
-    await expect(getTopicDetail("topic:does-not-exist", 168)).rejects.toMatchObject({
+    await assert.rejects(getTopicDetail("topic:does-not-exist", 168), {
       status: 404,
       code: "not_found",
     });
-    await expect(getTopicDetail(topicId, 0)).rejects.toMatchObject({ status: 400 });
-    await expect(getTopicDetail(topicId, 168, 0, 5_000)).rejects.toMatchObject({ status: 400 });
+    await assert.rejects(getTopicDetail(topicId, 0), { status: 400 });
+    await assert.rejects(getTopicDetail(topicId, 168, 0, 5_000), { status: 400 });
   });
 
   test("a merged topic resolves to its target for detail and members", async () => {

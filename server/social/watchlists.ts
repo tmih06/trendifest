@@ -354,7 +354,11 @@ async function mergedTopicTargets(db: SQL, ids: string[]) {
 /** Resolve a keyset anchor in PostgreSQL, preserving sub-millisecond timestamps. */
 async function readAlertCursor(db: SQL, value: string | undefined) {
   if (value === undefined) return null;
-  if (!value || value.length > 200 || /[\u0000-\u0020]/u.test(value)) {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) <= 32)
+      throw new ApiFailure(400, "Choose a valid notification history page", "invalid_cursor");
+  }
+  if (!value || value.length > 200) {
     throw new ApiFailure(400, "Choose a valid notification history page", "invalid_cursor");
   }
   const rows = (await db`

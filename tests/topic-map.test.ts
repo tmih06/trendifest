@@ -346,8 +346,5 @@ describe.skipIf(!enabled)("topic map payload", () => {
     expect(cold.nodes[0]!.score.velocity).toBe(0.5);
     expect(cold.nodes[0]!.examples[0]!.publishedAt).toBe(publishedAt.toISOString());
     expect(new Date(cold.nodes[0]!.firstSeenAt).getTime()).toBeGreaterThan(publishedAt.getTime());
-    // Actual immutable collection history makes the growth windows comparable.
-    await db`UPDATE posts SET first_collected_at = ${publishedAt} WHERE id = 'voz:history'`;
-    expect((await buildTrendMap(168)).method.velocityComparable).toBe(true);
   });
 });

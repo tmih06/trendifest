@@ -318,11 +318,10 @@ export function refreshTopicIntelligence(): Promise<TrendMap[]> {
     try {
       for (const hours of REFRESH_WINDOWS) {
         const snapshot = await loadWindow(db, hours);
-        // A superseded or contended write is not an error: the next pass starts
-        // from the new revision, and serving the projection just computed stays
-        // honest, so the outcome is intentionally not treated as a failure.
+        // Alert evaluation must not consume a projection that lost its write
+        // race: its membership no longer describes the committed evidence.
         const observedAt = new Date(snapshot.map.generatedAt);
-        await persistMaterialization({
+        const outcome = await persistMaterialization({
           hours,
           canonical: hours === HOURS_DEFAULT,
           revision: snapshot.revision,
@@ -332,7 +331,7 @@ export function refreshTopicIntelligence(): Promise<TrendMap[]> {
           members: snapshot.projection.members,
           snapshots: snapshot.projection.snapshots,
         });
-        byWindow.set(hours, snapshot.map);
+        if (outcome === "written") byWindow.set(hours, snapshot.map);
       }
     } catch (error) {
       // The state row is the only place a background failure is visible, so the

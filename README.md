@@ -63,6 +63,10 @@ Production builds emit gzip sidecars for beneficial text assets. The Bun server
 negotiates those files and compresses large API JSON while keeping API responses
 `no-store` and hashed assets immutable. Binary media is not re-compressed.
 Deploy the entire `dist/` directory, including `.gz` files.
+Map JSON and its gzip bytes are prepared once per immutable projection.
+Concurrent reads share asynchronous compression; live collection errors and
+refresh metadata invalidate the representation without bypassing the database
+revision check. Identity/gzip preferences and HTTP `no-store` remain intact.
 
 Icons use public per-icon imports rather than the full development icon barrel.
 Optional feedback tooling loads asynchronously after the document's load event;
@@ -297,12 +301,16 @@ not change the HTTP `no-store` policy.
 The worker stays referenced during work and becomes unreferenced when idle,
 so collection scripts and tests can finish naturally.
 
-The real-corpus expansion smoke on 2026-11-05 displayed 1,500 topics from eight
-sources with 381 measured links and 273 topics supported by multiple independent
-accounts/publishers. Local projection took 2,999 ms cold and 72 ms cached; the
-JSON encoded to 460,656 gzip bytes. An HTTP health request during a cold graph
-request returned in 5 ms. These are local snapshots, not latency guarantees;
-the live corpus continues changing.
+Local feature-integration smoke, 2026-11-05: 1,500 topics, 377 measured links,
+607 deduplicated entities. Proxy cold map: 1,625 ms; warm map: 83.5 ms;
+maximum health latency across 12 requests during the cold read: 32.1 ms.
+The enriched map measured 4,700,250 identity bytes / 546,858 gzip bytes in a
+separate sample. Payloads vary as hourly observations accumulate.
+Byte-ordering opaque source IDs reduced revision digest work from approximately
+100–112 ms to 35–44 ms on this corpus. These are local observations, not service
+latency guarantees. The production entry sidecar is 167.34 kB gzip; lazy topic
+analysis, review, and watch panels are approximately 3.02, 4.34, and 6.11 kB.
+The existing >500 kB minified-entry build warning remains visible.
 
 ### Emergence score
 
@@ -418,11 +426,11 @@ then exercise the graph. There is no floating Git dependency.
 | `GET /api/topic-reviews?topicId=...`              | Stored review audit history                                         |
 | `POST /api/topic-reviews`                         | Apply a guarded merge or selected-record split                      |
 | `DELETE /api/topic-reviews/:id`                   | Undo a review without overwriting newer evidence                    |
-| `GET /api/watchlists?before=...` | Watch rules and keyset-paginated notification history |
-| `POST /api/watchlists` | Create a rule with a fresh evidence baseline |
-| `PATCH /api/watchlists/:id` | Edit, pause, resume, or retarget a rule |
-| `DELETE /api/watchlists/:id` | Confirmed rule and related notification removal |
-| `POST /api/alerts/:id/read` | Persist notification read state |
+| `GET /api/watchlists?before=...`                  | Watch rules and keyset-paginated notification history               |
+| `POST /api/watchlists`                            | Create a rule with a fresh evidence baseline                        |
+| `PATCH /api/watchlists/:id`                       | Edit, pause, resume, or retarget a rule                             |
+| `DELETE /api/watchlists/:id`                      | Confirmed rule and related notification removal                     |
+| `POST /api/alerts/:id/read`                       | Persist notification read state                                     |
 | `GET /api/collect/status`                         | Polling state, per-source results, and errors                       |
 | `POST /api/collect`                               | Bounded source poll; JSON `{ "limit": 25 }`                         |
 | `GET /api/signals?hours=72`                       | Operational cluster/coverage data                                   |
@@ -451,6 +459,35 @@ database credentials or repository secrets are required.
 Set `TRENDIFEST_TEST_DATABASE_URL` to a disposable database (see below) when
 running CI to include the database integration tests. Without it, Bun reports
 those tests as skipped; a successful CI command does not imply database coverage.
+
+### Presentation walkthrough
+
+1. Start `bun dev`; wait only for its finite readiness message, then open the
+   printed single-port URL and enter `/app`. For a stable production demo, run
+   `bun run build` once, configure `TRENDIFEST_PASSWORD`, and use `bun start`.
+2. Open **Topic board**, keep the 7-day view, and inspect a high-support topic.
+   Show its separate news/community columns, **Why**, and **Source timeline**.
+   The timeline links to original source evidence, not a generated summary.
+3. Open **Entity filters**. Search `TPHCM` or `Ha Noi`, choose an entity, and
+   show that the displayed rank remains its whole-map rank. Switch between
+   24h/3d/7d and return to demonstrate cached window revisits.
+4. Use **Review topic grouping** on evidence you have actually inspected.
+   Select a proper subset for split, add a reason, review the confirmation,
+   then undo from review history. A low-ranked split may fall outside the
+   1,500-node graph sample but keeps a durable topic and source timeline.
+5. **Follow topic**, review a new-publisher threshold, and save. Open
+   **Watchlists & alerts** to edit/pause/resume it and inspect real notifications.
+   Existing evidence intentionally produces no initial alert.
+6. Explain cold-start limits: direction/rank movement require twelve hours of
+   actual monitoring; sparklines require observed samples. Do not seed fake
+   history or alerts for the presentation. Current forum feeds report activity,
+   so publisher-backed thresholds are the usable fresh-publication signal.
+
+Collection is optional (`TRENDIFEST_SOCIAL=1`) and is not started by opening the
+board. With polling paused, stored evidence stays inspectable and actual ranking
+snapshots still advance while the server runs. Source fetch/model work remains
+off the request path. Before presenting, check **Collection status** for failures
+and embedding backlog rather than promising complete or real-time coverage.
 
 ### Visual feedback with Agentation
 

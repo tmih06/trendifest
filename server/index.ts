@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ApiError } from "../shared/types.ts";
+import { gzip } from "node:zlib";
+import type { ApiError, TrendMap } from "../shared/types.ts";
 import { ApiFailure } from "./api-error.ts";
 import { AUTH_ENABLED, authorize } from "./auth.ts";
 import { DatabaseMissingError } from "./db.ts";
@@ -22,7 +23,7 @@ import {
   startTopicIntelligence,
   stopTopicIntelligence,
 } from "./social/intelligence-service.ts";
-import { compressibleResponse, staticFileResponse } from "./compression.ts";
+import { acceptableEncodings, compressibleResponse, staticFileResponse } from "./compression.ts";
 import { applyTopicReview, listTopicReviews, undoTopicReview } from "./social/topic-review.ts";
 import {
   createWatchRule,
@@ -57,6 +58,60 @@ const JSON_HEADERS = {
  */
 function json(request: Request, body: unknown, status = 200) {
   return compressibleResponse(request, JSON.stringify(body), { status, headers: JSON_HEADERS });
+}
+
+/** Encoded bytes live exactly as long as their bounded immutable projection. */
+const mapRepresentations = new WeakMap<
+  TrendMap["nodes"],
+  {
+    metadata: string;
+    bytes: Promise<{ identity: Uint8Array<ArrayBuffer>; gzip: Uint8Array<ArrayBuffer> }>;
+  }
+>();
+
+/**
+ * Reuse serialization/compression, not evidence freshness. The projection still
+ * verifies its database revision on every GET; live coverage errors and refresh
+ * state are part of this representation key. Gzip runs outside the HTTP event
+ * loop and concurrent readers share one encoding. No raw vectors are retained.
+ */
+async function mapResponse(request: Request, map: TrendMap): Promise<Response> {
+  const accepted = acceptableEncodings(request);
+  if (accepted.length === 0) return compressibleResponse(request, "", { headers: JSON_HEADERS });
+  const coverage = coverageWithErrors(map.coverage);
+  const metadata = JSON.stringify([map.generatedAt, map.intelligence, coverage]);
+  let representation = mapRepresentations.get(map.nodes);
+  if (!representation || representation.metadata !== metadata) {
+    const identity = new TextEncoder().encode(JSON.stringify({ ...map, coverage }));
+    const {
+      promise: bytes,
+      resolve,
+      reject,
+    } = Promise.withResolvers<{
+      identity: Uint8Array<ArrayBuffer>;
+      gzip: Uint8Array<ArrayBuffer>;
+    }>();
+    gzip(identity, { level: 6 }, (error, compressed) => {
+      if (error) reject(error);
+      else resolve({ identity, gzip: compressed });
+    });
+    representation = { metadata, bytes };
+    mapRepresentations.set(map.nodes, representation);
+    void bytes.catch(() => {
+      if (mapRepresentations.get(map.nodes)?.bytes === bytes) mapRepresentations.delete(map.nodes);
+    });
+  }
+  const bytes = await representation.bytes;
+  const encoded =
+    accepted[0] === "gzip" &&
+    (bytes.gzip.byteLength < bytes.identity.byteLength || !accepted.includes("identity"));
+  return new Response(encoded ? bytes.gzip : bytes.identity, {
+    headers: {
+      ...JSON_HEADERS,
+      vary: "accept-encoding",
+      ...(encoded ? { "content-encoding": "gzip" } : {}),
+    },
+  });
 }
 
 function apiError(request: Request, status: number, error: string, code = "bad_request") {
@@ -94,7 +149,11 @@ function readResourceId(encoded: string) {
   } catch {
     throw new ApiFailure(400, "Resource ID is not valid URL encoding", "invalid_id");
   }
-  if (!id || id.length > 200 || /[\u0000-\u001f/]/u.test(id)) {
+  for (let index = 0; index < id.length; index += 1) {
+    if (id.charCodeAt(index) < 32 || id[index] === "/")
+      throw new ApiFailure(400, "Choose a valid resource ID", "invalid_id");
+  }
+  if (!id || id.length > 200) {
     throw new ApiFailure(400, "Choose a valid resource ID", "invalid_id");
   }
   return id;
@@ -126,7 +185,7 @@ async function handleApi(request: Request, url: URL) {
 
   if (url.pathname === "/api/trend-map" && request.method === "GET") {
     const map = await buildTrendMap(readWindowHours(url));
-    return json(request, { ...map, coverage: coverageWithErrors(map.coverage) });
+    return mapResponse(request, map);
   }
 
   const topicPath = /^\/api\/topics\/([^/]+)$/u.exec(url.pathname);

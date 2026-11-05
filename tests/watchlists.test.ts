@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { TopicAttention, TopicEntity, TopicTrend } from "../shared/intelligence.ts";
 import type { TrendMap, TrendMapNode } from "../shared/types.ts";
@@ -217,27 +218,31 @@ describe.skipIf(!enabled)("watch rules and alerts", () => {
   });
 
   test("invalid watch contracts return semantic client errors", async () => {
-    await expect(
+    await assert.rejects(
       createWatchRule({ kind: "topic", targetId: T("a"), label: "A", minNewAccounts: 0 }),
-    ).rejects.toMatchObject({ status: 400, code: "invalid_watch" });
-    await expect(
+      { status: 400, code: "invalid_watch" },
+    );
+    await assert.rejects(
       createWatchRule({ kind: "nope", targetId: T("a"), label: "A", minNewAccounts: 1 }),
-    ).rejects.toMatchObject({ status: 400, code: "invalid_watch" });
-    await expect(createWatchRule(null)).rejects.toMatchObject({
+      { status: 400, code: "invalid_watch" },
+    );
+    await assert.rejects(createWatchRule(null), {
       status: 400,
       code: "invalid_watch",
     });
-    await expect(
+    await assert.rejects(
       createWatchRule({
         kind: "topic",
         targetId: T("a"),
         label: "A",
         minNewPublishers: 1.5,
       }),
-    ).rejects.toMatchObject({ status: 400, code: "invalid_watch" });
-    await expect(
+      { status: 400, code: "invalid_watch" },
+    );
+    await assert.rejects(
       createWatchRule({ kind: "topic", targetId: T("a"), label: "A", minNewPublishers: 101 }),
-    ).rejects.toMatchObject({ status: 400, code: "invalid_watch" });
+      { status: 400, code: "invalid_watch" },
+    );
   });
 
   test("the initial baseline suppresses the existing corpus", async () => {
@@ -754,11 +759,11 @@ describe.skipIf(!enabled)("watch rules and alerts", () => {
     // Alerts cascade with their rule: a deleted watch leaves no orphan history.
     expect(state.alerts).toEqual([]);
     expect(state.unread).toBe(0);
-    await expect(deleteWatchRule(rule.id)).rejects.toMatchObject({
+    await assert.rejects(deleteWatchRule(rule.id), {
       status: 404,
       code: "not_found",
     });
-    await expect(markAlertRead("alert:missing")).rejects.toMatchObject({
+    await assert.rejects(markAlertRead("alert:missing"), {
       status: 404,
       code: "not_found",
     });
@@ -836,7 +841,7 @@ describe.skipIf(!enabled)("watch rules and alerts", () => {
     const updated = await getWatchlists(state.alertsNextCursor!);
     expect(updated.unread).toBe(214);
     expect(updated.alerts.find((alert) => alert.id === older.alerts[0]!.id)!.readAt).not.toBeNull();
-    await expect(getWatchlists("alert:missing")).rejects.toMatchObject({
+    await assert.rejects(getWatchlists("alert:missing"), {
       status: 400,
       code: "invalid_cursor",
     });

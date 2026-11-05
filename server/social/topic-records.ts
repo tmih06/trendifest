@@ -107,17 +107,19 @@ const REVIEW_LOCK_KEY = 3;
  * Deliberately excludes `assigned_at`, `last_seen_at` and every snapshot table:
  * bookkeeping timestamps change on each refresh and would invalidate the map
  * forever, while snapshot writes are results of a refresh, not inputs to it.
+ * IDs are opaque byte identities: C collation avoids costly locale-aware
+ * sorting of thousands of long source URLs without changing invalidation.
  */
 export async function mutationRevision(sql: SQL): Promise<string> {
   const [row] = (await sql`
     SELECT concat_ws(':',
-      (SELECT md5(coalesce(string_agg((id, xmin::text)::text, '' ORDER BY id), '')) FROM posts),
-      (SELECT md5(coalesce(string_agg((post_id, xmin::text)::text, '' ORDER BY post_id), '')) FROM topic_embeddings),
-      (SELECT md5(coalesce(string_agg((post_id, segment_id, xmin::text)::text, '' ORDER BY post_id, segment_id), '')) FROM observations),
-      (SELECT md5(coalesce(string_agg((post_id, xmin::text)::text, '' ORDER BY post_id), '')) FROM metric_snapshots),
-      (SELECT md5(coalesce(string_agg((post_id, topic_id, content_hash, locked::text)::text, '' ORDER BY post_id), '')) FROM topic_memberships),
-      (SELECT md5(coalesce(string_agg((id, label, coalesce(merged_into, ''))::text, '' ORDER BY id), '')) FROM topic_catalog),
-      (SELECT md5(coalesce(string_agg((id, active::text, target_id)::text, '' ORDER BY id), '')) FROM topic_review_decisions)
+      (SELECT md5(coalesce(string_agg((id, xmin::text)::text, '' ORDER BY id COLLATE "C"), '')) FROM posts),
+      (SELECT md5(coalesce(string_agg((post_id, xmin::text)::text, '' ORDER BY post_id COLLATE "C"), '')) FROM topic_embeddings),
+      (SELECT md5(coalesce(string_agg((post_id, segment_id, xmin::text)::text, '' ORDER BY post_id COLLATE "C", segment_id COLLATE "C"), '')) FROM observations),
+      (SELECT md5(coalesce(string_agg((post_id, xmin::text)::text, '' ORDER BY post_id COLLATE "C"), '')) FROM metric_snapshots),
+      (SELECT md5(coalesce(string_agg((post_id, topic_id, content_hash, locked::text)::text, '' ORDER BY post_id COLLATE "C"), '')) FROM topic_memberships),
+      (SELECT md5(coalesce(string_agg((id, label, coalesce(merged_into, ''))::text, '' ORDER BY id COLLATE "C"), '')) FROM topic_catalog),
+      (SELECT md5(coalesce(string_agg((id, active::text, target_id)::text, '' ORDER BY id COLLATE "C"), '')) FROM topic_review_decisions)
     ) AS revision
   `) as unknown as Array<{ revision: string }>;
   if (!row) throw new Error("Could not read topic intelligence revision");
