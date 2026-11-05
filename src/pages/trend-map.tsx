@@ -59,6 +59,44 @@ const TopicIntelligencePanel = lazy(() =>
   })),
 );
 
+const TopicReviewPanel = lazy(() =>
+  import("@/components/topic-review").then((module) => ({ default: module.TopicReviewPanel })),
+);
+
+/** Review code and paginated evidence load only after an explicit disclosure. */
+function TopicReviewDisclosure({
+  topicId,
+  hours,
+  onChanged,
+}: {
+  topicId: string;
+  hours: number;
+  onChanged: (topicId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      className="mt-4 border-t border-line pt-3"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="min-h-8 cursor-pointer text-[12px] font-medium text-fg">
+        Review topic grouping
+      </summary>
+      {open && (
+        <Suspense
+          fallback={
+            <p role="status" className="text-[12px] text-fg-3">
+              Loading review controls…
+            </p>
+          }
+        >
+          <TopicReviewPanel topicId={topicId} hours={hours} onChanged={onChanged} />
+        </Suspense>
+      )}
+    </details>
+  );
+}
+
 /** Default to a week so a topic reported days ago is still inside the window. */
 const DEFAULT_HOURS = 168;
 
@@ -679,6 +717,12 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
                 entities={data?.entities ?? []}
               />
             </Suspense>
+            <TopicReviewDisclosure
+              key={`review:${selected.id}:${hours}`}
+              topicId={selected.id}
+              hours={hours}
+              onChanged={selectNode}
+            />
             <div className="mt-4 border-t border-line pt-4">
               <h3 className="label-caps mb-2">Related topics</h3>
               {relatedTopics.length === 0 ? (

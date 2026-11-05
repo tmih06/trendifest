@@ -198,12 +198,14 @@ export async function loadCatalog(sql?: SQL): Promise<Map<string, CatalogEntry>>
  */
 export function resolveTopicId(catalog: Map<string, CatalogEntry>, topicId: string): string {
   let current = topicId;
-  for (let hops = 0; hops < 16; hops += 1) {
+  const seen = new Set<string>();
+  while (!seen.has(current)) {
+    seen.add(current);
     const entry = catalog.get(current);
     if (!entry || !entry.mergedInto) return current;
     current = entry.mergedInto;
   }
-  return current;
+  return topicId;
 }
 
 /** Every id whose redirect chain ends at `topicId`, `topicId` included. */

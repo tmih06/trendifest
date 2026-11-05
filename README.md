@@ -121,6 +121,14 @@ not production latency guarantees; the collector continued receiving new input.
   forum activity, first collection, and last observation are distinct fields,
   displayed in ICT (UTC+7). Explanations cite measured support and disclose
   sampling/identity limits; no generated narrative or invented audience is used.
+- **Review topic grouping:** open a topic's inspector to merge fragmented topics
+  or split selected source records into a persistent topic. Confirmation and a
+  note precede each change; audit history and safe undo remain available.
+  Explicit model-version, place, year, and same-name incident conflicts cannot
+  be merged. Both original partitions stay locked to their content revisions.
+  New evidence attaches only to one fully compatible reviewed partition;
+  ambiguous evidence cannot bridge a manual split. Edits invalidate stale locks.
+  Undo refuses to overwrite changed evidence or a newer dependent review.
 - **Collection status:** bounded polling state, per-source results/errors, and a
   manual collection action. No fictional live-stream connection is reported.
 - **Appearance:** light/dark preference, collapsible desktop sidebar, mobile
@@ -392,6 +400,9 @@ then exercise the graph. There is no floating Git dependency.
 | `GET /api/health`                                 | Public process and collection health                                |
 | `GET /api/trend-map?hours=72`                     | Scored nodes, observed/similarity edges, source examples            |
 | `GET /api/topics/:id?hours=168&offset=0&limit=40` | Paginated source timeline, measured history, entities, review state |
+| `GET /api/topic-reviews?topicId=...`              | Stored review audit history                                         |
+| `POST /api/topic-reviews`                         | Apply a guarded merge or selected-record split                      |
+| `DELETE /api/topic-reviews/:id`                   | Undo a review without overwriting newer evidence                    |
 | `GET /api/collect/status`                         | Polling state, per-source results, and errors                       |
 | `POST /api/collect`                               | Bounded source poll; JSON `{ "limit": 25 }`                         |
 | `GET /api/signals?hours=72`                       | Operational cluster/coverage data                                   |

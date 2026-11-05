@@ -17,8 +17,13 @@ import {
 } from "./social/service.ts";
 import { buildTrendMap } from "./social/trend-map.ts";
 import { getTopicDetail } from "./social/topic-intelligence.ts";
-import { startTopicIntelligence, stopTopicIntelligence } from "./social/intelligence-service.ts";
+import {
+  refreshIntelligence,
+  startTopicIntelligence,
+  stopTopicIntelligence,
+} from "./social/intelligence-service.ts";
 import { compressibleResponse, staticFileResponse } from "./compression.ts";
+import { applyTopicReview, listTopicReviews, undoTopicReview } from "./social/topic-review.ts";
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
@@ -88,6 +93,16 @@ function readResourceId(encoded: string) {
   return id;
 }
 
+/** The decision is already durable; background projection must not delay its acknowledgement. */
+function refreshAfterReview() {
+  void refreshIntelligence(true).catch((error: unknown) => {
+    console.warn(
+      "Review saved; topic materialization failed:",
+      error instanceof Error ? error.message : String(error),
+    );
+  });
+}
+
 async function handleApi(request: Request, url: URL) {
   if (url.pathname === "/api/health") {
     return json(request, {
@@ -128,6 +143,25 @@ async function handleApi(request: Request, url: URL) {
       request,
       await getTopicDetail(readResourceId(topicPath[1]!), readWindowHours(url), offset, limit),
     );
+  }
+  if (url.pathname === "/api/topic-reviews") {
+    if (request.method === "GET") {
+      const topicId = url.searchParams.get("topicId");
+      return json(request, {
+        decisions: await listTopicReviews(topicId === null ? undefined : readResourceId(topicId)),
+      });
+    }
+    if (request.method === "POST") {
+      const result = await applyTopicReview(await readJson(request));
+      refreshAfterReview();
+      return json(request, result, 201);
+    }
+  }
+  const reviewPath = /^\/api\/topic-reviews\/([^/]+)$/u.exec(url.pathname);
+  if (reviewPath && request.method === "DELETE") {
+    await undoTopicReview(readResourceId(reviewPath[1]!));
+    refreshAfterReview();
+    return json(request, { ok: true });
   }
 
   if (url.pathname === "/api/signals/search" && request.method === "GET") {
