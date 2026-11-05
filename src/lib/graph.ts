@@ -1,77 +1,50 @@
-/**
- * The social graph model shared by the canvas and the page. It carries only
- * what the renderer needs: identity, kind, size, degree, and whether the node
- * anchors the map. Collected evidence lives in the API payload, not here.
- */
+import type { GraphLink, GraphNode, NodeShape } from "obi-graph";
+import type { TrendMap } from "../../shared/types.ts";
 
-import type { TrendMapNodeKind, TrendMapRelation } from "../../shared/types.ts";
-
-/** The renderer's node vocabulary is the wire vocabulary; one source of truth. */
-type GraphNodeKind = TrendMapNodeKind;
-
-/** Edges are either a collected observation or a measured centroid similarity. */
-type GraphRelation = TrendMapRelation;
-
-export interface GraphNode {
-  id: string;
-  kind: GraphNodeKind;
-  label: string;
-  description: string;
-  radius: number;
+/** App-only metadata used by the connection-count color accessor. */
+export interface TrendNodeData {
   degree: number;
-  /** Pattern content type; drives the node shape. */
-  media?: string;
-  /** Fixed anchors (audience hubs) that must not drift and keep their labels. */
-  hub?: boolean;
 }
 
-export interface GraphLink {
-  id: string;
-  source: string;
-  target: string;
-  relation: GraphRelation;
-  /** Cosine similarity for `similarity` edges; absent on observations. */
-  similarity?: number;
-}
-
-export interface Connection {
-  node: GraphNode;
-  relation: GraphRelation;
-}
-
-/** A link whose endpoints are ids or, after the simulation resolves them, nodes. */
-export type ResolvedLink = Omit<GraphLink, "source" | "target"> & {
-  source: Endpoint;
-  target: Endpoint;
+const MEDIA_SHAPES: Record<string, NodeShape> = {
+  image: "square",
+  video: "triangle",
+  audio: "diamond",
+  link: "pentagon",
 };
 
-export type Endpoint = string | number | { id?: unknown };
-
-/** Compare an endpoint by id whether or not d3 has resolved it to a node. */
-export function endpointId(endpoint: Endpoint): string {
-  if (!endpoint || typeof endpoint !== "object") return String(endpoint);
-  const id = endpoint.id;
-  return typeof id === "string" || typeof id === "number" ? String(id) : "";
-}
-
 /**
- * Direct relationships of one node. The force graph rewrites link endpoints to
- * node objects, and the page passes unresolved string endpoints, so both are
- * accepted and compared by id.
+ * Adapt immutable API data to obi-graph without leaking simulation state into
+ * the payload. The inspector keeps full labels; only canvas titles are shortened.
+ * Solid observations and dashed similarities retain their distinct spacing.
  */
-export function connectionsFor(
-  id: string,
-  graph: { nodes: readonly GraphNode[]; links: readonly ResolvedLink[] },
-): Connection[] {
-  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
-  const connections: Connection[] = [];
-  for (const link of graph.links) {
-    const source = endpointId(link.source);
-    const target = endpointId(link.target);
-    const otherId = source === id ? target : target === id ? source : null;
-    if (otherId === null) continue;
-    const node = byId.get(otherId);
-    if (node) connections.push({ node, relation: link.relation });
+export function toCanvas(map: TrendMap) {
+  const degrees = new Map<string, number>();
+  for (const edge of map.edges) {
+    degrees.set(edge.source, (degrees.get(edge.source) ?? 0) + 1);
+    if (edge.target !== edge.source) {
+      degrees.set(edge.target, (degrees.get(edge.target) ?? 0) + 1);
+    }
   }
-  return connections;
+  const nodes: GraphNode<TrendNodeData>[] = map.nodes.map((node) => {
+    const label = node.label.replace(/\s+/g, " ").trim();
+    return {
+      id: node.id,
+      label:
+        node.kind === "pattern" && label.length > 46 ? `${label.slice(0, 45).trimEnd()}…` : label,
+      radius: node.radius * 0.6,
+      shape: node.kind === "pattern" ? (MEDIA_SHAPES[node.kind_ ?? "text"] ?? "circle") : "circle",
+      hub: node.kind !== "pattern",
+      data: { degree: degrees.get(node.id) ?? 0 },
+    };
+  });
+  const links: GraphLink[] = map.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    dashed: edge.relation === "similarity",
+    distance: edge.relation === "similarity" ? 80 : 90,
+    width: edge.relation === "similarity" ? 0.7 : 0.9,
+  }));
+  return { nodes, links };
 }
