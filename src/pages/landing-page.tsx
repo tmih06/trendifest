@@ -565,20 +565,22 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                 style={{ top: node.top, left: node.left, animationDelay: node.delay }}
                 className={cn(
                   "absolute pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-full",
-                  "bg-[#242424]/85 backdrop-blur-md border border-[#383838] shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
-                  "hover:scale-105 hover:border-[#a78bfa]/70 hover:shadow-[0_0_24px_rgba(167,139,250,0.3)] transition-all duration-300",
+                  "bg-white/90 dark:bg-[#242424]/85 backdrop-blur-md border border-neutral-200 dark:border-[#383838] shadow-md dark:shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
+                  "hover:scale-105 hover:border-purple-400 dark:hover:border-[#a78bfa]/70 hover:shadow-[0_0_24px_rgba(167,139,250,0.3)] transition-all duration-300",
                   node.anim,
                 )}
               >
                 <span
-                  className="flex size-7 items-center justify-center rounded-full bg-white/5 border border-white/10 shrink-0"
+                  className="flex size-7 items-center justify-center rounded-full bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 shrink-0"
                   style={{ color: node.color }}
                 >
                   <Icon className="size-3.5" />
                 </span>
                 <div className="text-left leading-none pr-1">
-                  <div className="text-[13px] font-bold text-white tracking-tight">{node.name}</div>
-                  <div className="text-[10.5px] font-mono text-[#888888] mt-0.5">
+                  <div className="text-[13px] font-bold text-neutral-900 dark:text-white tracking-tight">
+                    {node.name}
+                  </div>
+                  <div className="text-[10.5px] font-mono text-neutral-500 dark:text-[#888888] mt-0.5">
                     {node.category}
                   </div>
                 </div>
@@ -600,20 +602,22 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                 style={{ top: node.top, right: node.right, animationDelay: node.delay }}
                 className={cn(
                   "absolute pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-full",
-                  "bg-[#242424]/85 backdrop-blur-md border border-[#383838] shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
-                  "hover:scale-105 hover:border-[#a78bfa]/70 hover:shadow-[0_0_24px_rgba(167,139,250,0.3)] transition-all duration-300",
+                  "bg-white/90 dark:bg-[#242424]/85 backdrop-blur-md border border-neutral-200 dark:border-[#383838] shadow-md dark:shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
+                  "hover:scale-105 hover:border-purple-400 dark:hover:border-[#a78bfa]/70 hover:shadow-[0_0_24px_rgba(167,139,250,0.3)] transition-all duration-300",
                   node.anim,
                 )}
               >
                 <span
-                  className="flex size-7 items-center justify-center rounded-full bg-white/5 border border-white/10 shrink-0"
+                  className="flex size-7 items-center justify-center rounded-full bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 shrink-0"
                   style={{ color: node.color }}
                 >
                   <Icon className="size-3.5" />
                 </span>
                 <div className="text-left leading-none pr-1">
-                  <div className="text-[13px] font-bold text-white tracking-tight">{node.name}</div>
-                  <div className="text-[10.5px] font-mono text-[#888888] mt-0.5">
+                  <div className="text-[13px] font-bold text-neutral-900 dark:text-white tracking-tight">
+                    {node.name}
+                  </div>
+                  <div className="text-[10.5px] font-mono text-neutral-500 dark:text-[#888888] mt-0.5">
                     {node.category}
                   </div>
                 </div>
@@ -623,7 +627,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         </div>
 
         {/* Eyebrow Badge */}
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#a78bfa]/10 border border-[#a78bfa]/30 text-[#a78bfa] text-[13.5px] font-medium mb-6">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-50 dark:bg-[#a78bfa]/10 border border-purple-200 dark:border-[#a78bfa]/30 text-purple-700 dark:text-[#a78bfa] text-[13.5px] font-medium mb-6">
           <span className="size-2 rounded-full bg-[#a78bfa] animate-ping" />
           <span>Dự án Khởi nghiệp Sáng tạo ĐHQG Hà Nội (RnD to Startup 2026)</span>
         </div>
@@ -686,7 +690,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         </div>
 
         {/* Micro-trust Proof Badges */}
-        <div className="flex flex-wrap items-center justify-center gap-3 text-[14px] text-[#888888] mb-12">
+        <div className="flex flex-wrap items-center justify-center gap-3 text-[14px] text-neutral-600 dark:text-[#888888] mb-12">
           <span>✓ 100% Local Vector Inference</span>
           <span>•</span>
           <span>✓ Không gửi dữ liệu cộng đồng ra ngoài</span>
@@ -697,23 +701,23 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         {/* ------------------------------------------------------------ */}
         {/* Visual Anchor: Interactive Trend Graph Workspace Mockup       */}
         {/* ------------------------------------------------------------ */}
-        <div className="w-full max-w-5xl rounded-xl bg-[#262626] border border-[#363636] shadow-2xl overflow-hidden text-left relative">
+        <div className="w-full max-w-5xl rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] shadow-xl dark:shadow-2xl overflow-hidden text-left relative">
           {/* Window Chrome Titlebar */}
-          <div className="flex items-center justify-between px-4 py-3 bg-[#202020] border-b border-[#363636] text-[13px] text-[#999999]">
+          <div className="flex items-center justify-between px-4 py-3 bg-neutral-100 dark:bg-[#202020] border-b border-neutral-200 dark:border-[#363636] text-[13px] text-neutral-600 dark:text-[#999999]">
             <div className="flex items-center gap-2">
               <span className="size-3 rounded-full bg-[#ff5f56]/80" />
               <span className="size-3 rounded-full bg-[#ffbd2e]/80" />
               <span className="size-3 rounded-full bg-[#27c93f]/80" />
-              <span className="ms-2 font-mono text-[12.5px] text-[#888888]">
+              <span className="ms-2 font-mono text-[12.5px] text-neutral-500 dark:text-[#888888]">
                 trendifest-workspace — v1.4.2 [LIVE TAIL]
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-[12px] font-mono text-[#a78bfa]">
+              <div className="flex items-center gap-1.5 text-[12px] font-mono text-purple-700 dark:text-[#a78bfa]">
                 <span className="size-2 rounded-full bg-[#a78bfa] animate-ping" />
                 <span>9 viewer segments active</span>
               </div>
-              <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-[#333333] text-[12px]">
+              <div className="flex bg-neutral-200 dark:bg-[#1a1a1a] rounded p-0.5 border border-neutral-300 dark:border-[#333333] text-[12px]">
                 {["24h", "3d", "7d"].map((w) => (
                   <button
                     key={w}
@@ -722,7 +726,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                       "px-2.5 py-0.5 rounded transition-colors",
                       graphWindow === w
                         ? "bg-[#a78bfa] text-black font-semibold"
-                        : "text-[#777777] hover:text-white",
+                        : "text-neutral-600 dark:text-[#777777] hover:text-black dark:hover:text-white",
                     )}
                   >
                     {w}
@@ -733,37 +737,46 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           </div>
 
           {/* Dedicated Top Alert Banner: Never covers graph nodes */}
-          <div className="bg-[#1f1929] border-b border-[#3d2f52] px-4 py-3 flex items-center justify-between flex-wrap gap-2 text-[13.5px]">
+          <div className="bg-purple-50/80 dark:bg-[#1f1929] border-b border-purple-100 dark:border-[#3d2f52] px-4 py-3 flex items-center justify-between flex-wrap gap-2 text-[13.5px]">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 font-mono text-[11.5px] font-bold uppercase tracking-wider">
-                <span className="size-1.5 rounded-full bg-rose-400 animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-300 font-mono text-[11.5px] font-bold uppercase tracking-wider">
+                <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
                 <span>T - 18h Early Alert</span>
               </span>
-              <span className="text-[#dadada] text-[14.5px]">
-                Mẫu âm thanh <strong className="text-[#a78bfa] font-mono">capcut_remix_09</strong>{" "}
-                có <strong className="text-emerald-400 font-semibold">74% xác suất bùng nổ</strong>{" "}
+              <span className="text-neutral-800 dark:text-[#dadada] text-[14.5px]">
+                Mẫu âm thanh{" "}
+                <strong className="text-purple-700 dark:text-[#a78bfa] font-mono">
+                  capcut_remix_09
+                </strong>{" "}
+                có{" "}
+                <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                  74% xác suất bùng nổ
+                </strong>{" "}
                 trong 12 giờ tới.
               </span>
             </div>
-            <div className="flex items-center gap-3 text-[12.5px] font-mono text-[#999999]">
-              <span className="text-[#888888]">
-                Dịch chuyển: <span className="text-white">Gaming ➔ Shitposting</span>
+            <div className="flex items-center gap-3 text-[12.5px] font-mono text-neutral-600 dark:text-[#999999]">
+              <span className="text-neutral-500 dark:text-[#888888]">
+                Dịch chuyển:{" "}
+                <span className="text-neutral-900 dark:text-white font-medium">
+                  Gaming ➔ Shitposting
+                </span>
               </span>
-              <span className="text-[#555]">•</span>
-              <span className="text-emerald-400">+42 tác giả độc lập</span>
+              <span className="text-neutral-400 dark:text-[#555]">•</span>
+              <span className="text-emerald-600 dark:text-emerald-400">+42 tác giả độc lập</span>
             </div>
           </div>
 
           {/* Main Workspace Body: Canvas + Dedicated Inspector Pane */}
-          <div className="flex flex-col md:flex-row bg-[#1a1a1a]">
+          <div className="flex flex-col md:flex-row bg-neutral-100 dark:bg-[#1a1a1a]">
             {/* Center Canvas Area: Completely Unobstructed Graph */}
-            <div className="flex-1 relative min-h-[380px] sm:min-h-[440px] bg-[#1e1e1e] p-4 flex flex-col justify-between overflow-hidden">
+            <div className="flex-1 relative min-h-[380px] sm:min-h-[440px] bg-neutral-50 dark:bg-[#1e1e1e] p-4 flex flex-col justify-between overflow-hidden">
               {/* Subtle background grid pattern */}
               <div
                 aria-hidden="true"
-                className="absolute inset-0 opacity-[0.04] pointer-events-none"
+                className="absolute inset-0 opacity-[0.05] pointer-events-none"
                 style={{
-                  backgroundImage: "radial-gradient(#ffffff 1px, transparent 1px)",
+                  backgroundImage: "radial-gradient(currentColor 1px, transparent 1px)",
                   backgroundSize: "20px 20px",
                 }}
               />
@@ -791,7 +804,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="120"
                   x2="140"
                   y2="190"
-                  stroke="rgba(255,255,255,0.08)"
+                  className="stroke-neutral-300 dark:stroke-white/10"
                   strokeWidth="1"
                 />
                 <line
@@ -799,7 +812,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="260"
                   x2="140"
                   y2="190"
-                  stroke="rgba(255,255,255,0.08)"
+                  className="stroke-neutral-300 dark:stroke-white/10"
                   strokeWidth="1"
                 />
                 <line
@@ -807,7 +820,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="70"
                   x2="460"
                   y2="130"
-                  stroke="rgba(255,255,255,0.08)"
+                  className="stroke-neutral-300 dark:stroke-white/10"
                   strokeWidth="1"
                 />
                 <line
@@ -815,7 +828,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="110"
                   x2="460"
                   y2="130"
-                  stroke="rgba(255,255,255,0.08)"
+                  className="stroke-neutral-300 dark:stroke-white/10"
                   strokeWidth="1"
                 />
                 <line
@@ -823,7 +836,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="360"
                   x2="280"
                   y2="300"
-                  stroke="rgba(255,255,255,0.08)"
+                  className="stroke-neutral-300 dark:stroke-white/10"
                   strokeWidth="1"
                 />
                 <line
@@ -831,7 +844,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="350"
                   x2="280"
                   y2="300"
-                  stroke="rgba(255,255,255,0.08)"
+                  className="stroke-neutral-300 dark:stroke-white/10"
                   strokeWidth="1"
                 />
                 <line
@@ -839,7 +852,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="270"
                   x2="520"
                   y2="230"
-                  stroke="rgba(255,255,255,0.08)"
+                  className="stroke-neutral-300 dark:stroke-white/10"
                   strokeWidth="1"
                 />
 
@@ -849,7 +862,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="190"
                   x2="280"
                   y2="300"
-                  stroke="rgba(255,255,255,0.12)"
+                  className="stroke-neutral-300 dark:stroke-white/15"
                   strokeWidth="1.5"
                 />
                 <line
@@ -857,7 +870,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="300"
                   x2="520"
                   y2="230"
-                  stroke="rgba(255,255,255,0.12)"
+                  className="stroke-neutral-300 dark:stroke-white/15"
                   strokeWidth="1.5"
                 />
                 <line
@@ -865,7 +878,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="230"
                   x2="460"
                   y2="130"
-                  stroke="rgba(255,255,255,0.12)"
+                  className="stroke-neutral-300 dark:stroke-white/15"
                   strokeWidth="1.5"
                 />
 
@@ -875,7 +888,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="190"
                   x2="280"
                   y2="150"
-                  stroke="#a78bfa"
+                  stroke="#8b5cf6"
                   strokeWidth="2.5"
                   strokeDasharray="8 4"
                   className="animate-dash-stream"
@@ -895,117 +908,162 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   y1="150"
                   x2="280"
                   y2="300"
-                  stroke="rgba(167,139,250,0.4)"
+                  stroke="#a78bfa"
+                  strokeOpacity="0.5"
                   strokeWidth="1.5"
                   strokeDasharray="6 3"
                   className="animate-dash-stream"
                 />
 
-                {/* Community Hub Nodes */}
+                {/* Community Hub Nodes (All 4 hubs animated with gentle aura rings) */}
                 {/* 1. Gaming Community */}
-                <circle cx="140" cy="190" r="20" fill="#242424" stroke="#4a4a4a" strokeWidth="2" />
-                <circle cx="140" cy="190" r="5" fill="#60a5fa" />
-                <text
-                  x="140"
-                  y="226"
-                  textAnchor="middle"
-                  fill="#cccccc"
-                  fontSize="13"
-                  fontFamily="sans-serif"
-                  fontWeight="600"
-                >
-                  Gaming Hub
-                </text>
-                <text
-                  x="140"
-                  y="242"
-                  textAnchor="middle"
-                  fill="#777777"
-                  fontSize="11"
-                  fontFamily="sans-serif"
-                >
-                  128 node
-                </text>
+                <g>
+                  <circle
+                    cx="140"
+                    cy="190"
+                    r="22"
+                    className="fill-white dark:fill-[#242424] stroke-neutral-300 dark:stroke-[#4a4a4a]"
+                    strokeWidth="2"
+                  />
+                  <circle
+                    cx="140"
+                    cy="190"
+                    r="12"
+                    fill="#60a5fa"
+                    fillOpacity="0.2"
+                    className="animate-ping"
+                    style={{ animationDuration: "3.2s" }}
+                  />
+                  <circle cx="140" cy="190" r="6" fill="#60a5fa" />
+                  <text
+                    x="140"
+                    y="226"
+                    textAnchor="middle"
+                    className="fill-neutral-900 dark:fill-[#cccccc] text-[13px] font-semibold"
+                  >
+                    Gaming Hub
+                  </text>
+                  <text
+                    x="140"
+                    y="242"
+                    textAnchor="middle"
+                    className="fill-neutral-500 dark:fill-[#888888] text-[11px]"
+                  >
+                    128 node
+                  </text>
+                </g>
 
                 {/* 2. Shitposting & Meme Community */}
-                <circle cx="460" cy="130" r="22" fill="#242424" stroke="#4a4a4a" strokeWidth="2" />
-                <circle cx="460" cy="130" r="6" fill="#f59e0b" />
-                <text
-                  x="460"
-                  y="168"
-                  textAnchor="middle"
-                  fill="#cccccc"
-                  fontSize="13"
-                  fontFamily="sans-serif"
-                  fontWeight="600"
-                >
-                  Shitposting & Meme
-                </text>
-                <text
-                  x="460"
-                  y="184"
-                  textAnchor="middle"
-                  fill="#777777"
-                  fontSize="11"
-                  fontFamily="sans-serif"
-                >
-                  312 node
-                </text>
+                <g>
+                  <circle
+                    cx="460"
+                    cy="130"
+                    r="24"
+                    className="fill-white dark:fill-[#242424] stroke-neutral-300 dark:stroke-[#4a4a4a]"
+                    strokeWidth="2"
+                  />
+                  <circle
+                    cx="460"
+                    cy="130"
+                    r="14"
+                    fill="#f59e0b"
+                    fillOpacity="0.2"
+                    className="animate-ping"
+                    style={{ animationDuration: "2.6s" }}
+                  />
+                  <circle cx="460" cy="130" r="7" fill="#f59e0b" />
+                  <text
+                    x="460"
+                    y="168"
+                    textAnchor="middle"
+                    className="fill-neutral-900 dark:fill-[#cccccc] text-[13px] font-semibold"
+                  >
+                    Shitposting & Meme
+                  </text>
+                  <text
+                    x="460"
+                    y="184"
+                    textAnchor="middle"
+                    className="fill-neutral-500 dark:fill-[#888888] text-[11px]"
+                  >
+                    312 node
+                  </text>
+                </g>
 
                 {/* 3. Music & Audio Community */}
-                <circle cx="280" cy="300" r="18" fill="#242424" stroke="#4a4a4a" strokeWidth="2" />
-                <circle cx="280" cy="300" r="5" fill="#34d399" />
-                <text
-                  x="280"
-                  y="334"
-                  textAnchor="middle"
-                  fill="#cccccc"
-                  fontSize="13"
-                  fontFamily="sans-serif"
-                  fontWeight="600"
-                >
-                  Music & Beat
-                </text>
-                <text
-                  x="280"
-                  y="350"
-                  textAnchor="middle"
-                  fill="#777777"
-                  fontSize="11"
-                  fontFamily="sans-serif"
-                >
-                  94 node
-                </text>
+                <g>
+                  <circle
+                    cx="280"
+                    cy="300"
+                    r="20"
+                    className="fill-white dark:fill-[#242424] stroke-neutral-300 dark:stroke-[#4a4a4a]"
+                    strokeWidth="2"
+                  />
+                  <circle
+                    cx="280"
+                    cy="300"
+                    r="11"
+                    fill="#34d399"
+                    fillOpacity="0.2"
+                    className="animate-ping"
+                    style={{ animationDuration: "3.8s" }}
+                  />
+                  <circle cx="280" cy="300" r="5" fill="#34d399" />
+                  <text
+                    x="280"
+                    y="334"
+                    textAnchor="middle"
+                    className="fill-neutral-900 dark:fill-[#cccccc] text-[13px] font-semibold"
+                  >
+                    Music & Beat
+                  </text>
+                  <text
+                    x="280"
+                    y="350"
+                    textAnchor="middle"
+                    className="fill-neutral-500 dark:fill-[#888888] text-[11px]"
+                  >
+                    94 node
+                  </text>
+                </g>
 
                 {/* 4. Campus / Gen Z Community */}
-                <circle
-                  cx="520"
-                  cy="230"
-                  r="16"
-                  fill="#242424"
-                  stroke="#4a4a4a"
-                  strokeWidth="1.5"
-                />
-                <circle cx="520" cy="230" r="4" fill="#a78bfa" />
-                <text
-                  x="520"
-                  y="260"
-                  textAnchor="middle"
-                  fill="#aaaaaa"
-                  fontSize="12"
-                  fontFamily="sans-serif"
-                >
-                  Đời sống Gen Z
-                </text>
+                <g>
+                  <circle
+                    cx="520"
+                    cy="230"
+                    r="18"
+                    className="fill-white dark:fill-[#242424] stroke-neutral-300 dark:stroke-[#4a4a4a]"
+                    strokeWidth="1.5"
+                  />
+                  <circle
+                    cx="520"
+                    cy="230"
+                    r="10"
+                    fill="#a78bfa"
+                    fillOpacity="0.2"
+                    className="animate-ping"
+                    style={{ animationDuration: "3s" }}
+                  />
+                  <circle cx="520" cy="230" r="5" fill="#a78bfa" />
+                  <text
+                    x="520"
+                    y="260"
+                    textAnchor="middle"
+                    className="fill-neutral-900 dark:fill-[#aaaaaa] text-[12px] font-semibold"
+                  >
+                    Đời sống Gen Z
+                  </text>
+                </g>
 
                 {/* Satellite small nodes */}
-                <circle cx="80" cy="120" r="4" fill="#555" />
-                <circle cx="90" cy="260" r="4" fill="#555" />
-                <circle cx="430" cy="70" r="4" fill="#555" />
-                <circle cx="550" cy="110" r="4" fill="#555" />
-                <circle cx="260" cy="360" r="4" fill="#555" />
-                <circle cx="330" cy="350" r="4" fill="#555" />
-                <circle cx="570" cy="270" r="4" fill="#555" />
+                <circle cx="80" cy="120" r="4" className="fill-neutral-400 dark:fill-[#555]" />
+                <circle cx="90" cy="260" r="4" className="fill-neutral-400 dark:fill-[#555]" />
+                <circle cx="430" cy="70" r="4" className="fill-neutral-400 dark:fill-[#555]" />
+                <circle cx="550" cy="110" r="4" className="fill-neutral-400 dark:fill-[#555]" />
+                <circle cx="260" cy="360" r="4" className="fill-neutral-400 dark:fill-[#555]" />
+                <circle cx="330" cy="350" r="4" className="fill-neutral-400 dark:fill-[#555]" />
+                <circle cx="570" cy="270" r="4" className="fill-neutral-400 dark:fill-[#555]" />
 
                 {/* High Potential Emerging Pattern: capcut_remix_09 with Radar Rings */}
                 <circle cx="280" cy="150" r="44" fill="url(#nodeGlow)" />
@@ -1033,10 +1091,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   x="280"
                   y="118"
                   textAnchor="middle"
-                  fill="#ffffff"
-                  fontWeight="bold"
-                  fontSize="14"
-                  fontFamily="monospace"
+                  className="fill-neutral-900 dark:fill-white font-mono font-bold text-[14px]"
                 >
                   capcut_remix_09
                 </text>
@@ -1044,78 +1099,83 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   x="280"
                   y="134"
                   textAnchor="middle"
-                  fill="#c4b5fd"
-                  fontSize="12"
-                  fontWeight="500"
-                  fontFamily="sans-serif"
+                  className="fill-purple-700 dark:fill-[#c4b5fd] text-[12px] font-medium"
                 >
                   Hawkes: 74% • Tín hiệu mới chớm
                 </text>
               </svg>
 
               {/* Canvas Bottom Legend Overlay */}
-              <div className="relative z-10 mt-auto pt-4 flex flex-wrap items-center justify-between gap-3 text-[12.5px] text-[#999999]">
-                <div className="flex items-center gap-3 bg-[#262626]/90 px-3 py-1.5 rounded-lg border border-[#333333] backdrop-blur">
+              <div className="relative z-10 mt-auto pt-4 flex flex-wrap items-center justify-between gap-3 text-[12.5px] text-neutral-600 dark:text-[#999999]">
+                <div className="flex items-center gap-3 bg-white/90 dark:bg-[#262626]/90 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-[#333333] backdrop-blur shadow-sm">
                   <span className="flex items-center gap-1.5">
                     <span className="size-2.5 rounded-full bg-[#a78bfa]" />
-                    <span>Tín hiệu bộc phát</span>
+                    <span className="text-neutral-800 dark:text-neutral-200">
+                      Tín hiệu bộc phát
+                    </span>
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="size-2.5 rounded-full bg-[#4a4a4a]" />
-                    <span>Cụm cộng đồng</span>
+                    <span className="size-2.5 rounded-full bg-neutral-400 dark:bg-[#4a4a4a]" />
+                    <span className="text-neutral-800 dark:text-neutral-200">Cụm cộng đồng</span>
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="w-3.5 h-0.5 bg-[#a78bfa]" />
-                    <span>Di chuyển xuyên nhóm</span>
+                    <span className="text-neutral-800 dark:text-neutral-200">
+                      Di chuyển xuyên nhóm
+                    </span>
                   </span>
                 </div>
-                <div className="text-[12px] font-mono text-[#777777] hidden sm:block">
+                <div className="text-[12px] font-mono text-neutral-500 dark:text-[#777777] hidden sm:block">
                   Complete-linkage Event Graph • Cosine 0.81
                 </div>
               </div>
             </div>
 
             {/* Right Inspector Panel (Dedicated Obsidian-style inspector) */}
-            <div className="w-full md:w-80 lg:w-96 border-t md:border-t-0 md:border-l border-[#363636] bg-[#222222] p-5 flex flex-col justify-between gap-4">
+            <div className="w-full md:w-80 lg:w-96 border-t md:border-t-0 md:border-l border-neutral-200 dark:border-[#363636] bg-neutral-50 dark:bg-[#222222] p-5 flex flex-col justify-between gap-4">
               <div>
                 {/* Inspector Header */}
-                <div className="flex items-center justify-between pb-3 border-b border-[#333333] mb-3">
+                <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-[#333333] mb-3">
                   <div className="flex items-center gap-2">
                     <Layers className="size-4.5 text-[#a78bfa]" />
-                    <span className="text-[13.5px] font-bold uppercase tracking-wider text-[#cccccc]">
+                    <span className="text-[13.5px] font-bold uppercase tracking-wider text-neutral-700 dark:text-[#cccccc]">
                       Trắc diện tín hiệu
                     </span>
                   </div>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[11px] font-semibold">
-                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-semibold">
+                    <span className="size-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                     BURSTING
                   </span>
                 </div>
 
                 {/* Node Identity */}
                 <div className="mb-3.5">
-                  <div className="text-[17px] font-bold text-white font-mono flex items-center gap-1.5">
+                  <div className="text-[17px] font-bold text-neutral-900 dark:text-white font-mono flex items-center gap-1.5">
                     <span>capcut_remix_09</span>
                   </div>
-                  <div className="text-[13.5px] text-[#aaaaaa] mt-0.5">
+                  <div className="text-[13.5px] text-neutral-600 dark:text-[#aaaaaa] mt-0.5">
                     Âm thanh phái sinh & mẫu dựng CapCut đang bộc phát
                   </div>
                 </div>
 
                 {/* Hawkes Forecast Gauge Card */}
-                <div className="p-3.5 rounded-lg bg-[#282828] border border-[#383838] mb-3.5">
+                <div className="p-3.5 rounded-lg bg-white dark:bg-[#282828] border border-neutral-200 dark:border-[#383838] mb-3.5 shadow-sm">
                   <div className="flex items-center justify-between text-[13px] mb-2">
-                    <span className="text-[#cccccc] font-medium">Xác suất bùng nổ (12h)</span>
-                    <span className="text-emerald-400 font-bold font-mono text-[15px]">74%</span>
+                    <span className="text-neutral-700 dark:text-[#cccccc] font-medium">
+                      Xác suất bùng nổ (12h)
+                    </span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold font-mono text-[15px]">
+                      74%
+                    </span>
                   </div>
                   {/* Progress bar */}
-                  <div className="w-full h-2.5 bg-[#1a1a1a] rounded-full overflow-hidden border border-[#333]">
+                  <div className="w-full h-2.5 bg-neutral-100 dark:bg-[#1a1a1a] rounded-full overflow-hidden border border-neutral-200 dark:border-[#333]">
                     <div
                       className="h-full bg-gradient-to-r from-[#a78bfa] to-emerald-400 rounded-full"
                       style={{ width: "74%" }}
                     />
                   </div>
-                  <div className="flex justify-between text-[11.5px] text-[#888888] font-mono mt-1.5">
+                  <div className="flex justify-between text-[11.5px] text-neutral-500 dark:text-[#888888] font-mono mt-1.5">
                     <span>Mô hình Hawkes Process</span>
                     <span>CI: 68% - 81%</span>
                   </div>
@@ -1123,52 +1183,64 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
                 {/* Metrics 2x2 Grid */}
                 <div className="grid grid-cols-2 gap-2.5 mb-3.5">
-                  <div className="p-3 rounded-lg bg-[#262626] border border-[#333333]">
-                    <div className="text-[11px] uppercase tracking-wider text-[#888888]">
+                  <div className="p-3 rounded-lg bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#333333] shadow-sm">
+                    <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888]">
                       Tác giả độc lập
                     </div>
-                    <div className="text-[16px] font-bold text-white font-mono mt-1">
+                    <div className="text-[16px] font-bold text-neutral-900 dark:text-white font-mono mt-1">
                       +42 tác giả
                     </div>
-                    <div className="text-[11.5px] text-emerald-400 mt-0.5">Không phải bot spam</div>
+                    <div className="text-[11.5px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      Không phải bot spam
+                    </div>
                   </div>
-                  <div className="p-3 rounded-lg bg-[#262626] border border-[#333333]">
-                    <div className="text-[11px] uppercase tracking-wider text-[#888888]">
+                  <div className="p-3 rounded-lg bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#333333] shadow-sm">
+                    <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888]">
                       Gia tốc tăng
                     </div>
-                    <div className="text-[16px] font-bold text-white font-mono mt-1">+320%</div>
-                    <div className="text-[11.5px] text-[#999999] mt-0.5">trong 20 phút qua</div>
+                    <div className="text-[16px] font-bold text-neutral-900 dark:text-white font-mono mt-1">
+                      +320%
+                    </div>
+                    <div className="text-[11.5px] text-neutral-500 dark:text-[#999999] mt-0.5">
+                      trong 20 phút qua
+                    </div>
                   </div>
-                  <div className="p-3 rounded-lg bg-[#262626] border border-[#333333]">
-                    <div className="text-[11px] uppercase tracking-wider text-[#888888]">
+                  <div className="p-3 rounded-lg bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#333333] shadow-sm">
+                    <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888]">
                       Vân tay âm thanh
                     </div>
-                    <div className="text-[14.5px] font-semibold text-[#dadada] font-mono mt-1">
+                    <div className="text-[14.5px] font-semibold text-neutral-800 dark:text-[#dadada] font-mono mt-1">
                       PeakNetFP
                     </div>
-                    <div className="text-[11.5px] text-[#999999] mt-0.5">Độ khớp: 0.81</div>
+                    <div className="text-[11.5px] text-neutral-500 dark:text-[#999999] mt-0.5">
+                      Độ khớp: 0.81
+                    </div>
                   </div>
-                  <div className="p-3 rounded-lg bg-[#262626] border border-[#333333]">
-                    <div className="text-[11px] uppercase tracking-wider text-[#888888]">
+                  <div className="p-3 rounded-lg bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#333333] shadow-sm">
+                    <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888]">
                       Di chuyển
                     </div>
-                    <div className="text-[14.5px] font-semibold text-[#a78bfa] mt-1">
+                    <div className="text-[14.5px] font-semibold text-purple-700 dark:text-[#a78bfa] mt-1">
                       Vượt biên ngách
                     </div>
-                    <div className="text-[11.5px] text-[#999999] mt-0.5">Gaming → Shitpost</div>
+                    <div className="text-[11.5px] text-neutral-500 dark:text-[#999999] mt-0.5">
+                      Gaming → Shitpost
+                    </div>
                   </div>
                 </div>
 
                 {/* Grounding Evidence Quote */}
-                <div className="p-3 rounded-lg bg-[#1f1f1f] border border-[#333333] text-[13px]">
-                  <div className="text-[11px] uppercase tracking-wider text-[#888888] mb-1.5 flex items-center justify-between">
+                <div className="p-3 rounded-lg bg-white dark:bg-[#1f1f1f] border border-neutral-200 dark:border-[#333333] text-[13px] shadow-sm">
+                  <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888] mb-1.5 flex items-center justify-between">
                     <span>Minh chứng kiểm chứng (Grounding)</span>
-                    <span className="text-emerald-400 font-mono">T0 Signal</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-mono">
+                      T0 Signal
+                    </span>
                   </div>
-                  <p className="text-[#dadada] italic leading-snug">
+                  <p className="text-neutral-800 dark:text-[#dadada] italic leading-snug">
                     "Ủa rồi ai mượn remix đoạn này mượt dữ vậy..."
                   </p>
-                  <div className="mt-1.5 text-[11.5px] text-[#888888] font-mono">
+                  <div className="mt-1.5 text-[11.5px] text-neutral-500 dark:text-[#888888] font-mono">
                     — @beatmaker_viet.bsky.social • Bluesky Jetstream v2
                   </div>
                 </div>
@@ -1217,11 +1289,11 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           </div>
 
           {/* Academic & Platform Proof Bar */}
-          <div className="mt-14 pt-8 border-t border-[#333333] flex flex-col md:flex-row items-center justify-between gap-6 text-[14px] text-[#888888]">
-            <span className="uppercase tracking-wider font-semibold text-[13px] text-[#aaaaaa]">
+          <div className="mt-14 pt-8 border-t border-neutral-200 dark:border-[#333333] flex flex-col md:flex-row items-center justify-between gap-6 text-[14px] text-neutral-600 dark:text-[#888888]">
+            <span className="uppercase tracking-wider font-semibold text-[13px] text-neutral-500 dark:text-[#aaaaaa]">
               Nền tảng & Đơn vị bảo trợ học thuật:
             </span>
-            <div className="flex flex-wrap items-center gap-6 sm:gap-10 text-[#bbbbbb] font-medium text-[14.5px]">
+            <div className="flex flex-wrap items-center gap-6 sm:gap-10 text-neutral-700 dark:text-[#bbbbbb] font-medium text-[14.5px]">
               <span>ĐH Bách khoa – ĐH Đà Nẵng</span>
               <span>ĐHQG Hà Nội (RnD to Startup 2026)</span>
               <span>Bluesky AT Protocol</span>
@@ -1232,12 +1304,12 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           </div>
 
           {/* Audience Segments Bar */}
-          <div className="mt-14 pt-8 border-t border-[#333333]">
+          <div className="mt-14 pt-8 border-t border-neutral-200 dark:border-[#333333]">
             <div className="text-center mb-7">
-              <span className="uppercase tracking-wider font-mono text-[13px] text-[#a78bfa] font-semibold">
+              <span className="uppercase tracking-wider font-mono text-[13px] text-purple-700 dark:text-[#a78bfa] font-semibold">
                 Phân tầng Khán giả Thực chứng (Viewer Segments)
               </span>
-              <h3 className="text-xl sm:text-2xl font-bold text-white mt-1.5">
+              <h3 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white mt-1.5">
                 Quan sát trực tiếp luồng văn hóa ngách thay vì suy đoán nhân khẩu học
               </h3>
             </div>
@@ -1247,16 +1319,18 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                 return (
                   <div
                     key={seg.id}
-                    className="p-4 rounded-xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 transition-colors text-center flex flex-col items-center"
+                    className="p-4 rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-purple-300 dark:hover:border-[#a78bfa]/50 transition-colors text-center flex flex-col items-center shadow-sm"
                   >
                     <span
-                      className="flex size-10 items-center justify-center rounded-lg bg-white/5 mb-2.5"
+                      className="flex size-10 items-center justify-center rounded-lg bg-neutral-100 dark:bg-white/5 mb-2.5"
                       style={{ color: seg.color }}
                     >
                       <Icon className="size-5" />
                     </span>
-                    <span className="text-[14px] font-bold text-white mb-1.5">{seg.name}</span>
-                    <span className="text-[12.5px] text-[#999999] leading-snug line-clamp-2">
+                    <span className="text-[14px] font-bold text-neutral-900 dark:text-white mb-1.5">
+                      {seg.name}
+                    </span>
+                    <span className="text-[12.5px] text-neutral-600 dark:text-[#999999] leading-snug line-clamp-2">
                       {seg.desc}
                     </span>
                   </div>
@@ -1331,18 +1405,18 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* ------------------------------------------------------------ */}
       <section
         id="how-it-works"
-        className="py-24 px-4 sm:px-6 bg-[#222222] border-y border-[#363636]"
+        className="py-24 px-4 sm:px-6 bg-neutral-100/70 dark:bg-[#222222] border-y border-neutral-200 dark:border-[#363636]"
       >
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-[#a78bfa] mb-3 font-semibold">
+            <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-purple-700 dark:text-[#a78bfa] mb-3 font-semibold">
               <History className="size-4" />
               <span>Quy trình trinh sát liên hoàn</span>
             </div>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-5 leading-tight">
+            <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
               Từ một đốm lửa trong cộng đồng ngách đến trào lưu triệu view
             </h2>
-            <p className="text-[17px] sm:text-[18px] text-[#aaaaaa] leading-relaxed">
+            <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
               Cách Trendifest thu thập, phân tích đa phương thức và dự báo xác suất bùng nổ trong
               từng mốc thời gian thực chiến.
             </p>
@@ -1359,8 +1433,8 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   className={cn(
                     "flex flex-col justify-between p-6 sm:p-7 rounded-2xl border transition-all duration-300 cursor-pointer text-left relative",
                     isSelected
-                      ? "bg-[#2c243d] border-[#a78bfa] shadow-[0_0_30px_rgba(167,139,250,0.22)] -translate-y-1.5 ring-1 ring-[#a78bfa]/50"
-                      : "bg-[#262626] border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1",
+                      ? "bg-purple-50/90 dark:bg-[#2c243d] border-purple-500 dark:border-[#a78bfa] shadow-[0_0_30px_rgba(167,139,250,0.25)] -translate-y-1.5 ring-1 ring-purple-400 dark:ring-[#a78bfa]/50"
+                      : "bg-white dark:bg-[#262626] border-neutral-200 dark:border-[#363636] hover:border-purple-300 dark:hover:border-[#a78bfa]/50 hover:-translate-y-1 shadow-sm",
                   )}
                 >
                   {isSelected && (
@@ -1370,32 +1444,32 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   )}
                   <div>
                     <div className="flex items-center justify-between mb-4">
-                      <span className="text-3xl font-black font-mono text-[#a78bfa]">
+                      <span className="text-3xl font-black font-mono text-purple-700 dark:text-[#a78bfa]">
                         {step.time}
                       </span>
                       <span
                         className={cn(
                           "text-[12px] font-mono px-2.5 py-0.5 rounded border",
                           isSelected
-                            ? "bg-[#a78bfa]/20 text-[#a78bfa] border-[#a78bfa]/40 font-semibold"
-                            : "bg-[#1a1a1a] text-[#888888] border-[#333333]",
+                            ? "bg-purple-100 text-purple-800 border-purple-300 dark:bg-[#a78bfa]/20 dark:text-[#a78bfa] dark:border-[#a78bfa]/40 font-semibold"
+                            : "bg-neutral-100 text-neutral-600 border-neutral-200 dark:bg-[#1a1a1a] dark:text-[#888888] dark:border-[#333333]",
                         )}
                       >
                         Bước 0{idx + 1}
                       </span>
                     </div>
-                    <div className="inline-block text-[13px] font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded mb-3">
+                    <div className="inline-block text-[13px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded mb-3">
                       {step.badge}
                     </div>
-                    <h3 className="text-[18px] font-bold text-white mb-2.5 leading-snug">
+                    <h3 className="text-[18px] font-bold text-neutral-900 dark:text-white mb-2.5 leading-snug">
                       {step.title}
                     </h3>
-                    <p className="text-[15px] text-[#aaaaaa] leading-relaxed mb-5">
+                    <p className="text-[15px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-5">
                       {step.description}
                     </p>
                   </div>
 
-                  <div className="pt-4 border-t border-[#333333] text-[13.5px] font-mono text-[#c4b5fd]">
+                  <div className="pt-4 border-t border-neutral-200 dark:border-[#333333] text-[13.5px] font-mono text-purple-700 dark:text-[#c4b5fd]">
                     {step.signal}
                   </div>
                 </div>
@@ -1404,16 +1478,16 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           </div>
 
           {/* Active Step Telemetry Deep-dive Bar */}
-          <div className="mt-8 p-5 sm:p-6 rounded-2xl bg-[#262626] border border-[#383838] flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="mt-8 p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#383838] flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
             <div className="flex items-center gap-3">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-[#a78bfa]/20 text-[#a78bfa] shrink-0">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-purple-100 dark:bg-[#a78bfa]/20 text-purple-700 dark:text-[#a78bfa] shrink-0">
                 <Sparkles className="size-5 animate-pulse" />
               </span>
               <div>
-                <div className="text-[12.5px] font-mono uppercase tracking-wider text-[#a78bfa] font-semibold">
+                <div className="text-[12.5px] font-mono uppercase tracking-wider text-purple-700 dark:text-[#a78bfa] font-semibold">
                   Mô phỏng dữ liệu thời gian thực: {TIMELINE_STEPS[activeTimelineStep].time}
                 </div>
-                <div className="text-[15.5px] font-semibold text-white mt-0.5">
+                <div className="text-[15.5px] font-semibold text-neutral-900 dark:text-white mt-0.5">
                   {TIMELINE_STEPS[activeTimelineStep].title} —{" "}
                   {TIMELINE_STEPS[activeTimelineStep].signal}
                 </div>
@@ -1421,7 +1495,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             </div>
             <button
               onClick={onOpenApp}
-              className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#a78bfa] hover:text-white px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-purple-700 dark:text-[#a78bfa] hover:text-purple-900 dark:hover:text-white px-4 py-2 rounded-lg bg-purple-50 dark:bg-white/5 hover:bg-purple-100 dark:hover:bg-white/10 transition-colors whitespace-nowrap shrink-0"
             >
               <span>Xem trực quan trên Map</span>
               <ArrowRight className="size-4" />
@@ -1555,32 +1629,36 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             </div>
 
             {/* Right Screen Mockup */}
-            <div className="lg:col-span-5 rounded-2xl bg-[#1e1e1e] border border-[#363636] p-6 shadow-inner">
-              <div className="flex items-center justify-between mb-5 pb-3 border-b border-[#333333]">
-                <span className="text-[14px] font-bold text-white">
+            <div className="lg:col-span-5 rounded-2xl bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] p-6 shadow-inner">
+              <div className="flex items-center justify-between mb-5 pb-3 border-b border-neutral-200 dark:border-[#333333]">
+                <span className="text-[14px] font-bold text-neutral-900 dark:text-white">
                   {currentUseCase.previewTitle}
                 </span>
-                <span className="text-[12px] font-mono text-[#a78bfa] bg-[#a78bfa]/15 px-2.5 py-0.5 rounded font-medium">
+                <span className="text-[12px] font-mono text-purple-700 dark:text-[#a78bfa] bg-purple-100 dark:bg-[#a78bfa]/15 px-2.5 py-0.5 rounded font-medium">
                   {currentUseCase.previewBadge}
                 </span>
               </div>
               <div className="space-y-3.5">
-                <div className="p-3.5 rounded-xl bg-[#262626] border border-[#3a3a3a]">
-                  <div className="text-[12.5px] text-[#888888] mb-1">Cụm sự kiện theo dõi:</div>
-                  <div className="text-[15px] font-semibold text-white">
+                <div className="p-3.5 rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#3a3a3a] shadow-sm">
+                  <div className="text-[12.5px] text-neutral-500 dark:text-[#888888] mb-1">
+                    Cụm sự kiện theo dõi:
+                  </div>
+                  <div className="text-[15px] font-semibold text-neutral-900 dark:text-white">
                     {currentUseCase.previewEvent}
                   </div>
                 </div>
-                <div className="p-3.5 rounded-xl bg-[#262626] border border-[#3a3a3a] flex items-center justify-between">
-                  <span className="text-[12.5px] text-[#888888]">Quỹ đạo lan truyền:</span>
-                  <span className="text-[14px] font-mono text-emerald-400 font-semibold">
+                <div className="p-3.5 rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#3a3a3a] flex items-center justify-between shadow-sm">
+                  <span className="text-[12.5px] text-neutral-500 dark:text-[#888888]">
+                    Quỹ đạo lan truyền:
+                  </span>
+                  <span className="text-[14px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                     {currentUseCase.previewCommunity}
                   </span>
                 </div>
-                <div className="p-3.5 rounded-xl bg-[#2a2438] border border-[#a78bfa]/30 text-center">
+                <div className="p-3.5 rounded-xl bg-purple-50 dark:bg-[#2a2438] border border-purple-200 dark:border-[#a78bfa]/30 text-center">
                   <button
                     onClick={onOpenApp}
-                    className="text-[14px] font-bold text-[#a78bfa] hover:text-white flex items-center justify-center gap-1.5 w-full py-1"
+                    className="text-[14px] font-bold text-purple-700 dark:text-[#a78bfa] hover:text-purple-900 dark:hover:text-white flex items-center justify-center gap-1.5 w-full py-1"
                   >
                     <span>Khám phá trào lưu này trên Live Map</span>
                     <ArrowRight className="size-4" />
@@ -1778,17 +1856,17 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   Tôn trọng quyền xóa bài viết. Mô hình vector chạy cục bộ trong môi trường nội bộ
                   của tổ chức mà không phát tán ra ngoài.
                 </p>
-                <div className="p-4.5 rounded-xl bg-[#1e1e1e] border border-[#333333] space-y-2.5 text-[14.5px] text-[#cccccc]">
+                <div className="p-4.5 rounded-xl bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#333333] space-y-2.5 text-[14.5px] text-neutral-700 dark:text-[#cccccc]">
                   <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-cyan-400 shrink-0" />
+                    <Check className="size-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
                     <span>Tự động xóa vector khi bài gốc bị xóa</span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-cyan-400 shrink-0" />
+                    <Check className="size-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
                     <span>100% Local Transformers (CPU/GPU riêng)</span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-cyan-400 shrink-0" />
+                    <Check className="size-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
                     <span>Không huấn luyện mô hình trên dữ liệu người dùng</span>
                   </div>
                 </div>
@@ -1803,39 +1881,39 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* ------------------------------------------------------------ */}
       <section id="faq" className="py-24 px-4 sm:px-6 max-w-4xl mx-auto">
         <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-[#a78bfa] mb-3 font-semibold">
+          <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-purple-700 dark:text-[#a78bfa] mb-3 font-semibold">
             <HelpCircle className="size-4" />
             <span>Giải đáp thắc mắc</span>
           </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-5 leading-tight">
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
             Câu Hỏi Thường Gặp
           </h2>
-          <p className="text-[17px] sm:text-[18px] text-[#aaaaaa]">
+          <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa]">
             Những điều bạn cần biết về nguyên lý hoạt động và cam kết của Trendifest.
           </p>
         </div>
 
-        <div className="divide-y divide-[#363636] border-y border-[#363636]">
+        <div className="divide-y divide-neutral-200 dark:divide-[#363636] border-y border-neutral-200 dark:border-[#363636]">
           {FAQS.map((faq, idx) => {
             const isOpen = openFaq === idx;
             return (
               <div key={idx} className="py-6">
                 <button
                   onClick={() => setOpenFaq(isOpen ? null : idx)}
-                  className="flex items-center justify-between w-full text-left gap-4 text-white hover:text-[#a78bfa] transition-colors py-1"
+                  className="flex items-center justify-between w-full text-left gap-4 text-neutral-900 dark:text-white hover:text-purple-700 dark:hover:text-[#a78bfa] transition-colors py-1"
                 >
                   <span className="text-[17px] sm:text-[19px] font-bold leading-snug">
                     {faq.question}
                   </span>
                   <ChevronDown
                     className={cn(
-                      "size-5 text-[#888888] shrink-0 transition-transform duration-200",
-                      isOpen && "rotate-180 text-[#a78bfa]",
+                      "size-5 text-neutral-400 dark:text-[#888888] shrink-0 transition-transform duration-200",
+                      isOpen && "rotate-180 text-purple-700 dark:text-[#a78bfa]",
                     )}
                   />
                 </button>
                 {isOpen && (
-                  <p className="mt-4 text-[15.5px] sm:text-[16px] text-[#bbbbbb] leading-relaxed pr-8">
+                  <p className="mt-4 text-[15.5px] sm:text-[16px] text-neutral-600 dark:text-[#bbbbbb] leading-relaxed pr-8">
                     {faq.answer}
                   </p>
                 )}
@@ -1849,17 +1927,17 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* 13. Grand Final CTA Banner (Lindy Tile 10 Aura Card)         */}
       {/* ------------------------------------------------------------ */}
       <section className="py-24 px-4 sm:px-6">
-        <div className="max-w-5xl mx-auto rounded-3xl bg-gradient-to-b from-[#2e2642] to-[#1e1e1e] border border-[#a78bfa]/40 p-10 sm:p-20 text-center relative overflow-hidden shadow-2xl group hover:border-[#a78bfa]/70 transition-all duration-500">
+        <div className="max-w-5xl mx-auto rounded-3xl bg-gradient-to-b from-purple-100 via-purple-50 to-white dark:from-[#2e2642] dark:to-[#1e1e1e] border border-purple-200 dark:border-[#a78bfa]/40 p-10 sm:p-20 text-center relative overflow-hidden shadow-2xl group hover:border-purple-300 dark:hover:border-[#a78bfa]/70 transition-all duration-500">
           <div
             aria-hidden="true"
-            className="absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-[340px] bg-gradient-to-b from-[#c084fc]/25 via-[#a78bfa]/20 to-transparent blur-[130px] pointer-events-none rounded-full animate-pulse"
+            className="absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-[340px] bg-gradient-to-b from-purple-400/20 via-purple-300/15 to-transparent dark:from-[#c084fc]/25 dark:via-[#a78bfa]/20 dark:to-transparent blur-[130px] pointer-events-none rounded-full animate-pulse"
           />
 
           <div className="relative z-10">
-            <h2 className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight mb-6 leading-tight">
+            <h2 className="text-4xl sm:text-6xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-6 leading-tight">
               Sẵn sàng đón đầu đỉnh sóng văn hóa số cùng Trendifest?
             </h2>
-            <p className="max-w-2xl mx-auto text-[18px] sm:text-[21px] text-[#cccccc] leading-relaxed mb-10">
+            <p className="max-w-2xl mx-auto text-[18px] sm:text-[21px] text-neutral-600 dark:text-[#cccccc] leading-relaxed mb-10">
               Đừng để thương hiệu của bạn là người cuối cùng biết đến trào lưu. Bắt đầu quan sát các
               tín hiệu bộc phát đầu tiên ngay hôm nay.
             </p>
@@ -1874,13 +1952,13 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               </button>
               <button
                 onClick={() => setDemoModalOpen(true)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-medium text-white bg-[#262626] hover:bg-[#333333] border border-[#363636] px-8 py-4 rounded-full transition-colors whitespace-nowrap shrink-0"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-medium text-neutral-800 dark:text-white bg-white dark:bg-[#262626] hover:bg-neutral-100 dark:hover:bg-[#333333] border border-neutral-300 dark:border-[#363636] px-8 py-4 rounded-full transition-colors whitespace-nowrap shrink-0 shadow-sm"
               >
                 <span>Liên Hệ Đặt Lịch Demo Doanh Nghiệp</span>
               </button>
             </div>
 
-            <p className="text-[14px] text-[#888888]">
+            <p className="text-[14px] text-neutral-500 dark:text-[#888888]">
               Không cần thẻ tín dụng • Truy cập tức thì • Đăng ký tài khoản trong 2 phút
             </p>
           </div>
@@ -1890,21 +1968,21 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* ------------------------------------------------------------ */}
       {/* 14. Footer (Lindy Tile 11)                                   */}
       {/* ------------------------------------------------------------ */}
-      <footer className="border-t border-[#363636] bg-[#181818] py-16 px-4 sm:px-6 text-[14.5px] text-[#888888]">
+      <footer className="border-t border-neutral-200 dark:border-[#363636] bg-neutral-100 dark:bg-[#181818] py-16 px-4 sm:px-6 text-[14.5px] text-neutral-600 dark:text-[#888888]">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-5 gap-10 mb-12">
           {/* Brand Info */}
           <div className="md:col-span-2 space-y-4">
-            <div className="flex items-center gap-2.5 text-[18px] font-bold text-white">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-[#a78bfa]/20 border border-[#a78bfa]/40 text-[#a78bfa]">
+            <div className="flex items-center gap-2.5 text-[18px] font-bold text-neutral-900 dark:text-white">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-purple-100 dark:bg-[#a78bfa]/20 border border-purple-200 dark:border-[#a78bfa]/40 text-purple-700 dark:text-[#a78bfa]">
                 <Network className="size-4.5" />
               </span>
               <span>Trendifest</span>
             </div>
-            <p className="text-[14.5px] text-[#999999] leading-relaxed max-w-sm">
+            <p className="text-[14.5px] text-neutral-600 dark:text-[#999999] leading-relaxed max-w-sm">
               Hệ thống trinh sát và dự báo sớm xu hướng số, văn hóa mạng và biến động thảo luận cho
               Gen Z tại Việt Nam. Thuộc lĩnh vực Khoa học Dữ liệu và Mạng xã hội.
             </p>
-            <div className="text-[13.5px] text-[#777777] space-y-1">
+            <div className="text-[13.5px] text-neutral-500 dark:text-[#777777] space-y-1">
               <div>Đơn vị: Trường Đại học Bách khoa – Đại học Đà Nẵng</div>
               <div>Cuộc thi: RnD to Startup 2026 (ĐHQG Hà Nội)</div>
             </div>
@@ -1912,27 +1990,39 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
           {/* Column 1: Sản phẩm */}
           <div>
-            <div className="text-[14px] font-mono uppercase tracking-wider text-white mb-3.5 font-bold">
+            <div className="text-[14px] font-mono uppercase tracking-wider text-neutral-900 dark:text-white mb-3.5 font-bold">
               Sản phẩm
             </div>
             <ul className="space-y-2.5 text-[14.5px]">
               <li>
-                <button onClick={onOpenApp} className="hover:text-white transition-colors">
+                <button
+                  onClick={onOpenApp}
+                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                >
                   Trend Map Canvas
                 </button>
               </li>
               <li>
-                <a href="#how-it-works" className="hover:text-white transition-colors">
+                <a
+                  href="#how-it-works"
+                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                >
                   Quy trình trinh sát
                 </a>
               </li>
               <li>
-                <a href="#tech" className="hover:text-white transition-colors">
+                <a
+                  href="#tech"
+                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                >
                   Mô hình Hawkes Process
                 </a>
               </li>
               <li>
-                <a href="#faq" className="hover:text-white transition-colors">
+                <a
+                  href="#faq"
+                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                >
                   Câu hỏi thường gặp (FAQ)
                 </a>
               </li>
@@ -1941,27 +2031,39 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
           {/* Column 2: Pháp lý & Đạo đức */}
           <div>
-            <div className="text-[14px] font-mono uppercase tracking-wider text-white mb-3.5 font-bold">
+            <div className="text-[14px] font-mono uppercase tracking-wider text-neutral-900 dark:text-white mb-3.5 font-bold">
               Pháp lý & Đạo đức
             </div>
             <ul className="space-y-2.5 text-[14.5px]">
               <li>
-                <a href="#compliance" className="hover:text-white transition-colors">
+                <a
+                  href="#compliance"
+                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                >
                   Luật BV Dữ liệu cá nhân 91/2025
                 </a>
               </li>
               <li>
-                <a href="#compliance" className="hover:text-white transition-colors">
+                <a
+                  href="#compliance"
+                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                >
                   Chính sách Access-First
                 </a>
               </li>
               <li>
-                <a href="#compliance" className="hover:text-white transition-colors">
+                <a
+                  href="#compliance"
+                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                >
                   Quyền lãng quên (Deletion)
                 </a>
               </li>
               <li>
-                <a href="#compliance" className="hover:text-white transition-colors">
+                <a
+                  href="#compliance"
+                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                >
                   Nguyên tắc AI Độc lập
                 </a>
               </li>
@@ -1970,20 +2072,21 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
           {/* Column 3: Liên hệ */}
           <div>
-            <div className="text-[14px] font-mono uppercase tracking-wider text-white mb-3.5 font-bold">
+            <div className="text-[14px] font-mono uppercase tracking-wider text-neutral-900 dark:text-white mb-3.5 font-bold">
               Liên hệ
             </div>
             <ul className="space-y-2.5 text-[14.5px]">
               <li>
                 <a
                   href="mailto:hanhnguyen17122006@gmail.com"
-                  className="hover:text-white transition-colors"
+                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
                 >
                   hanhnguyen17122006@gmail.com
                 </a>
               </li>
               <li>
-                <span className="text-white">Hotline:</span> 0935 009 725
+                <span className="text-neutral-900 dark:text-white font-medium">Hotline:</span> 0935
+                009 725
               </li>
               <li>
                 <span>Đà Nẵng, Việt Nam</span>
@@ -1993,10 +2096,12 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         </div>
 
         {/* Footer Bottom Bar */}
-        <div className="max-w-6xl mx-auto pt-8 border-t border-[#2a2a2a] flex flex-col sm:flex-row items-center justify-between gap-4 text-[13.5px] text-[#777777]">
+        <div className="max-w-6xl mx-auto pt-8 border-t border-neutral-200 dark:border-[#2a2a2a] flex flex-col sm:flex-row items-center justify-between gap-4 text-[13.5px] text-neutral-500 dark:text-[#777777]">
           <div>Copyright © 2026 Trendifest Team. All rights reserved.</div>
           <div className="flex items-center gap-4">
-            <span className="text-[#a78bfa]">✦ RnD to Startup 2026 Finalist</span>
+            <span className="text-purple-700 dark:text-[#a78bfa] font-semibold">
+              ✦ RnD to Startup 2026 Finalist
+            </span>
             <span>•</span>
             <span>Made with passion by BKĐN Students</span>
           </div>
@@ -2010,31 +2115,31 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-sm"
         >
-          <div className="w-full max-w-lg rounded-2xl bg-[#262626] border border-[#363636] p-7 sm:p-9 shadow-2xl relative text-left">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] p-7 sm:p-9 shadow-2xl relative text-left">
             <button
               onClick={() => {
                 setDemoModalOpen(false);
                 setDemoSubmitted(false);
               }}
-              className="absolute top-4 right-4 text-[#888888] hover:text-white p-1 rounded-lg hover:bg-white/5"
+              className="absolute top-4 right-4 text-neutral-400 dark:text-[#888888] hover:text-neutral-900 dark:hover:text-white p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/5"
             >
               <X className="size-5" />
             </button>
 
             {!demoSubmitted ? (
               <>
-                <div className="flex items-center gap-2 mb-2 text-[#a78bfa]">
+                <div className="flex items-center gap-2 mb-2 text-purple-700 dark:text-[#a78bfa]">
                   <Compass className="size-5" />
                   <span className="text-[13px] font-mono uppercase tracking-wider font-semibold">
                     Đặt lịch Demo Giải pháp
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-2.5">
+                <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2.5">
                   Trải nghiệm Trendifest cho Doanh nghiệp
                 </h3>
-                <p className="text-[15px] text-[#aaaaaa] mb-6 leading-relaxed">
+                <p className="text-[15px] text-neutral-600 dark:text-[#aaaaaa] mb-6 leading-relaxed">
                   Để lại thông tin để đội ngũ Trendifest thiết lập phiên làm việc thử nghiệm và cung
                   cấp quyền truy cập hệ thống.
                 </p>
@@ -2047,42 +2152,42 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   className="space-y-4.5"
                 >
                   <div>
-                    <label className="block text-[14px] font-medium text-[#cccccc] mb-1.5">
+                    <label className="block text-[14px] font-medium text-neutral-700 dark:text-[#cccccc] mb-1.5">
                       Họ và tên *
                     </label>
                     <input
                       type="text"
                       required
                       placeholder="Nguyễn Văn A"
-                      className="w-full px-4 py-2.5 rounded-lg bg-[#1e1e1e] border border-[#363636] text-white text-[15px] focus:outline-none focus:border-[#a78bfa]"
+                      className="w-full px-4 py-2.5 rounded-lg bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] text-neutral-900 dark:text-white text-[15px] focus:outline-none focus:border-purple-600 dark:focus:border-[#a78bfa]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[14px] font-medium text-[#cccccc] mb-1.5">
+                    <label className="block text-[14px] font-medium text-neutral-700 dark:text-[#cccccc] mb-1.5">
                       Email công việc *
                     </label>
                     <input
                       type="email"
                       required
                       placeholder="a.nguyen@company.vn"
-                      className="w-full px-4 py-2.5 rounded-lg bg-[#1e1e1e] border border-[#363636] text-white text-[15px] focus:outline-none focus:border-[#a78bfa]"
+                      className="w-full px-4 py-2.5 rounded-lg bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] text-neutral-900 dark:text-white text-[15px] focus:outline-none focus:border-purple-600 dark:focus:border-[#a78bfa]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[14px] font-medium text-[#cccccc] mb-1.5">
+                    <label className="block text-[14px] font-medium text-neutral-700 dark:text-[#cccccc] mb-1.5">
                       Tên tổ chức / Thương hiệu
                     </label>
                     <input
                       type="text"
                       placeholder="Agency / Brand Name"
-                      className="w-full px-4 py-2.5 rounded-lg bg-[#1e1e1e] border border-[#363636] text-white text-[15px] focus:outline-none focus:border-[#a78bfa]"
+                      className="w-full px-4 py-2.5 rounded-lg bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] text-neutral-900 dark:text-white text-[15px] focus:outline-none focus:border-purple-600 dark:focus:border-[#a78bfa]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[14px] font-medium text-[#cccccc] mb-1.5">
+                    <label className="block text-[14px] font-medium text-neutral-700 dark:text-[#cccccc] mb-1.5">
                       Mục tiêu quan tâm nhất
                     </label>
-                    <select className="w-full px-4 py-2.5 rounded-lg bg-[#1e1e1e] border border-[#363636] text-white text-[15px] focus:outline-none focus:border-[#a78bfa]">
+                    <select className="w-full px-4 py-2.5 rounded-lg bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] text-neutral-900 dark:text-white text-[15px] focus:outline-none focus:border-purple-600 dark:focus:border-[#a78bfa]">
                       <option>Đón đầu xu hướng cho chiến dịch marketing</option>
                       <option>Theo dõi và phòng ngừa rủi ro thảo luận số</option>
                       <option>Bắt trend soundtrack/CapCut làm nội dung TikTok</option>
@@ -2092,7 +2197,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
                   <button
                     type="submit"
-                    className="w-full mt-3 py-3.5 rounded-lg bg-[#a78bfa] hover:bg-[#8b7cf6] text-black font-bold text-[15.5px] transition-colors shadow-lg"
+                    className="w-full mt-3 py-3.5 rounded-lg bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] font-bold text-[15.5px] transition-colors shadow-lg"
                   >
                     Gửi Yêu Cầu Đặt Lịch
                   </button>
@@ -2100,13 +2205,13 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               </>
             ) : (
               <div className="text-center py-8">
-                <div className="size-14 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-4">
+                <div className="size-14 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 className="size-8" />
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-2">
+                <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">
                   Đã nhận thông tin thành công!
                 </h3>
-                <p className="text-[15px] text-[#aaaaaa] mb-6">
+                <p className="text-[15px] text-neutral-600 dark:text-[#aaaaaa] mb-6">
                   Đội ngũ Trendifest sẽ liên hệ với bạn trong vòng 24 giờ làm việc để thống nhất
                   lịch demo.
                 </p>
@@ -2115,7 +2220,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                     setDemoModalOpen(false);
                     setDemoSubmitted(false);
                   }}
-                  className="px-6 py-2.5 rounded-lg bg-[#333333] hover:bg-[#404040] text-white text-[14.5px] font-medium"
+                  className="px-6 py-2.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-[#333333] dark:hover:bg-[#404040] text-neutral-900 dark:text-white text-[14.5px] font-medium"
                 >
                   Đóng cửa sổ
                 </button>
@@ -2132,62 +2237,70 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md"
         >
-          <div className="w-full max-w-3xl rounded-2xl bg-[#262626] border border-[#363636] p-7 shadow-2xl relative text-left">
+          <div className="w-full max-w-3xl rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] p-7 shadow-2xl relative text-left">
             <button
               onClick={() => setVideoModalOpen(false)}
-              className="absolute top-4 right-4 text-[#888888] hover:text-white p-1 rounded-lg hover:bg-white/5"
+              className="absolute top-4 right-4 text-neutral-400 dark:text-[#888888] hover:text-neutral-900 dark:hover:text-white p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/5"
             >
               <X className="size-5" />
             </button>
 
-            <div className="flex items-center gap-2 mb-3 text-[#a78bfa]">
+            <div className="flex items-center gap-2 mb-3 text-purple-700 dark:text-[#a78bfa]">
               <PlayCircle className="size-5.5" />
               <span className="text-[13px] font-mono uppercase tracking-wider font-semibold">
                 Video Giới thiệu 2 Phút
               </span>
             </div>
-            <h3 className="text-2xl font-bold text-white mb-4">
+            <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">
               Cách Trendifest Hoạt Động Trên Thực Tế
             </h3>
 
             {/* Video Player Simulation with Step-by-Step Flow */}
-            <div className="aspect-video w-full rounded-xl bg-[#1a1a1a] border border-[#333333] flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden">
-              <div className="flex items-center justify-between text-[12.5px] font-mono text-[#888888]">
+            <div className="aspect-video w-full rounded-xl bg-neutral-900 dark:bg-[#1a1a1a] border border-neutral-800 dark:border-[#333333] flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden">
+              <div className="flex items-center justify-between text-[12.5px] font-mono text-neutral-400 dark:text-[#888888]">
                 <span>MÔ PHỎNG LUỒNG TRINH SÁT (SIMULATION DEMO)</span>
                 <span className="text-emerald-400 font-semibold">● 1080p HD</span>
               </div>
 
               <div className="space-y-4 my-auto">
-                <div className="p-5 rounded-2xl bg-[#262626] border border-[#a78bfa]/40 shadow-lg max-w-lg mx-auto">
+                <div className="p-5 rounded-2xl bg-neutral-800/90 dark:bg-[#262626] border border-purple-400/40 dark:border-[#a78bfa]/40 shadow-lg max-w-lg mx-auto">
                   <div className="flex items-center gap-2 text-[14px] text-emerald-400 font-bold mb-1.5">
                     <Activity className="size-4 animate-spin" />
                     <span>Thuật toán Hawkes: Phát hiện gia tốc tự kích hoạt</span>
                   </div>
                   <p className="text-[15px] text-white leading-relaxed">
                     Mẫu video CapCut kết hợp âm thanh remix vượt biên từ phân đoạn{" "}
-                    <span className="text-[#a78bfa] font-semibold">Shitposting</span> sang{" "}
-                    <span className="text-[#60a5fa] font-semibold">Music Discovery</span>.
+                    <span className="text-purple-300 dark:text-[#a78bfa] font-semibold">
+                      Shitposting
+                    </span>{" "}
+                    sang{" "}
+                    <span className="text-blue-300 dark:text-[#60a5fa] font-semibold">
+                      Music Discovery
+                    </span>
+                    .
                   </p>
-                  <div className="mt-2.5 text-[12.5px] font-mono text-[#aaaaaa]">
+                  <div className="mt-2.5 text-[12.5px] font-mono text-neutral-400 dark:text-[#aaaaaa]">
                     Dự báo xác suất bùng nổ: 74% trong 12 giờ tới (Độ tin cậy: 0.86)
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-[#2a2a2a]">
+              <div className="flex items-center justify-between pt-4 border-t border-neutral-800 dark:border-[#2a2a2a]">
                 <button
                   onClick={() => {
                     setVideoModalOpen(false);
                     onOpenApp();
                   }}
-                  className="inline-flex items-center gap-2 text-[14.5px] font-bold text-[#a78bfa] hover:text-white"
+                  className="inline-flex items-center gap-2 text-[14.5px] font-bold text-purple-300 dark:text-[#a78bfa] hover:text-white"
                 >
                   <span>Mở ứng dụng để tự thao tác trực tiếp</span>
                   <ArrowRight className="size-4" />
                 </button>
-                <span className="text-[12.5px] font-mono text-[#777777]">Thời lượng: 02:14</span>
+                <span className="text-[12.5px] font-mono text-neutral-400 dark:text-[#777777]">
+                  Thời lượng: 02:14
+                </span>
               </div>
             </div>
           </div>
