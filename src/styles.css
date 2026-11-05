@@ -43,6 +43,33 @@ body {
   scrollbar-color: var(--line-strong) transparent;
 }
 
+/* Striped horizontal dash pattern for browser native scrollbar */
+::-webkit-scrollbar {
+  width: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(167, 139, 250, 0.55) 0px,
+    rgba(167, 139, 250, 0.55) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(167, 139, 250, 0.9) 0px,
+    rgba(167, 139, 250, 0.9) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}
+
 :focus-visible {
   outline: 2px solid var(--focus-line);
   outline-offset: 2px;

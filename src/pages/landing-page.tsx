@@ -34,7 +34,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@trendifest/opendesk";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 
@@ -488,6 +488,113 @@ const FAQS = [
 ];
 
 /* ------------------------------------------------------------------ *
+ * Side Scroll Ruler Component (Striped Horizontal Dash Indicator)    *
+ * ------------------------------------------------------------------ */
+
+/**
+ * @component SideScrollRuler
+ * Precision vertical scroll ruler placed at the right edge of the viewport.
+ * Rendered as an array of horizontal tick dashes separated by small whitespace
+ * gaps. Lights up dynamically as the page scrolls, glows at the active tick,
+ * provides milestone tooltips on hover, and allows smooth click-to-scroll.
+ */
+function SideScrollRuler() {
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const TOTAL_TICKS = 24;
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      if (maxScroll <= 0) {
+        setScrollProgress(0);
+        return;
+      }
+      setScrollProgress(Math.min(1, Math.max(0, scrollY / maxScroll)));
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const scrollToPosition = (idx: number) => {
+    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    const targetY = (idx / (TOTAL_TICKS - 1)) * maxScroll;
+    window.scrollTo({ top: targetY, behavior: "smooth" });
+  };
+
+  const getSectionLabel = (idx: number) => {
+    const ratio = idx / (TOTAL_TICKS - 1);
+    if (ratio < 0.12) return "Đầu trang (Hero)";
+    if (ratio < 0.25) return "Thống kê & Nguồn dữ liệu";
+    if (ratio < 0.38) return "Vấn đề & So sánh";
+    if (ratio < 0.52) return "Quy trình trinh sát";
+    if (ratio < 0.68) return "Công nghệ cốt lõi";
+    if (ratio < 0.82) return "Giải pháp thực chứng";
+    if (ratio < 0.92) return "Pháp lý & Đạo đức";
+    return "Đón đầu xu hướng";
+  };
+
+  return (
+    <aside
+      aria-label="Thước đo tiến độ cuộn trang"
+      className="fixed right-3 sm:right-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-end py-3 px-1.5 rounded-full bg-white/60 dark:bg-[#1a1a1a]/60 backdrop-blur-md border border-neutral-200/60 dark:border-white/10 shadow-lg select-none group"
+    >
+      {/* Floating Section Tooltip */}
+      {hoveredIdx !== null && (
+        <div
+          role="tooltip"
+          className="absolute right-full mr-3.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-neutral-900/90 dark:bg-[#141416]/95 text-white text-[11.5px] font-mono tracking-tight whitespace-nowrap shadow-xl border border-neutral-700/60 dark:border-[#383838] pointer-events-none transition-all duration-150 animate-in fade-in"
+        >
+          <span>{getSectionLabel(hoveredIdx)}</span>
+          <span className="text-purple-400 dark:text-[#a78bfa] ml-2 font-semibold">
+            {Math.round((hoveredIdx / (TOTAL_TICKS - 1)) * 100)}%
+          </span>
+        </div>
+      )}
+
+      {/* Horizontal Striped Ticks */}
+      <div className="flex flex-col items-end gap-1.5 py-1">
+        {Array.from({ length: TOTAL_TICKS }).map((_, idx) => {
+          const tickProgress = idx / (TOTAL_TICKS - 1);
+          const isPassed = scrollProgress >= tickProgress - 0.01;
+          const isCurrent = Math.abs(scrollProgress - tickProgress) < 0.9 / TOTAL_TICKS;
+          const isMilestone = idx % 4 === 0;
+
+          return (
+            <button
+              key={idx}
+              onClick={() => scrollToPosition(idx)}
+              onMouseEnter={() => setHoveredIdx(idx)}
+              onMouseLeave={() => setHoveredIdx(null)}
+              aria-label={`Cuộn đến ${getSectionLabel(idx)} (${Math.round(tickProgress * 100)}%)`}
+              className="group/tick py-0.5 flex items-center justify-end focus:outline-none"
+            >
+              <span
+                className={cn(
+                  "block h-[2.5px] rounded-full transition-all duration-200",
+                  isCurrent
+                    ? "w-6.5 bg-purple-600 dark:bg-[#a78bfa] shadow-[0_0_10px_rgba(167,139,250,0.8)] scale-y-125"
+                    : isPassed
+                      ? isMilestone
+                        ? "w-4 bg-purple-500 dark:bg-[#a78bfa]/85"
+                        : "w-3 bg-purple-400/80 dark:bg-[#a78bfa]/65"
+                      : isMilestone
+                        ? "w-3.5 bg-neutral-400 dark:bg-neutral-600 group-hover/tick:bg-neutral-500 dark:group-hover/tick:bg-neutral-400"
+                        : "w-2.5 bg-neutral-300 dark:bg-neutral-700/80 group-hover/tick:bg-neutral-400 dark:group-hover/tick:bg-neutral-500",
+                )}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Main Landing Page Component                                        *
  * ------------------------------------------------------------------ */
 
@@ -511,6 +618,8 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
   return (
     <div className="min-h-screen bg-[#fafafa] dark:bg-[#1e1e1e] text-[#171717] dark:text-[#dadada] font-sans antialiased text-[16px] leading-relaxed selection:bg-[#7f6df2]/30 selection:text-[#ffffff] transition-colors duration-200">
+      {/* Floating Side Scroll Ruler */}
+      <SideScrollRuler />
       {/* ------------------------------------------------------------ */}
       {/* 1. Header / Floating Pill Navbar (Inspired by Lindy Tile 1)  */}
       {/* ------------------------------------------------------------ */}
