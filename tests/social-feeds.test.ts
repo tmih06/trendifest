@@ -581,31 +581,32 @@ describe("fetchPublicFeed over HTTP", () => {
     const segment = segmentFor("/thread.rss");
 
     const first = await fetchPublicFeed(segment, 5);
-    expect(first).toHaveLength(1);
-    expect(first[0]!.uri).toBe("urn:xenforo:thread:100.0");
-    expect(first[0]!.permalink).toBe(`https://${host}/t/chu-de.100/`);
+    expect(first.errors).toEqual([]);
+    expect(first.posts).toHaveLength(1);
+    expect(first.posts[0]!.uri).toBe("urn:xenforo:thread:100.0");
+    expect(first.posts[0]!.permalink).toBe(`https://${host}/t/chu-de.100/`);
     expect(threadHits).toBe(1);
     expect(lastConditional).toBeNull();
 
     const second = await fetchPublicFeed(segment, 5);
-    expect(second).toEqual([]);
+    expect(second).toEqual({ posts: [], errors: [] });
     expect(threadHits).toBe(2);
     expect(lastConditional).toBe(ETAG);
   });
 
-  test("surfaces a non-2xx response as a failure instead of an empty feed", async () => {
-    const outcome = await fetchPublicFeed(segmentFor("/error.rss")).catch(
-      (error: unknown) => error,
-    );
-    expect(outcome).toBeInstanceOf(Error);
+  test("reports a non-2xx response as a labelled failure instead of an empty feed", async () => {
+    const result = await fetchPublicFeed(segmentFor("/error.rss"));
+    expect(result.posts).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("test");
+    expect(result.errors[0]).toContain("503");
     expect(errorHits).toBe(1);
   });
 
   test("aborts an oversized streamed body instead of buffering it whole", async () => {
-    const outcome = await fetchPublicFeed(segmentFor("/oversized.rss")).catch(
-      (error: unknown) => error,
-    );
-    expect(outcome).toBeInstanceOf(Error);
+    const result = await fetchPublicFeed(segmentFor("/oversized.rss"));
+    expect(result.posts).toEqual([]);
+    expect(result.errors[0]).toContain("1 MB");
     expect(oversizedHits).toBe(1);
   });
 });

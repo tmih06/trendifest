@@ -2,6 +2,7 @@ import type { SQL } from "bun";
 import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
 import type {
   ClusterExample,
+  CollectionProgress,
   IngestReport,
   PatternCluster,
   PostKind,
@@ -18,7 +19,8 @@ import { embedAudio, embedClipText, embedImage, embedText } from "./embed.ts";
 import { fetchPublicFeed } from "./feeds.ts";
 import {
   acceptInput,
-  MAX_POSTS_PER_SOURCE,
+  clampCollectionLimit,
+  DEFAULT_COLLECTION_LIMIT,
   postId,
   RETENTION_DAYS,
   type AcceptedPost,
@@ -97,8 +99,8 @@ const CLUSTER_IDLE_HOURS = 24;
 const MAX_CLUSTERS_PER_SPACE = 400;
 /** Oldest clusters retired when a space hits the cap; they keep their members. */
 const RETIRED_CLUSTERS_PER_CYCLE = 20;
-/** Topic vectors embedded per collector cycle; bounded so a poll never stalls. */
-const TOPIC_BACKFILL_LIMIT = 25;
+/** Repair up to one default source budget of missing topic vectors per cycle. */
+const TOPIC_BACKFILL_LIMIT = DEFAULT_COLLECTION_LIMIT;
 const TEXT_SPAN = "body";
 
 interface PreparedVector {
@@ -521,14 +523,19 @@ export async function expirePosts() {
 }
 
 /**
- * One bounded public feed request per collection context, with equal source
- * budgets and isolated errors. No global stream, feed pagination, or unbounded
- * historical backfill can overwhelm the Vietnamese input gate.
+ * Collect a finite budget from each provider and publish actual receipt counters.
+ * Model inference remains sequential: this bounds native model memory and keeps
+ * existing near-copy admission behavior while asynchronous inference leaves the
+ * HTTP event loop available. Source fetch fan-in has its own request bounds.
  */
 export async function ingestSegments(
-  options: { limitPerSegment?: number; segmentIds?: string[] } = {},
+  options: {
+    limitPerSegment?: number;
+    segmentIds?: string[];
+    onProgress?: (update: Partial<CollectionProgress>) => void;
+  } = {},
 ): Promise<IngestReport> {
-  const limit = Math.min(MAX_POSTS_PER_SOURCE, Math.max(1, options.limitPerSegment ?? 20));
+  const limit = clampCollectionLimit(options.limitPerSegment);
   const segments = options.segmentIds
     ? VIEWER_SEGMENTS.filter((segment) => options.segmentIds!.includes(segment.id))
     : VIEWER_SEGMENTS;
@@ -547,6 +554,23 @@ export async function ingestSegments(
     sources: [],
     errors: [],
   };
+  let topicVectors = 0;
+  let pending = 0;
+  /** Receipts, not an estimated percentage; a caller owns timestamps and lifecycle. */
+  function publish(update: Partial<CollectionProgress>) {
+    options.onProgress?.({
+      limit,
+      segments: segments.length,
+      fetched: report.fetched,
+      stored: report.stored,
+      duplicates: report.duplicates,
+      rejected: report.skippedLanguage + report.skippedQuality,
+      embedded: topicVectors,
+      pending,
+      ...update,
+    });
+  }
+  let completed = 0;
   for (const segment of segments) {
     const source: SourceCollectionResult = {
       segmentId: segment.id,
@@ -559,11 +583,19 @@ export async function ingestSegments(
       error: null,
     };
     report.sources.push(source);
+    publish({ phase: "fetching", current: segment.id, segmentsDone: completed });
     try {
-      const posts = await fetchPublicFeed(segment, limit);
+      const feed = await fetchPublicFeed(segment, limit);
+      const posts = feed.posts;
+      if (feed.errors.length > 0) {
+        source.error = feed.errors.join("; ");
+        report.errors.push({ segmentId: segment.id, message: source.error });
+      }
+      source.fetched = posts.length;
+      report.fetched += posts.length;
+      publish({ phase: "ingesting", current: segment.id });
+      let processed = 0;
       for (const post of posts) {
-        source.fetched += 1;
-        report.fetched += 1;
         const result = await ingestPost(post, segment.id);
         if ("skipped" in result) {
           if (result.reason === "language") {
@@ -573,31 +605,40 @@ export async function ingestSegments(
             source.skippedQuality += 1;
             report.skippedQuality += 1;
           }
-          continue;
+        } else {
+          report.observations += 1;
+          if (result.topicVector === "embedded") topicVectors += 1;
+          if ("duplicate" in result) {
+            source.duplicates += 1;
+            report.duplicates += 1;
+          } else {
+            source.stored += 1;
+            report.stored += 1;
+            report.vectors += result.vectors;
+            report.clusters += result.clusters;
+            if (result.vectors === 0) report.unvectorized += 1;
+          }
         }
-        report.observations += 1;
-        if ("duplicate" in result) {
-          source.duplicates += 1;
-          report.duplicates += 1;
-          continue;
-        }
-        source.stored += 1;
-        report.stored += 1;
-        report.vectors += result.vectors;
-        report.clusters += result.clusters;
-        if (result.vectors === 0) report.unvectorized += 1;
+        if (++processed % 10 === 0) publish({ phase: "ingesting", current: segment.id });
       }
     } catch (error) {
       source.error = error instanceof Error ? error.message : "source collection failed";
       report.errors.push({ segmentId: segment.id, message: source.error });
     }
+    completed += 1;
+    publish({ phase: "ingesting", current: null, segmentsDone: completed });
   }
+  publish({ phase: "expiring", current: null });
   report.expired = await expirePosts();
   // One bounded batch per cycle keeps the map converging on a pre-existing
   // corpus without letting inference stall a poll. Failures are reported, not
   // retried here: the next cycle picks up whatever is still pending.
   try {
+    publish({ phase: "backfilling", current: null });
     const topicBatch = await backfillTopicEmbeddings(TOPIC_BACKFILL_LIMIT);
+    topicVectors += topicBatch.embedded;
+    pending = topicBatch.pending;
+    publish({ phase: "backfilling", current: null });
     if (topicBatch.error) {
       report.errors.push({ segmentId: "topic-embeddings", message: topicBatch.error });
     }

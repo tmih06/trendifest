@@ -5,7 +5,7 @@ import { ApiFailure } from "./api-error.ts";
 import { AUTH_ENABLED, authorize } from "./auth.ts";
 import { DatabaseMissingError } from "./db.ts";
 import { searchAcrossSpaces } from "./social/pipeline.ts";
-import { MAX_POSTS_PER_SOURCE } from "./social/input.ts";
+import { DEFAULT_COLLECTION_LIMIT, MAX_POSTS_PER_SOURCE } from "./social/input.ts";
 import {
   coverageWithErrors,
   runBackfill,
@@ -37,9 +37,8 @@ const JSON_HEADERS = {
 };
 
 /**
- * JSON responses are never stored, so the graph payload is rebuilt on every
- * request; only its transfer encoding is negotiated. The negotiation needs the
- * request, hence every caller passes it through.
+ * Transport responses stay no-store even when the underlying graph snapshot is
+ * reused. Negotiate compression per request without changing snapshot content.
  */
 function json(request: Request, body: unknown, status = 200) {
   return compressibleResponse(request, JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -82,8 +81,7 @@ async function handleApi(request: Request, url: URL) {
 
   if (url.pathname === "/api/trend-map" && request.method === "GET") {
     const map = await buildTrendMap(readWindowHours(url));
-    map.coverage = coverageWithErrors(map.coverage);
-    return json(request, map);
+    return json(request, { ...map, coverage: coverageWithErrors(map.coverage) });
   }
 
   if (url.pathname === "/api/signals/search" && request.method === "GET") {
@@ -95,7 +93,8 @@ async function handleApi(request: Request, url: URL) {
 
   if (url.pathname === "/api/collect" && request.method === "POST") {
     const body = await readJson(request);
-    const limit = typeof body.limit === "number" ? Math.round(body.limit) : 8;
+    const limit =
+      typeof body.limit === "number" ? Math.round(body.limit) : DEFAULT_COLLECTION_LIMIT;
     if (limit < 1 || limit > MAX_POSTS_PER_SOURCE) {
       throw new ApiFailure(
         400,

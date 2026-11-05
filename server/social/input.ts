@@ -51,8 +51,17 @@ export type InputResult =
 export const RETENTION_DAYS = 30;
 export const MAX_TEXT_CHARS = 2_000;
 export const MAX_MEDIA_ITEMS = 4;
-export const MAX_POSTS_PER_SOURCE = 25;
+/** Per-provider budgets keep broad category coverage finite across every entry point. */
+export const MAX_POSTS_PER_SOURCE = 1_000;
+export const DEFAULT_COLLECTION_LIMIT = 500;
 const MIN_LANGUAGE_LETTERS = 25;
+
+/** Bound programmatic collection too; invalid numeric input cannot create an endless batch. */
+export function clampCollectionLimit(value = DEFAULT_COLLECTION_LIMIT) {
+  return Number.isFinite(value)
+    ? Math.min(MAX_POSTS_PER_SOURCE, Math.max(1, Math.trunc(value)))
+    : DEFAULT_COLLECTION_LIMIT;
+}
 
 /** Stable namespaced identity prevents collisions between unrelated networks. */
 export function postId(source: SocialSource, uri: string) {

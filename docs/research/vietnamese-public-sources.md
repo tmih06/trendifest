@@ -6,12 +6,12 @@ kept separate from community accounts and reactions.
 
 ## Decision
 
-Collect VOZ and Otofun community RSS plus Google News VN discovery RSS and
-Người Việt's Vietnam-category WordPress API. All four are public/no-key in
-observed probes; access is not a blanket analytics or redistribution licence.
-News supplies publisher evidence, never invented community posts or counts
-from reactions quoted in an article. Sources can fail or change access:
-surface failures rather than impersonating a browser or bypassing challenges.
+Collect VOZ and Otofun community RSS, Google News VN discovery RSS, Người Việt's
+Vietnam-category WordPress API, and category RSS from VnExpress, Tuổi Trẻ,
+Thanh Niên and Dân trí. All eight have worked without keys in observed probes;
+access is not a blanket analytics or redistribution licence. News is publisher
+evidence, never invented community posts or reaction counts. Surface access
+failures rather than impersonating a browser or bypassing challenges.
 
 These are thread excerpts, not all posts or replies. They do not represent all
 Vietnamese users, prove anyone's age, or provide a complete social-media sample.
@@ -42,21 +42,21 @@ removed; the backup is retained locally and is not committed.
 
 ## Source comparison
 
-| Source                        | Free/public access                                                              | Vietnamese suitability                                                                                          | Decision and caveat                                                                                                                                                        |
-| ----------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| VOZ                           | No-key RSS: `https://voz.vn/f/17/index.rss`                                     | Active Vietnamese community discussion and colloquial text in the live sample                                   | Collect bounded excerpts. Not a JSON search API or a complete reply feed.                                                                                                  |
-| Otofun                        | No-key RSS: `https://www.otofun.net.vn/forums/77/index.rss`                     | Active Vietnamese lifestyle/vehicle/community discussion in the live sample                                     | Collect independently from VOZ. Audience bias differs; no demographic claims.                                                                                              |
-| YouTube Data API              | Free quota, Google Cloud API key required                                       | Video titles and comment threads can provide useful Vietnamese text                                             | Strong credentialed candidate, not an automatically lawful input to cross-owner/cross-source ranking. Review developer policies before integrating.                        |
-| Reddit                        | OAuth access and applicable approval/terms; RSS exists but is heavily throttled | `r/vozforums` contains Vietnamese community discussion; `r/VietNam` also contains English tourism/expat content | Do not treat RSS as a terms bypass. Research probes saw 200 followed by 429; JSON access from this environment returned 403. Commercial use requires a separate agreement. |
-| Threads                       | Access token plus approved `threads_keyword_search` for public search           | Potential Vietnamese social content; no native Vietnamese-only filter                                           | Without approval, search is limited to the authenticated user's posts. Not immediate no-key coverage.                                                                      |
-| Facebook/Instagram            | Account/app permissions and use-case restrictions                               | Large Vietnamese communities, but popularity is not API availability                                            | No general anonymous free public-post search. Meta Content Library has eligibility restrictions; do not substitute scraping vendors.                                       |
-| TikTok                        | Display API is author-consented; Research Tools have eligibility restrictions   | Important Vietnamese short-video audience                                                                       | Not a general free commercial discovery feed. Research access cannot be assumed for this project.                                                                          |
-| Telegram                      | Bot API token or user-client credentials; known-channel scope                   | Can contain Vietnamese channels, often niche or promotional                                                     | Bots do not provide a global public-post firehose. Public HTML previews are not a discovery API.                                                                           |
-| Bluesky                       | Public feeds/stream; search probe returned 403 unauthenticated                  | A short stream probe found no `vi` tags; existing collected corpus had zero                                     | Not retained as the default backbone. A finite sample does not prove Vietnamese content is absent globally.                                                                |
-| Mastodon/Lemmy                | Some instance REST endpoints work anonymously                                   | Tested Vietnamese tags/communities were sparse, largely foreign-language or automated content                   | Not enabled merely to claim another source. Coverage varies by instance and may require authentication.                                                                    |
-| Google News VN                | No-key Vietnamese edition RSS                                                   | Headlines from multiple publishers, not user posts or article bodies                                            | Collect labelled news with publisher attribution. Aggregator URLs are not verified canonical publisher URLs.                                                               |
-| Người Việt                    | No-key WordPress REST API, category `viet-nam`                                  | Vietnamese publisher reports with actual dates and original links                                               | Collect bounded labelled news, not community accounts or quoted social reactions.                                                                                          |
-| Tinhte RSS / other newspapers | No-key feeds available                                                          | Editorial content, not a substitute for user posts                                                              | Not integrated merely to increase source count. Publisher licensing and attribution still apply.                                                                           |
+| Source                                      | Free/public access                                                              | Vietnamese suitability                                                                                          | Decision and caveat                                                                                                                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| VOZ                                         | No-key RSS: `https://voz.vn/f/17/index.rss`                                     | Active Vietnamese community discussion and colloquial text in the live sample                                   | Collect bounded excerpts. Not a JSON search API or a complete reply feed.                                                                                                  |
+| Otofun                                      | No-key RSS: `https://www.otofun.net.vn/forums/77/index.rss`                     | Active Vietnamese lifestyle/vehicle/community discussion in the live sample                                     | Collect independently from VOZ. Audience bias differs; no demographic claims.                                                                                              |
+| YouTube Data API                            | Free quota, Google Cloud API key required                                       | Video titles and comment threads can provide useful Vietnamese text                                             | Strong credentialed candidate, not an automatically lawful input to cross-owner/cross-source ranking. Review developer policies before integrating.                        |
+| Reddit                                      | OAuth access and applicable approval/terms; RSS exists but is heavily throttled | `r/vozforums` contains Vietnamese community discussion; `r/VietNam` also contains English tourism/expat content | Do not treat RSS as a terms bypass. Research probes saw 200 followed by 429; JSON access from this environment returned 403. Commercial use requires a separate agreement. |
+| Threads                                     | Access token plus approved `threads_keyword_search` for public search           | Potential Vietnamese social content; no native Vietnamese-only filter                                           | Without approval, search is limited to the authenticated user's posts. Not immediate no-key coverage.                                                                      |
+| Facebook/Instagram                          | Account/app permissions and use-case restrictions                               | Large Vietnamese communities, but popularity is not API availability                                            | No general anonymous free public-post search. Meta Content Library has eligibility restrictions; do not substitute scraping vendors.                                       |
+| TikTok                                      | Display API is author-consented; Research Tools have eligibility restrictions   | Important Vietnamese short-video audience                                                                       | Not a general free commercial discovery feed. Research access cannot be assumed for this project.                                                                          |
+| Telegram                                    | Bot API token or user-client credentials; known-channel scope                   | Can contain Vietnamese channels, often niche or promotional                                                     | Bots do not provide a global public-post firehose. Public HTML previews are not a discovery API.                                                                           |
+| Bluesky                                     | Public feeds/stream; search probe returned 403 unauthenticated                  | A short stream probe found no `vi` tags; existing collected corpus had zero                                     | Not retained as the default backbone. A finite sample does not prove Vietnamese content is absent globally.                                                                |
+| Mastodon/Lemmy                              | Some instance REST endpoints work anonymously                                   | Tested Vietnamese tags/communities were sparse, largely foreign-language or automated content                   | Not enabled merely to claim another source. Coverage varies by instance and may require authentication.                                                                    |
+| Google News VN                              | No-key Vietnamese edition RSS                                                   | Headlines from multiple publishers, not user posts or article bodies                                            | Collect labelled news with publisher attribution. Aggregator URLs are not verified canonical publisher URLs.                                                               |
+| Người Việt                                  | No-key WordPress REST API, category `viet-nam`                                  | Vietnamese publisher reports with actual dates and original links                                               | Collect bounded labelled news, not community accounts or quoted social reactions.                                                                                          |
+| VnExpress / Tuổi Trẻ / Thanh Niên / Dân trí | No-key public category RSS                                                      | Broad Vietnamese editorial evidence across 53 feeds, not community posts                                        | Integrated bounded headlines/excerpts with original links. Attribution and publisher permissions still apply.                                                              |
 
 ## Verified feed semantics
 
@@ -120,7 +120,8 @@ early-warning performance, or representative Vietnamese coverage.
   seven-day `after` boundary, `per_page=50`, and fields limited to id, UTC date,
   link, title and excerpt. The boundary is rounded to the hour for upstream
   cache reuse. The collector rotates a sample within this one page and accepts
-  at most 25 records/cycle. Records beyond the first 50 are not covered.
+  at most the available page within the provider budget. Records beyond the
+  first 50 are not covered.
 - Each request has a 15-second timeout and 1 MB decoded-body cap. A slow origin
   can fail legitimately; no automatic challenge bypass or hidden retry.
 
@@ -147,6 +148,70 @@ guards and complete-linkage grouping, not near-copy MiniLM clusters or source
 hubs. Identical community content and syndicated news headlines collapse for
 scoring. These conservative heuristics do not establish Vietnamese extraction
 accuracy or comprehensive coverage.
+
+## Thousand-topic corpus expansion
+
+The four additional publishers expose 53 verified category feeds. Representative
+primary endpoints and the complete configured category coverage:
+
+| Publisher  | Feed and categories                                                                                                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| VnExpress  | [Public RSS](https://vnexpress.net/rss/thoi-su.rss): thoi-su, the-gioi, kinh-doanh, khoa-hoc, giai-tri, the-thao, phap-luat, giao-duc, suc-khoe, doi-song, du-lich, so-hoa, oto-xe-may (13).      |
+| Tuổi Trẻ   | [Public RSS](https://tuoitre.vn/rss/thoi-su.rss): thoi-su, the-gioi, kinh-doanh, cong-nghe, giai-tri, the-thao, phap-luat, giao-duc, suc-khoe, nhip-song-tre, du-lich, xe, nha-dat, ban-doc (14). |
+| Thanh Niên | [Public RSS](https://thanhnien.vn/rss/thoi-su.rss): thoi-su, the-gioi, kinh-te, cong-nghe, giai-tri, the-thao, giao-duc, suc-khoe, doi-song, du-lich, xe, ban-doc, video, gioi-tre (14).          |
+| Dân trí    | [Public RSS](https://dantri.com.vn/rss/su-kien.rss): su-kien, the-gioi, kinh-doanh, bat-dong-san, the-thao, giao-duc, cong-nghe, giai-tri, phap-luat, suc-khoe, doi-song, du-lich (12).           |
+
+Feeds are discovery windows, not permission to download full articles or media.
+The adapter retains only visible text excerpts, actual dates, publisher labels,
+and canonical article links. It decodes HTML entities before the Vietnamese
+gate and interprets Tuổi Trẻ's month/day/year wall clock as UTC+07:00. Invalid
+calendar/clock values, missing dates, future records and records outside seven
+days are rejected rather than assigned a fabricated timestamp.
+
+Two requests/provider may be in flight; every response remains limited to 1 MB
+and 15 seconds. Categories merge by canonical article identity. Parsed records
+and validators are cached only after successful parsing; 304 responses replay
+normalized records under the current freshness window and requested budget.
+Section failures accompany usable records as labelled partial errors. All
+sections failing is an unavailable provider, not a successful empty result.
+The 500-record default and 1,000-record ceiling apply per provider, not per
+category. Over-budget sampling covers the whole window, rotates disjoint lanes,
+and retains the newest article; it does not silently starve older feed items.
+
+The live bootstrap used the ordinary CLI with a 1,000-record budget for these
+four publishers, not production seeds or an incident-specific query:
+
+| Provider   | Fetched unique feed records | Accepted Vietnamese records |
+| ---------- | --------------------------: | --------------------------: |
+| VnExpress  |                         691 |                         623 |
+| Tuổi Trẻ   |                         611 |                         572 |
+| Thanh Niên |                         633 |                         592 |
+| Dân trí    |                         827 |                         776 |
+
+All four completed without source errors. Of 2,762 fetched records, 198 failed
+the language gate and one failed quality checks; 2,563 were stored with valid
+topic embeddings. The collector's cross-process PostgreSQL lease prevented
+overlapping work. Progress showed real receipts throughout the background run.
+Later automatic collection continued adding records, so these are dated
+bootstrap counts rather than fixed dataset sizes.
+
+The actual graph subsequently displayed 1,500 specific topics from all eight
+sources, 381 measured relationships and 273 topics with multiple independent
+accounts/publishers. All sampled links/dates were source-grounded; no synthetic
+corpus was used for this acceptance. A separate 1,001-version scratch-database
+regression guards capacity and version separation. A dense-prefix regression
+also proves late-ranked topics do not lose an otherwise valid relationship.
+Full isolated CI passed 174 tests, formatting/lint/types, and production build.
+The real browser exercised pagination, unaccented Vietnamese search, publisher
+evidence, zoom and the narrow-width inspector.
+
+This expansion is **news-heavy**, not a representative Vietnamese social feed.
+Publisher support must not be reported as community reactions or verified
+virality. Forum probes can return access errors or time out; no challenge
+bypass or guessed extra boards were added. Vietnamnet was not enabled: the
+probed home feed returned 404, most category documents exceeded the response
+cap, and the small technology feed was stale. Public availability does not
+remove publisher copyright, attribution, or permission requirements.
 
 ## Free-key API details
 

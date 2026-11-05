@@ -75,8 +75,13 @@ export interface TopicEvidence {
   /** Latest observation in a collection context; drives measured persistence. */
   observedAt: Date;
   segments: string[];
-  /** E5 topic vector, native 384 dims, L2-normalized by the embedder. */
-  vector: number[];
+  /**
+   * E5 topic vector, native 384 dims, L2-normalized by the embedder.
+   *
+   * Grouping needs only indexed reads. ArrayLike accepts ordinary arrays and
+   * typed-array views without requiring callers to copy their representation.
+   */
+  vector: ArrayLike<number>;
   likes?: number;
   shares?: number;
 }
@@ -132,6 +137,13 @@ const IDENTIFIER_ONLY_THRESHOLD = 0.92;
 
 /** Bounded so one long post cannot drown the representative text. */
 const MAX_LABEL_CHARS = 140;
+
+/**
+ * How far behind its own publication a named year must sit before a record is
+ * read as describing a historical subject. Two years admits "năm ngoái" and a
+ * story published just after New Year; it rejects a 1936 documentary.
+ */
+const HISTORICAL_YEARS_BACK = 2;
 
 /**
  * Vietnamese function words, pronouns, discourse particles, and time filler.
@@ -207,8 +219,50 @@ interface PreparedRecord {
    * numbers/versions, and Latin product tokens. Empty for general chatter.
    */
   specificAnchors: Set<string>;
+  /**
+   * Derived subsets of the fields above, computed once. The pair rules ran
+   * these filters on *both* sides for every comparison; hoisting them here is
+   * what keeps the same rules affordable over a corpus of thousands.
+   */
+  numericAnchors: string[];
+  /** Membership view of `numericAnchors`, so the conflict costs no allocation. */
+  numericSet: Set<string>;
+  /** Plain product/version identifiers ("gpt-5", "vf3", "2026"). */
+  identifiers: string[];
+  identifierSet: Set<string>;
+  /** Vietnamese multi-word names that carry a classifier ("chợ Kim Liên"). */
+  classifiedNames: Array<[phrase: string, classifier: string]>;
+  /** Vietnamese multi-word names, the only evidence the place rule reads. */
+  placeNames: string[];
+  /** Four-digit years this record names, for the historical rule. */
+  years: number[];
+  yearSet: Set<number>;
+  /** True when its only years predate its own publication by two years. */
+  historical: boolean;
+  /** Squared L2 norm, so a pair needs one dot product and no re-norming. */
+  normSq: number;
+  /**
+   * Candidate-index keys: every informative three-token phrase and every product
+   * identifier, hashed. Identity requires one of them (see `anchorSupport`), so
+   * two records with no shared key can never pair — the index is a proof of
+   * impossibility, not a heuristic neighbourhood.
+   */
+  identityKeys: number[];
   /** True when the record names something concrete enough to be a topic. */
   specific: boolean;
+}
+
+/**
+ * FNV-1a over a string, 32 bits. Only a candidate-index key: a collision adds a
+ * comparison that the exact rules then reject, so it can never create a link.
+ */
+function hashKey(value: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
 }
 
 const TOKEN_PATTERN = /[\p{L}\p{N}][\p{L}\p{N}._+#-]*/gu;
@@ -417,6 +471,48 @@ function prepare(evidence: TopicEvidence): PreparedRecord {
   for (let index = 0; index + MIN_SHARED_RUN <= tokens.length; index += 1) {
     phrases.add(tokens.slice(index, index + MIN_SHARED_RUN).join("\0"));
   }
+
+  const numericAnchors: string[] = [];
+  const identifiers: string[] = [];
+  for (const anchor of anchors) {
+    if (NUMBER_TOKEN.test(anchor)) numericAnchors.push(anchor);
+    if (PRODUCT_IDENTIFIER.test(anchor)) identifiers.push(anchor);
+  }
+
+  const classifiedNames: Array<[string, string]> = [];
+  const placeNames: string[] = [];
+  for (const [phrase, classifier] of entities) {
+    // Only Vietnamese-script multi-word names are places/organizations. "OpenAI",
+    // "GPT-5", and "Olympia" are products, and the verb in front of them says
+    // nothing about what they are; the version rule decides those instead.
+    if (!phrase.includes(" ") || !VIETNAMESE_NAME.test(phrase)) continue;
+    placeNames.push(phrase);
+    if (classifier) classifiedNames.push([phrase, classifier]);
+  }
+
+  const years: number[] = [];
+  for (const anchor of numericAnchors) {
+    if (!/^\d{4}$/.test(anchor)) continue;
+    const year = Number(anchor);
+    if (year >= 1000 && year <= 2100) years.push(year);
+  }
+  // A record whose only dates are decades old is about a *historical* subject,
+  // not about an incident being reported now.
+  const historical =
+    years.length > 0 &&
+    Math.max(...years) <= evidence.publishedAt.getUTCFullYear() - HISTORICAL_YEARS_BACK;
+
+  const vector = evidence.vector;
+  let normSq = 0;
+  for (let index = 0; index < vector.length; index += 1) normSq += vector[index]! * vector[index]!;
+
+  // Candidate keys are exactly the evidence `anchorSupport` accepts: reproduced
+  // three-token phrases and shared product identifiers. Two records that share
+  // no key cannot pass that test, so they never need a cosine.
+  const identityKeys: number[] = [];
+  for (const phrase of phrases) identityKeys.push(hashKey(`p:${phrase}`));
+  for (const identifier of identifiers) identityKeys.push(hashKey(`i:${identifier}`));
+
   return {
     evidence,
     phrases,
@@ -424,6 +520,17 @@ function prepare(evidence: TopicEvidence): PreparedRecord {
     entities,
     families,
     specificAnchors: anchors,
+    numericAnchors,
+    numericSet: new Set(numericAnchors),
+    identifiers,
+    identifierSet: new Set(identifiers),
+    classifiedNames,
+    placeNames,
+    years,
+    yearSet: new Set(years),
+    historical,
+    normSq,
+    identityKeys,
     // A topic must name something concrete. "Chào mọi người, hôm nay trời
     // đẹp" names nothing, so it can never anchor a topic node.
     specific: anchors.size > 0,
@@ -431,7 +538,7 @@ function prepare(evidence: TopicEvidence): PreparedRecord {
 }
 
 /** Plain dot product on normalized vectors; both sides are L2-normalized. */
-export function topicCosine(a: readonly number[], b: readonly number[]) {
+export function topicCosine(a: ArrayLike<number>, b: ArrayLike<number>) {
   const length = Math.min(a.length, b.length);
   let dot = 0;
   let normA = 0;
@@ -474,22 +581,16 @@ function versionConflict(a: PreparedRecord, b: PreparedRecord) {
  * split from absence of evidence.
  */
 function entityQualifierConflict(a: PreparedRecord, b: PreparedRecord) {
-  for (const [aPhrase, aClass] of a.entities) {
-    if (!aClass) continue;
-    for (const [bPhrase, bClass] of b.entities) {
-      // Only Vietnamese-script names qualify. "OpenAI", "GPT-5", and "Olympia"
-      // are products and organizations: the verb in front of them repeatedly
-      // ("ra mắt", "thử", "của") says nothing about what they are, and their
-      // identity is already decided by the version rule.
-      if (!VIETNAMESE_NAME.test(aPhrase) || !VIETNAMESE_NAME.test(bPhrase)) continue;
-      // A single syllable in a partially capitalized title is not a classified
-      // place/name (e.g. "Đường lên đỉnh Olympia").
-      if (!aPhrase.includes(" ") || !bPhrase.includes(" ")) continue;
+  // Only Vietnamese-script, multi-word, classified names are candidates; that
+  // filter is applied once per record in `prepare`, not per pair.
+  if (a.classifiedNames.length === 0 || b.classifiedNames.length === 0) return false;
+  for (const [aPhrase, aClass] of a.classifiedNames) {
+    for (const [bPhrase, bClass] of b.classifiedNames) {
       // "Tiểu học Kim Liên" and "Kim Liên" name the same place when one phrase
       // ends with the other: Vietnamese names are head-final.
       const sameName =
         aPhrase === bPhrase || aPhrase.endsWith(` ${bPhrase}`) || bPhrase.endsWith(` ${aPhrase}`);
-      if (!sameName || !bClass || aClass === bClass) continue;
+      if (!sameName || aClass === bClass) continue;
       return true;
     }
   }
@@ -507,10 +608,8 @@ function entityQualifierConflict(a: PreparedRecord, b: PreparedRecord) {
  * "the new model" instead of "GPT-5" must still merge.
  */
 function numericAnchorConflict(a: PreparedRecord, b: PreparedRecord) {
-  const aNumeric = [...a.specificAnchors].filter((anchor) => NUMBER_TOKEN.test(anchor));
-  const bNumeric = [...b.specificAnchors].filter((anchor) => NUMBER_TOKEN.test(anchor));
-  if (aNumeric.length === 0 || bNumeric.length === 0) return false;
-  return !aNumeric.some((anchor) => bNumeric.includes(anchor));
+  if (a.numericAnchors.length === 0 || b.numericAnchors.length === 0) return false;
+  return !a.numericAnchors.some((anchor) => b.numericSet.has(anchor));
 }
 
 /**
@@ -525,30 +624,11 @@ function numericAnchorConflict(a: PreparedRecord, b: PreparedRecord) {
  * unknown, never historical.
  */
 function historicalConflict(a: PreparedRecord, b: PreparedRecord) {
-  const yearsOf = (record: PreparedRecord) => {
-    const years = new Set<number>();
-    for (const anchor of record.specificAnchors) {
-      if (!/^\d{4}$/.test(anchor)) continue;
-      const year = Number(anchor);
-      if (year >= 1000 && year <= 2100) years.add(year);
-    }
-    return years;
-  };
-  const aYears = yearsOf(a);
-  const bYears = yearsOf(b);
-  if (aYears.size === 0 && bYears.size === 0) return false;
-  const reference = (record: PreparedRecord) => record.evidence.publishedAt.getUTCFullYear();
-  const isHistorical = (years: Set<number>, record: PreparedRecord) => {
-    if (years.size === 0) return false;
-    const latest = Math.max(...years);
-    return latest <= reference(record) - 2;
-  };
-  const aHistorical = isHistorical(aYears, a);
-  const bHistorical = isHistorical(bYears, b);
-  if (aHistorical === bHistorical) return false;
+  if (a.years.length === 0 && b.years.length === 0) return false;
+  if (a.historical === b.historical) return false;
   // Both naming the same old year is the same subject even when one report also
   // carries "làm lại hôm nay"-style current framing.
-  for (const year of aYears) if (bYears.has(year)) return false;
+  for (const year of a.years) if (b.yearSet.has(year)) return false;
   return true;
 }
 
@@ -563,10 +643,8 @@ function historicalConflict(a: PreparedRecord, b: PreparedRecord) {
  * names are identity evidence handled above, not places.
  */
 function placeConflict(a: PreparedRecord, b: PreparedRecord) {
-  const placesOf = (record: PreparedRecord) =>
-    [...record.entities.keys()].filter((name) => name.includes(" ") && VIETNAMESE_NAME.test(name));
-  const aPlaces = placesOf(a);
-  const bPlaces = placesOf(b);
+  const aPlaces = a.placeNames;
+  const bPlaces = b.placeNames;
   if (aPlaces.length === 0 || bPlaces.length === 0) return false;
   for (const aPlace of aPlaces) {
     for (const bPlace of bPlaces) {
@@ -580,7 +658,11 @@ function placeConflict(a: PreparedRecord, b: PreparedRecord) {
 
 function sharedAnchors(a: PreparedRecord, b: PreparedRecord) {
   let shared = 0;
-  for (const token of a.tokenSet) if (b.tokenSet.has(token)) shared += 1;
+  // Iterate the smaller set, which is what the count needs and what keeps a
+  // long post from paying for its whole vocabulary on every comparison.
+  const [smaller, larger] =
+    a.tokenSet.size <= b.tokenSet.size ? [a.tokenSet, b.tokenSet] : [b.tokenSet, a.tokenSet];
+  for (const token of smaller) if (larger.has(token)) shared += 1;
   return shared;
 }
 
@@ -604,15 +686,59 @@ function hasSharedPhrase(a: PreparedRecord, b: PreparedRecord) {
  *   phrase in order is a retelling; sharing scattered vocabulary is the language.
  */
 function anchorSupport(a: PreparedRecord, b: PreparedRecord, similarity: number) {
-  for (const anchor of a.specificAnchors) {
+  for (const anchor of a.identifiers) {
     // Measured: "nữ tài xế VF3 chèn ép" and "clip trên xe VF3" are two different
     // incidents about one car and sit at 0.9104, below every measured same-release
     // paraphrase (0.9319-0.9526), so identifier-only support clears a higher floor.
-    if (PRODUCT_IDENTIFIER.test(anchor) && b.specificAnchors.has(anchor)) {
-      return similarity >= IDENTIFIER_ONLY_THRESHOLD;
-    }
+    if (b.identifierSet.has(anchor)) return similarity >= IDENTIFIER_ONLY_THRESHOLD;
   }
   return hasSharedPhrase(a, b);
+}
+
+/**
+ * Cosine with the norms already known.
+ *
+ * Identical arithmetic to `topicCosine` — same minimum length, same
+ * `dot / sqrt(normA * normB)` — but the norms are computed once per record
+ * instead of once per pair, which is what makes a corpus of thousands
+ * affordable.
+ */
+function pairSimilarity(left: PreparedRecord, right: PreparedRecord) {
+  if (!(left.normSq > 0) || !(right.normSq > 0)) return 0;
+  const a = left.evidence.vector;
+  const b = right.evidence.vector;
+  const length = Math.min(a.length, b.length);
+  let dot = 0;
+  for (let index = 0; index < length; index += 1) dot += a[index]! * b[index]!;
+  return dot / Math.sqrt(left.normSq * right.normSq);
+}
+
+/**
+ * The membership test, allocation-free: the similarity when these two records
+ * may describe one occurrence, otherwise -1.
+ *
+ * Every rule is a pure predicate, so the cheap identity conflicts run before the
+ * 384-element dot product rather than after it. The result is the same as
+ * evaluating `topicPairScore`; only the order of work changed.
+ */
+function pairMatch(left: PreparedRecord, right: PreparedRecord, threshold: number) {
+  // At least one side must name something concrete, and the *other* may be a
+  // plain comment on it: community posts routinely describe an incident without
+  // naming anyone, and those legitimate paraphrases must still join. Two
+  // records that both name nothing are never one topic.
+  if (!left.specific && !right.specific) return -1;
+  if (
+    versionConflict(left, right) ||
+    entityQualifierConflict(left, right) ||
+    numericAnchorConflict(left, right) ||
+    historicalConflict(left, right) ||
+    placeConflict(left, right)
+  ) {
+    return -1;
+  }
+  const similarity = pairSimilarity(left, right);
+  if (similarity < threshold) return -1;
+  return anchorSupport(left, right, similarity) ? similarity : -1;
 }
 
 /**
@@ -628,7 +754,7 @@ export function topicPairScore(
 ) {
   const threshold = options.threshold ?? GROUPING_THRESHOLD;
   const [left, right] = options.prepared ?? [prepare(a), prepare(b)];
-  const similarity = topicCosine(left.evidence.vector, right.evidence.vector);
+  const similarity = pairSimilarity(left, right);
   const anchors = sharedAnchors(left, right);
   const versionClash = versionConflict(left, right);
   const nameClash = entityQualifierConflict(left, right);
@@ -769,7 +895,7 @@ function medoid(members: readonly PreparedRecord[]) {
     let total = 0;
     for (const other of members) {
       if (other === candidate) continue;
-      total += topicCosine(candidate.evidence.vector, other.evidence.vector);
+      total += pairSimilarity(candidate, other);
     }
     if (total > bestScore) {
       bestScore = total;
@@ -834,29 +960,60 @@ function describeGroup(prepared: readonly PreparedRecord[]): GroupCounts {
  * are collapsed first, and membership is complete-linkage, so the same set of
  * records always yields the same groups, ids, labels, and ordering (strongest
  * first, ties broken by id).
+ *
+ * The scan is bounded by a candidate index instead of the group list. Identity
+ * support requires a reproduced three-token phrase or a shared product
+ * identifier (see `anchorSupport`), and every such key is registered in
+ * `identityKeys`; two records sharing no key cannot pair, so a group that shares
+ * no key with the incoming record cannot accept it. The index therefore skips
+ * only comparisons that are already impossible — the partition is identical to
+ * the exhaustive scan, minus the comparisons that could never succeed.
  */
 export function groupSpecificTopics(records: readonly TopicEvidence[]): TopicGroup[] {
   const prepared = collapseDuplicates(records).sort(compareEvidence).map(prepare);
 
   const groups: PreparedRecord[][] = [];
+  /** Identity key → indices of groups holding at least one record with it. */
+  const groupsByKey = new Map<number, number[]>();
+  /** Per-group key set, so an appended member does not re-add its group. */
+  const groupKeys: Set<number>[] = [];
+  /** Marks a group as already a candidate for the record being placed. */
+  const seen: number[] = [];
+  const seenStamp = { value: 0 };
+
   for (const record of prepared) {
+    // Candidate groups in creation order, which is what keeps the tie-break
+    // ("first group wins an equal mean") identical to the exhaustive scan.
+    seenStamp.value += 1;
+    const candidates: number[] = [];
+    for (const key of record.identityKeys) {
+      const owners = groupsByKey.get(key);
+      if (!owners) continue;
+      for (const index of owners) {
+        if (seen[index] === seenStamp.value) continue;
+        seen[index] = seenStamp.value;
+        candidates.push(index);
+      }
+    }
+    candidates.sort((a, b) => a - b);
+
     let bestGroup: PreparedRecord[] | null = null;
+    let bestGroupIndex = -1;
     let bestSimilarity = -Infinity;
-    for (const group of groups) {
+    for (const index of candidates) {
+      const group = groups[index]!;
       let similarity = 0;
       let joined = true;
       for (const member of group) {
         // Complete linkage: every rule against every current member. The pair
         // test itself decides whether this record may join at all — an
         // unanchored paraphrase is allowed in, two unanchored records never pair.
-        const pair = topicPairScore(record.evidence, member.evidence, {
-          prepared: [record, member],
-        });
-        if (!pair.matches) {
+        const match = pairMatch(record, member, GROUPING_THRESHOLD);
+        if (match < 0) {
           joined = false;
           break;
         }
-        similarity += pair.similarity;
+        similarity += match;
       }
       // Average similarity to the group, so the tightest fit wins when two
       // groups both accept the record.
@@ -865,11 +1022,34 @@ export function groupSpecificTopics(records: readonly TopicEvidence[]): TopicGro
         if (mean > bestSimilarity) {
           bestSimilarity = mean;
           bestGroup = group;
+          bestGroupIndex = index;
         }
       }
     }
-    if (bestGroup) bestGroup.push(record);
-    else groups.push([record]);
+
+    if (bestGroup) {
+      bestGroup.push(record);
+      const keys = groupKeys[bestGroupIndex]!;
+      for (const key of record.identityKeys) {
+        if (keys.has(key)) continue;
+        keys.add(key);
+        const owners = groupsByKey.get(key);
+        if (owners) owners.push(bestGroupIndex);
+        else groupsByKey.set(key, [bestGroupIndex]);
+      }
+      continue;
+    }
+
+    const index = groups.length;
+    groups.push([record]);
+    seen[index] = 0;
+    const keys = new Set(record.identityKeys);
+    groupKeys.push(keys);
+    for (const key of keys) {
+      const owners = groupsByKey.get(key);
+      if (owners) owners.push(index);
+      else groupsByKey.set(key, [index]);
+    }
   }
 
   // A record that names nothing and stands alone is chat, not a topic: "chào
@@ -1035,30 +1215,15 @@ interface RelatedRecord {
  * A specific phrase can relate discussions without a proper name; a shared
  * name alone needs additional context so a city cannot connect unrelated news.
  */
-function relatedPair(a: RelatedRecord, b: RelatedRecord, threshold: number) {
-  const left = a.record;
-  const right = b.record;
-  const similarity = topicCosine(left.evidence.vector, right.evidence.vector);
-  if (similarity < threshold || historicalConflict(left, right)) return null;
+function relatedFloor(a: RelatedRecord, b: RelatedRecord, threshold: number) {
   let headlineOverlap = 0;
   for (const token of a.headline) {
     if (!NUMBER_TOKEN.test(token) && b.headline.has(token)) headlineOverlap += 1;
   }
-  // Body boilerplate cannot connect unrelated headlines. Three shared title
-  // terms also cover reordered phrases such as "hiến máu ... xét nghiệm".
-  if (headlineOverlap >= 3 && hasSharedPhrase(left, right)) return { similarity };
-  if (headlineOverlap >= 3 && similarity >= 0.91) return { similarity };
-  if (similarity >= 0.91) {
-    for (const identifier of a.identifiers) {
-      if (b.identifiers.has(identifier)) return { similarity };
-    }
-  }
-
-  // Two versions of the same product are related, not interchangeable.
+  if (headlineOverlap >= 3 && hasSharedPhrase(a.record, b.record)) return threshold;
   for (const family of a.families.keys()) {
-    if (b.families.has(family)) return { similarity };
+    if (b.families.has(family)) return threshold;
   }
-
   for (const aName of a.subjects.keys()) {
     for (const bName of b.subjects.keys()) {
       const sameSubject =
@@ -1069,18 +1234,54 @@ function relatedPair(a: RelatedRecord, b: RelatedRecord, threshold: number) {
       let context = 0;
       for (const token of a.headline) {
         if (!subjectWords.has(token) && !NUMBER_TOKEN.test(token) && b.headline.has(token)) {
-          if (++context >= 2) return { similarity };
+          if (++context >= 2) return threshold;
         }
       }
     }
   }
-  return null;
+  if (headlineOverlap >= 3) return Math.max(threshold, 0.91);
+  for (const identifier of a.identifiers) {
+    if (b.identifiers.has(identifier)) return Math.max(threshold, 0.91);
+  }
+  return Infinity;
+}
+
+function relatedPair(a: RelatedRecord, b: RelatedRecord, threshold: number) {
+  if (historicalConflict(a.record, b.record)) return null;
+  // Reject unsupported pairs before the dot product. This makes examining all
+  // shared-key candidates practical without dropping a late topic's neighbours.
+  const floor = relatedFloor(a, b, threshold);
+  if (!Number.isFinite(floor)) return null;
+  const similarity = pairSimilarity(a.record, b.record);
+  return similarity >= floor ? { similarity } : null;
+}
+
+/**
+ * Every inverted-index key on which `relatedPair` could accept this topic.
+ *
+ * Each branch of that test compares headline terms, identifiers, families, or
+ * subject names, and names may differ by a head ("Tiểu học Kim Liên" vs "Kim
+ * Liên"), so a name contributes its own key plus every proper suffix.
+ */
+function relatedKeys(item: RelatedRecord) {
+  const keys = new Set<string>();
+  for (const token of item.headline) {
+    if (!NUMBER_TOKEN.test(token)) keys.add(`h:${token}`);
+  }
+  for (const identifier of item.identifiers) keys.add(`i:${identifier}`);
+  for (const family of item.families.keys()) keys.add(`f:${family}`);
+  for (const name of item.subjects.keys()) {
+    const words = name.split(" ");
+    for (let start = 0; start < words.length; start += 1) {
+      keys.add(`s:${words.slice(start).join(" ")}`);
+    }
+  }
+  return keys;
 }
 
 export interface RelatedEdgeOptions {
   threshold?: number;
   maxDegree?: number;
-  maxPairs?: number;
 }
 
 /**
@@ -1089,6 +1290,13 @@ export interface RelatedEdgeOptions {
  * Shared subject/phrase evidence plus semantic proximity creates a relation.
  * Identity guards still keep different releases and incidents in distinct nodes.
  * Degree stays capped so contextual links do not become a hairball.
+ *
+ * The candidate set comes from a shared-key index (headline terms, product
+ * families, acronyms) instead of the first N ordered pairs. Both sides must
+ * share at least one key for `relatedPair` to return anything — every branch of
+ * that test reads a shared headline term, identifier, family, or subject — so
+ * the index removes only impossible comparisons while making every topic, late
+ * ones included, propose its own candidates.
  */
 export function relatedTopicEdges(
   groups: readonly TopicGroup[],
@@ -1096,7 +1304,6 @@ export function relatedTopicEdges(
 ): RelatedTopicEdge[] {
   const threshold = options.threshold ?? RELATED_THRESHOLD;
   const maxDegree = options.maxDegree ?? 3;
-  const maxPairs = options.maxPairs ?? 20_000;
   if (groups.length < 2) return [];
 
   const prepared: RelatedRecord[] = groups.map((group) => ({
@@ -1111,34 +1318,51 @@ export function relatedTopicEdges(
       ),
     ),
   }));
-  const candidates: { source: string; target: string; similarity: number }[] = [];
-  let examined = 0;
-  outer: for (let left = 0; left < groups.length; left += 1) {
-    for (let right = left + 1; right < groups.length; right += 1) {
-      examined += 1;
-      if (examined > maxPairs) break outer;
-      const pair = relatedPair(prepared[left]!, prepared[right]!, threshold);
-      if (!pair) continue;
-      candidates.push({
-        source: groups[left]!.id,
-        target: groups[right]!.id,
-        similarity: pair.similarity,
-      });
+
+  // Index every suffix on both sides so candidate membership is symmetric.
+  // Each shared-key pair is evaluated once; there is no corpus-prefix budget.
+  const keys = prepared.map(relatedKeys);
+  const byKey = new Map<string, number[]>();
+  keys.forEach((ownedKeys, index) => {
+    for (const key of ownedKeys) {
+      const owners = byKey.get(key);
+      if (owners) owners.push(index);
+      else byKey.set(key, [index]);
+    }
+  });
+  const candidates: { left: number; right: number; similarity: number }[] = [];
+  for (let index = 0; index < prepared.length; index += 1) {
+    const examined = new Set<number>();
+    for (const key of keys[index]!) {
+      const owners = byKey.get(key)!;
+      for (const owner of owners) {
+        if (owner <= index || examined.has(owner)) continue;
+        examined.add(owner);
+        const pair = relatedPair(prepared[index]!, prepared[owner]!, threshold);
+        if (pair) candidates.push({ left: index, right: owner, similarity: pair.similarity });
+      }
     }
   }
 
-  candidates.sort((a, b) => b.similarity - a.similarity || a.source.localeCompare(b.source));
+  candidates.sort(
+    (a, b) =>
+      b.similarity - a.similarity ||
+      groups[a.left]!.id.localeCompare(groups[b.left]!.id) ||
+      groups[a.right]!.id.localeCompare(groups[b.right]!.id),
+  );
   const degree = new Map<string, number>();
   const edges: RelatedTopicEdge[] = [];
   for (const candidate of candidates) {
-    const sourceDegree = degree.get(candidate.source) ?? 0;
-    const targetDegree = degree.get(candidate.target) ?? 0;
+    const source = groups[candidate.left]!.id;
+    const target = groups[candidate.right]!.id;
+    const sourceDegree = degree.get(source) ?? 0;
+    const targetDegree = degree.get(target) ?? 0;
     if (sourceDegree >= maxDegree || targetDegree >= maxDegree) continue;
-    degree.set(candidate.source, sourceDegree + 1);
-    degree.set(candidate.target, targetDegree + 1);
+    degree.set(source, sourceDegree + 1);
+    degree.set(target, targetDegree + 1);
     edges.push({
-      source: candidate.source,
-      target: candidate.target,
+      source,
+      target,
       // Ranked evidence, not calibrated confidence: keep three decimals so the
       // payload stays small and the number stops implying precision.
       similarity: Math.round(candidate.similarity * 1000) / 1000,

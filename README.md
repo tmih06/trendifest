@@ -61,8 +61,8 @@ Icons use public per-icon imports rather than the full development icon barrel.
 Optional feedback tooling loads asynchronously after the document's load event;
 it does not block the graph's entry modules. Production excludes it entirely.
 
-Local browser smoke, 2026-11-05, cache disabled, simulated 80 ms latency and
-250,000 bytes/second download throughput:
+Earlier small-map browser smoke, 2026-11-05, cache disabled, simulated 80 ms
+latency and 250,000 bytes/second download throughput:
 
 | Measurement                   |                         Before |                              After |
 | ----------------------------- | -----------------------------: | ---------------------------------: |
@@ -77,10 +77,10 @@ not production latency guarantees; the collector continued receiving new input.
 
 ## Graph workspace
 
-- **Source sidebar:** filter topics with evidence from VOZ, Otofun, Google News
-  VN, or Người Việt. Counts are collected records, not audience or reply counts.
-  News publishers are not counted as community accounts; accounts across
-  networks are not verified distinct people.
+- **Source sidebar:** filter evidence from VOZ, Otofun, Google News VN, Người
+  Việt, VnExpress, Tuổi Trẻ, Thanh Niên, or Dân trí. Counts are collected records,
+  not audiences or replies. News publishers are not community accounts;
+  accounts across networks are not verified distinct people.
 - **Observation window:** 24 hours, 3 days, or 7 days (default), with a sliding
   active indicator that respects reduced motion.
 - **Graph:** every node is a specific topic, never a source hub or an individual
@@ -93,11 +93,12 @@ not production latency guarantees; the collector continued receiving new input.
   Background mouse, pen, and single-touch pans glide to a stop after release.
   A new press, zoom, or camera control interrupts the glide. Holding still
   before release, multi-touch gestures, and reduced-motion mode do not fling.
-- **Topic inspector:** keyboard-accessible ranking, score breakdown, separate
-  community/news evidence counts, source excerpts, and original-source links.
-  The desktop inspector floats above the graph without resizing its canvas;
-  close it from the panel or toggle it beside the observation-window selector.
-  Expansion and collapse slide and fade, respecting reduced motion.
+- **Topic inspector:** keyboard-accessible ranking, accent-insensitive title
+  search, and 80 rows per page without reducing the canvas's topic set. Topic
+  details retain the score breakdown, separate community/news counts, excerpts,
+  and original links even when the selected topic is on another ranking page.
+  The desktop inspector floats above the graph; its toggle and expansion respect
+  reduced motion. Map limitations remain available in a native disclosure.
 - **Collection status:** bounded polling state, per-source results/errors, and a
   manual collection action. No fictional live-stream connection is reported.
 - **Appearance:** light/dark preference, collapsible desktop sidebar, mobile
@@ -108,27 +109,48 @@ two seconds; unchanged-topology refreshes preserve positions and camera.
 Reduced-motion mode displays the settled layout without live relaxation.
 
 The graph polls every two minutes; collection status polls every fifteen seconds.
-Manual collection returns HTTP 202 immediately with its running status. Media
-inference continues in the collector rather than holding an HTTP request open.
-Poll `/api/collect/status` for completion, the last report, or errors; the UI
-refreshes the graph when the completion timestamp changes. Concurrent collection
-requests return HTTP 409.
+Manual collection returns HTTP 202 immediately. Fetching and inference continue
+in the background; `/api/collect/status` exposes the phase, current provider,
+completed providers, and actual fetched/stored/unchanged/rejected/embedded counts.
+The UI refreshes the graph when collection finishes. Concurrent requests in the
+same API process return HTTP 409. A PostgreSQL advisory lease also prevents a CLI
+and another API process from collecting simultaneously; a declined cycle reports
+the other collector's ownership instead of starting duplicate work.
+
+For a deliberate larger bootstrap, run the progress-reporting CLI separately:
+
+```bash
+bun scripts/collect.ts --limit=1000 \
+  --segment=vnexpress --segment=tuoitre --segment=thanhnien --segment=dantri
+```
+
+Omit `--segment` to collect all configured providers. The default budget is 500
+records/provider, with a hard ceiling of 1,000. A cold bootstrap can take many
+minutes; the CLI prints measured progress rather than holding a page request
+open. Exit codes: 0 completed, 1 errors, 2 another collector owns the lease.
 
 ### Vietnamese input policy
 
-The source catalog is `shared/segments.ts`: VOZ/Otofun community RSS, Google
-News's Vietnamese edition RSS, and Người Việt's public WordPress Vietnam-category
-endpoint. News is explicitly labelled publisher evidence, never community
-reactions. Each cycle accepts at most 25 records per source (default 20).
-Requests have a 15-second deadline and 1 MB response cap; there is no historical
-crawl or global stream. Conditional responses are supported where available.
+The source catalog is `shared/segments.ts`: two community RSS feeds, Google
+News VN discovery RSS, Người Việt's WordPress category endpoint, and 53 category
+RSS feeds across four additional Vietnamese publishers. News remains publisher
+evidence, never community reactions. Each cycle defaults to 500 records/provider
+and accepts at most 1,000. Each HTTP response has a 15-second deadline and 1 MB
+cap; there is no historical crawl or global stream.
 
 Google News supplies headlines, publisher labels and aggregator links, not
-article bodies or counts of reactions. Người Việt supplies real headlines,
-bounded excerpts and original links from one page of at most 50 records in the
-past seven days. A rotating bounded sample covers that page over cycles, not
-the publisher's full archive. Category lookup is cached. These discovery
-windows can miss an incident; collected evidence is not complete coverage.
+article bodies or reaction counts. Người Việt exposes one page of at most 50
+recent records. The four direct publishers supply headlines, short visible feed
+excerpts, original permalinks and real publication times. Tuổi Trẻ's wall-clock
+dates are interpreted as UTC+07:00, never the server's local timezone.
+
+Category fan-in uses at most two concurrent requests per provider, deduplicates
+canonical articles across sections, and samples across the recent seven-day
+window when over budget. Rotating samples keep older records reachable.
+Conditional responses replay only successfully parsed, normalized records,
+filtered again for freshness; raw feed XML/HTML is not retained. A failed
+section is reported alongside successful records, not hidden as an empty feed.
+These windows still miss incidents and are not complete social coverage.
 
 `server/social/input.ts` is the common gate for every adapter: normalize
 Vietnamese Unicode and whitespace, cap text at 2,000 characters and attachments
@@ -192,9 +214,11 @@ shared subject, headline terms or phrase evidence. Body boilerplate, a city,
 or a quantity alone cannot establish a connection. Acronym-only and reordered
 headline matches use a stronger semantic floor.
 
-Pairs are considered strongest-first with a maximum degree of three. Isolates
-are legitimate; links are not forced to make the graph look connected. A link
-is heuristic context, not a claim that two reports describe the same event.
+An inverted shared-key index considers eligible pairs across the whole map,
+not just the first part of the ranking. Cheap structural guards run before
+cosine comparisons. Measured pairs are selected strongest-first with a maximum
+degree of three. Isolates are legitimate: links are not invented to fill space,
+and a relationship is context, not proof that two reports describe one event.
 
 Topic identity uses `Xenova/multilingual-e5-small` plus conservative lexical,
 entity, model/version and historical-context guards. Complete-linkage admission
@@ -205,10 +229,26 @@ not generated general categories. This is a heuristic, not verified event
 extraction; paraphrases can remain split or false matches can occur.
 
 GET `/api/trend-map` reads matching stored topic vectors without inference.
-It considers at most 600 recent records, displays at most 90 topics with a
-per-source selection floor, and sends at most three 600-character examples per
-topic. Vectors never leave this endpoint. `pendingEmbeddings` exposes missing or
-stale model/hash rows; `limited` exposes candidate/display truncation.
+It considers at most 8,000 recent records and displays at most 1,500 topics with
+a per-source selection floor. Each topic includes at most three 600-character
+examples. Vectors never leave the endpoint. `pendingEmbeddings` exposes missing
+or stale model/hash rows; `limited` exposes actual candidate/display truncation.
+
+Vector parsing, indexed grouping, scoring, and relationships run in a dedicated
+worker, not the HTTP event loop. Four single-flight snapshots bound the cache.
+Database tuple revisions invalidate it on edits, deletes, vector replacements,
+observations, metrics, and history changes; a minute bucket refreshes rolling
+windows and scores even without writes. Cache hits keep the original
+`generatedAt`. This internal cache does not change the HTTP `no-store` policy.
+The worker stays referenced during work and becomes unreferenced when idle,
+so collection scripts and tests can finish naturally.
+
+The real-corpus expansion smoke on 2026-11-05 displayed 1,500 topics from eight
+sources with 381 measured links and 273 topics supported by multiple independent
+accounts/publishers. Local projection took 2,999 ms cold and 72 ms cached; the
+JSON encoded to 460,656 gzip bytes. An HTTP health request during a cold graph
+request returned in 5 ms. These are local snapshots, not latency guarantees;
+the live corpus continues changing.
 
 ### Emergence score
 
@@ -365,6 +405,8 @@ docker compose exec postgres createdb -U trendifest trendifest_test
 TRENDIFEST_TEST_DATABASE_URL=postgres://trendifest:trendifest@127.0.0.1:55433/trendifest_test bun run ci
 ```
 
-`server/social` owns collection, embedding, clustering, and map assembly;
-`src/pages/trend-map.tsx` wires the workspace; `src/components/trend-graph-canvas.tsx`
-configures `obi-graph`; `packages/opendesk` owns the imported UI layer.
+`server/social` owns collection, embedding and clustering. `trend-map.ts`
+loads/caches graph evidence; `topic-projection.ts` and `trend-map-worker.ts`
+project it off-thread. `src/pages/trend-map.tsx` wires the workspace;
+`src/components/trend-graph-canvas.tsx` configures `obi-graph`;
+`packages/opendesk` owns the imported UI layer.

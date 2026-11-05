@@ -539,6 +539,33 @@ describe("related-topic edges", () => {
     }
     for (const value of degree.values()) expect(value).toBeLessThanOrEqual(3);
   });
+  test("a related pair after a dense unrelated prefix is not discarded", () => {
+    const groups = Array.from({ length: 260 }, (_, index) => {
+      const title = `OpenAI ra mắt GPT-${100 + index}`;
+      return groupSpecificTopics([
+        record(`prefix-${index}`, title, title, { vector: [0, 1, 0] }),
+      ])[0]!;
+    });
+    const left = groupSpecificTopics([
+      record("tail-5", "OpenAI ra mắt GPT-5", "OpenAI ra mắt GPT-5"),
+    ])[0]!;
+    const right = groupSpecificTopics([
+      record("tail-41", "OpenAI ra mắt GPT-4.1", "OpenAI ra mắt GPT-4.1"),
+    ])[0]!;
+    groups.push(left, right);
+    const edges = relatedTopicEdges(groups);
+    expect(
+      edges.some(
+        (edge) =>
+          (edge.source === left.id && edge.target === right.id) ||
+          (edge.source === right.id && edge.target === left.id),
+      ),
+    ).toBe(true);
+    const tailIds = new Set([left.id, right.id]);
+    expect(edges.filter((edge) => tailIds.has(edge.source) !== tailIds.has(edge.target))).toEqual(
+      [],
+    );
+  });
 });
 
 describe("real E5 model acceptance battery", () => {

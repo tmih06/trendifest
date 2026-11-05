@@ -8,6 +8,7 @@ import {
   parseRssChannel,
   requestBounded,
   text,
+  type FeedReadResult,
 } from "./news.ts";
 import {
   MAX_MEDIA_ITEMS,
@@ -142,16 +143,23 @@ async function fetchForumFeed(segment: ViewerSegment, limit: number): Promise<So
 }
 
 /**
- * One bounded public request per collection context. Forum feeds keep their
- * conditional-request behaviour; news sources go through the separate news
- * adapters, so the pipeline keeps a single interface and no source is queried
- * more than once per cycle.
+ * One bounded public read per collection context: real evidence plus the
+ * labelled failures that did not erase it. Forum feeds keep their
+ * conditional-request behaviour and report an unreadable feed as an error line
+ * instead of throwing away an accept for a sibling source; news sources go
+ * through the separate news adapters, which fan in their catalog and already
+ * preserve the sections that answered. An empty result with no errors is a
+ * measured zero; an empty result with errors is an unavailable source.
  */
 export async function fetchPublicFeed(
   segment: ViewerSegment,
   limit = MAX_POSTS_PER_SOURCE,
-): Promise<SourcePost[]> {
-  return isNewsSource(segment.source)
-    ? fetchNewsFeed(segment, limit)
-    : fetchForumFeed(segment, limit);
+): Promise<FeedReadResult> {
+  if (isNewsSource(segment.source)) return fetchNewsFeed(segment, limit);
+  try {
+    return { posts: await fetchForumFeed(segment, limit), errors: [] };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { posts: [], errors: [`${segment.id}: ${message.slice(0, 200)}`] };
+  }
 }

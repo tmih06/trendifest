@@ -494,8 +494,10 @@ describe("fetchPublicFeed news dispatch", () => {
 
   test("dispatches a news segment to the news adapter, not the forum parser", async () => {
     const newsSegment: ViewerSegment = { ...GOOGLE, feedUrl: `${origin}/news.rss` };
-    const posts = await fetchPublicFeed(newsSegment, 5);
+    const result = await fetchPublicFeed(newsSegment, 5);
+    const posts = result.posts;
 
+    expect(result.errors).toEqual([]);
     expect(posts).toHaveLength(1);
     expect(posts[0]!.evidenceType).toBe("news");
     expect(posts[0]!.title).toBe("Hai người ở Huế bị mời làm việc vì đăng ảnh nhạy cảm");
@@ -505,19 +507,21 @@ describe("fetchPublicFeed news dispatch", () => {
   });
 
   test("reads the publisher window through the resolved section id", async () => {
-    const posts = await fetchPublicFeed(
+    const result = await fetchPublicFeed(
       { ...NGUOI_VIET, feedUrl: `${origin}/wp-json/wp/v2/posts` },
       25,
     );
 
-    expect(posts.map((post) => post.uri)).toContain("3490787");
-    expect(posts.every((post) => post.publisher === "Người Việt")).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.posts.map((post) => post.uri)).toContain("3490787");
+    expect(result.posts.every((post) => post.publisher === "Người Việt")).toBe(true);
   });
 
   test("refuses a feed URL that is not the posts endpoint instead of guessing one", async () => {
     const broken: ViewerSegment = { ...NGUOI_VIET, feedUrl: `${origin}/wp-json/wp/v2` };
     const outcome = await fetchPublicFeed(broken, 5).catch((error: unknown) => error);
 
+    // A provider with no readable document at all is unavailable, not empty.
     expect(outcome).toBeInstanceOf(Error);
     expect(String(outcome)).toContain("posts endpoint");
   });

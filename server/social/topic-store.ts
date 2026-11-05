@@ -153,7 +153,7 @@ let backfilling = false;
 export async function backfillTopicEmbeddings(
   limit = 25,
 ): Promise<{ embedded: number; pending: number; error?: string }> {
-  const bounded = Math.max(1, Math.min(Math.trunc(limit), 200));
+  const bounded = Number.isFinite(limit) ? Math.max(1, Math.min(Math.trunc(limit), 1_000)) : 500;
   if (backfilling) return { embedded: 0, pending: await countPendingTopicEmbeddings() };
   backfilling = true;
   try {

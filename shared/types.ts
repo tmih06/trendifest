@@ -13,7 +13,15 @@ export interface ApiError {
  * ------------------------------------------------------------------ */
 
 /** Collector identities; publisher attribution is separate for aggregated news. */
-export type SocialSource = "voz" | "otofun" | "google-news" | "nguoi-viet";
+export type SocialSource =
+  | "voz"
+  | "otofun"
+  | "google-news"
+  | "nguoi-viet"
+  | "vnexpress"
+  | "tuoitre"
+  | "thanhnien"
+  | "dantri";
 export type EvidenceType = "discussion" | "news";
 
 export type PostKind = "text" | "image" | "video" | "audio" | "link";
@@ -27,6 +35,12 @@ export interface ViewerSegment {
   source: SocialSource;
   evidenceType: EvidenceType;
   feedUrl: string;
+  /**
+   * Further official feeds of the same provider, read fan-in within one cycle.
+   * `feedUrl` stays the primary document; a WordPress endpoint there keeps its
+   * own adapter and is never replaced by these section feeds.
+   */
+  additionalFeedUrls?: string[];
 }
 
 /** Only measured counters are present; absence is not a measured zero. */
@@ -123,6 +137,28 @@ export interface IngestReport {
   errors: Array<{ segmentId: string; message: string }>;
 }
 
+/**
+ * Receipts for the running (or last finished) collection cycle. Every counter
+ * is measured work, never an estimate: `segmentsDone` counts providers whose
+ * collection attempt finished, and `note` carries an operational message or is null.
+ */
+export interface CollectionProgress {
+  phase: "idle" | "fetching" | "ingesting" | "backfilling" | "expiring" | "done" | "failed";
+  limit: number;
+  segments: number;
+  segmentsDone: number;
+  fetched: number;
+  stored: number;
+  duplicates: number;
+  rejected: number;
+  embedded: number;
+  pending: number;
+  startedAt: string | null;
+  updatedAt: string | null;
+  current: string | null;
+  note: string | null;
+}
+
 export interface CollectionStatus {
   configured: boolean;
   enabled: boolean;
@@ -131,6 +167,7 @@ export interface CollectionStatus {
   lastBackfill: IngestReport | null;
   segments: number;
   lastErrors: Array<{ segmentId: string; message: string }>;
+  progress: CollectionProgress;
 }
 
 /* ------------------------------------------------------------------ *

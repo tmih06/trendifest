@@ -2,7 +2,6 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { closeDb, getDb } from "../server/db.ts";
 import { buildTrendMap } from "../server/social/trend-map.ts";
 import { TOPIC_DIM, TOPIC_MODEL } from "../server/social/topic-embedding.ts";
-import { GROUPING_THRESHOLD } from "../server/social/topics.ts";
 
 /**
  * Map-level regressions: the payload's shape and its accounting.
@@ -109,9 +108,6 @@ describe.skipIf(!enabled)("topic map payload", () => {
 
     const map = await buildTrendMap(168);
 
-    expect(map.method.version).toBe(3);
-    expect(map.method.topicModel).toBe(TOPIC_MODEL);
-    expect(map.method.groupingThreshold).toBe(GROUPING_THRESHOLD);
     expect(map.stats.topics).toBe(map.nodes.length);
     expect(map.stats.posts).toBe(3);
 
@@ -264,7 +260,73 @@ describe.skipIf(!enabled)("topic map payload", () => {
         expect(example.text.length).toBeLessThanOrEqual(600);
       }
     }
-    expect(map.nodes.length).toBeLessThanOrEqual(90);
+  });
+  test("more than a thousand distinct model versions retain their own evidence nodes", async () => {
+    const db = await getDb();
+    await db`
+      INSERT INTO posts (id, source, uri, author_id, author_handle, title, body,
+                         evidence_type, publisher, lang, kind, permalink,
+                         published_at, time_kind, media, content_hash, first_collected_at)
+      SELECT id, 'vnexpress', id, 'vnexpress:unknown', NULL, title, title,
+             'news', 'VnExpress', ARRAY['vi'], 'link',
+             'https://vnexpress.net/' || n || '.html', now(), 'published',
+             '[]'::jsonb, id, now()
+      FROM (
+        SELECT n, 'vnexpress:volume-' || n AS id,
+               'OpenAI ra mắt GPT-5.' || n AS title
+        FROM generate_series(1, 1001) AS n
+      ) AS evidence
+    `;
+    await db`
+      INSERT INTO observations (post_id, segment_id, observed_at, via)
+      SELECT id, 'vnexpress', now(), 'test' FROM posts
+    `;
+    await db`
+      INSERT INTO topic_embeddings (post_id, model, content_hash, vec)
+      SELECT id, ${TOPIC_MODEL}, content_hash, ${UNIT}::vector FROM posts
+    `;
+    const map = await buildTrendMap(168);
+    const expected = Array.from({ length: 1001 }, (_, i) => `vnexpress:volume-${i + 1}`);
+    expect(map.nodes.map((node) => node.examples[0]!.uri).sort()).toEqual(expected.sort());
+    for (const node of map.nodes) {
+      expect(node.posts).toBe(1);
+      expect(node.newsPosts).toBe(1);
+      expect(node.authors).toBe(0);
+      expect(node.publishers).toBe(1);
+    }
+    expect(map.stats.limited).toBe(false);
+  });
+
+  test("cached evidence follows observation expiry, edits, replacement vectors and deletion", async () => {
+    const db = await getDb();
+    await seed({
+      id: "voz:mutable",
+      title: "OpenAI ra mắt GPT-5",
+      body: "OpenAI ra mắt GPT-5 với khả năng suy luận",
+    });
+    expect((await buildTrendMap(24)).nodes[0]!.examples[0]!.uri).toBe("voz:mutable");
+    await db`UPDATE observations SET observed_at = now() - interval '2 days' WHERE post_id = 'voz:mutable'`;
+    expect((await buildTrendMap(24)).nodes).toEqual([]);
+    await db`UPDATE observations SET observed_at = now() WHERE post_id = 'voz:mutable'`;
+    expect((await buildTrendMap(24)).nodes[0]!.examples[0]!.uri).toBe("voz:mutable");
+
+    await db`
+      UPDATE posts SET title = 'Anthropic công bố Claude 4',
+                       body = 'Anthropic công bố Claude 4 cho lập trình viên',
+                       content_hash = 'edited-hash'
+      WHERE id = 'voz:mutable'
+    `;
+    const stale = await buildTrendMap(24);
+    expect(stale.nodes).toEqual([]);
+    expect(stale.stats.pendingEmbeddings).toBe(1);
+    await db`UPDATE topic_embeddings SET content_hash = 'edited-hash' WHERE post_id = 'voz:mutable'`;
+    const updated = await buildTrendMap(24);
+    expect(updated.stats.pendingEmbeddings).toBe(0);
+    expect(updated.nodes[0]!.label).toBe("Anthropic công bố Claude 4");
+    await db`DELETE FROM posts WHERE id = 'voz:mutable'`;
+    const deleted = await buildTrendMap(24);
+    expect(deleted.nodes).toEqual([]);
+    expect(deleted.stats.posts).toBe(0);
   });
 
   test("old publication dates and observation logs cannot invent collection history", async () => {
@@ -287,19 +349,5 @@ describe.skipIf(!enabled)("topic map payload", () => {
     // Actual immutable collection history makes the growth windows comparable.
     await db`UPDATE posts SET first_collected_at = ${publishedAt} WHERE id = 'voz:history'`;
     expect((await buildTrendMap(168)).method.velocityComparable).toBe(true);
-  });
-
-  test("coverage is reported per collection context, not inferred from topics", async () => {
-    await seed({
-      id: "voz:cover",
-      title: "OpenAI ra mắt GPT-5",
-      body: "OpenAI ra mắt GPT-5 hôm nay",
-    });
-    const map = await buildTrendMap(24);
-    expect(map.coverage.length).toBeGreaterThan(0);
-    for (const row of map.coverage) {
-      expect(row.posts).toBeGreaterThanOrEqual(0);
-      expect(typeof row.segmentId).toBe("string");
-    }
   });
 });

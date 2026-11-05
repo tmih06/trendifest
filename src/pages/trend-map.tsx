@@ -43,6 +43,7 @@ import { useTheme } from "@/hooks/use-app";
 import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-trends";
 import { compactNumber, formatRelative } from "@/lib/format";
 import { toCanvas } from "@/lib/graph";
+import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
 
 const Dialog = lazy(() =>
   import("@trendifest/opendesk/dialog").then((module) => ({ default: module.Dialog })),
@@ -60,12 +61,24 @@ const WINDOWS = [
 /** Beyond this age the rendered map no longer describes the current window. */
 const STALE_MAP_MINUTES = 15;
 
-/**
- * Contract-defined news collectors. Everything else is community discussion,
- * so the collection dialog can name each feed's evidence role without guessing
- * from its label.
- */
-const NEWS_SOURCES: ReadonlySet<SocialSource> = new Set(["google-news", "nguoi-viet"]);
+/** The entire graph renders; only this many ranking rows occupy the DOM at once. */
+const TOPIC_PAGE_SIZE = 80;
+
+/** Match Vietnamese titles with or without typed accents; display stays unchanged. */
+function topicSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase();
+}
+
+/** Source roles follow the collection catalog rather than a second hardcoded list. */
+const NEWS_SOURCES: ReadonlySet<SocialSource> = new Set(
+  VIEWER_SEGMENTS.filter((segment) => segment.evidenceType === "news").map(
+    (segment) => segment.source,
+  ),
+);
 
 /** A heuristic score, deliberately not formatted as a probability. */
 function PotentialBadge({ node }: { node: TrendMapNode }) {
@@ -96,19 +109,23 @@ function EvidenceCard({ example, sourceLabel }: { example: TopicExample; sourceL
     example.evidenceType === "news"
       ? (example.publisher ?? sourceLabel)
       : (example.authorHandle ?? "Unknown account");
+  const excerpt =
+    example.title && example.text.startsWith(example.title)
+      ? example.text.slice(example.title.length).trim()
+      : example.text;
   return (
     <li className="rounded-lg border border-line p-2.5">
       <div className="mb-1 flex items-start justify-between gap-2 text-[10.5px] text-fg-3">
         <span className="min-w-0 flex-1 break-words">{byline}</span>
-        <Badge className="shrink-0">{sourceLabel}</Badge>
+        {(example.evidenceType === "discussion" || byline !== sourceLabel) && (
+          <Badge className="shrink-0">{sourceLabel}</Badge>
+        )}
       </div>
       <p className="break-words text-[11.5px] leading-5 text-fg-2">
         {example.title || "Untitled record"}
       </p>
-      {example.text && (
-        <p className="mt-1 line-clamp-3 break-words text-[11px] leading-5 text-fg-3">
-          {example.text}
-        </p>
+      {excerpt && (
+        <p className="mt-1 line-clamp-3 break-words text-[11px] leading-5 text-fg-3">{excerpt}</p>
       )}
       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-fg-3">
         <span>
@@ -264,15 +281,17 @@ function NodeDetail({
 /** Reset evidence scroll on selection without remounting focused topic buttons. */
 function TopicInspectorBody({
   topicId,
+  pageKey,
   children,
 }: {
   topicId: string | null;
+  pageKey: string;
   children: ReactNode;
 }) {
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (body.current) body.current.scrollTop = 0;
-  }, [topicId]);
+  }, [topicId, pageKey]);
   return (
     <div ref={body} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {children}
@@ -286,6 +305,8 @@ export function TrendMapPage() {
   const [hours, setHours] = useState<number>(DEFAULT_HOURS);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [topicQuery, setTopicQuery] = useState("");
+  const [requestedTopicPage, setRequestedTopicPage] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [collectionOpen, setCollectionOpen] = useState(false);
@@ -339,6 +360,19 @@ export function TrendMapPage() {
         ),
     [data, visibleIds],
   );
+  const searchableTopics = useMemo(
+    () =>
+      topics.map((node, index) => ({ node, rank: index + 1, text: topicSearchText(node.label) })),
+    [topics],
+  );
+  const matchingTopics = useMemo(() => {
+    const query = topicSearchText(topicQuery).trim();
+    return query ? searchableTopics.filter((item) => item.text.includes(query)) : searchableTopics;
+  }, [searchableTopics, topicQuery]);
+  const lastTopicPage = Math.max(0, Math.ceil(matchingTopics.length / TOPIC_PAGE_SIZE) - 1);
+  const topicPage = Math.min(requestedTopicPage, lastTopicPage);
+  const topicPageStart = topicPage * TOPIC_PAGE_SIZE;
+  const pageTopics = matchingTopics.slice(topicPageStart, topicPageStart + TOPIC_PAGE_SIZE);
   const relatedTopics = useMemo(
     () =>
       (data?.edges ?? [])
@@ -371,6 +405,7 @@ export function TrendMapPage() {
   const stale =
     data !== undefined && now - Date.parse(data.generatedAt) > STALE_MAP_MINUTES * 60_000;
   const status = collection.data;
+  const progress = status?.progress;
   const busy = collect.isPending || status?.backfilling === true;
   const healthy =
     status?.configured === true &&
@@ -425,6 +460,8 @@ export function TrendMapPage() {
   /** A source filter narrows the drawn topics; it never fabricates source nodes. */
   function chooseSource(id: string | null) {
     setSourceId(id);
+    setRequestedTopicPage(0);
+    setTopicQuery("");
     setSelectedId(null);
     setNavOpen(false);
   }
@@ -537,7 +574,49 @@ export function TrendMapPage() {
           </Button>
         )}
       </div>
-      <TopicInspectorBody topicId={selected?.id ?? null}>
+      <div className="shrink-0 border-b border-line px-3 py-2">
+        <label className="mb-1 block text-[11px] text-fg-3">
+          Search ranked topics
+          <input
+            type="search"
+            value={topicQuery}
+            onChange={(event) => {
+              setTopicQuery(event.target.value);
+              setRequestedTopicPage(0);
+            }}
+            placeholder="Event, product or model"
+            className="mt-1 block w-full rounded-md border border-line bg-surface px-2.5 py-2 text-base text-fg placeholder:text-fg-3 xl:text-[12px]"
+          />
+        </label>
+        <nav
+          aria-label="Topic ranking pages"
+          className="mt-2 flex items-center justify-between gap-2"
+        >
+          <Button
+            variant="ghost"
+            disabled={topicPage === 0}
+            onClick={() => setRequestedTopicPage(topicPage - 1)}
+          >
+            Previous
+          </Button>
+          <span role="status" className="mono text-center text-[10.5px] text-fg-3">
+            {matchingTopics.length === 0
+              ? "0 matches"
+              : `${topicPageStart + 1}–${topicPageStart + pageTopics.length} of ${matchingTopics.length}`}
+          </span>
+          <Button
+            variant="ghost"
+            disabled={topicPage >= lastTopicPage}
+            onClick={() => setRequestedTopicPage(topicPage + 1)}
+          >
+            Next
+          </Button>
+        </nav>
+      </div>
+      <TopicInspectorBody
+        topicId={selected?.id ?? null}
+        pageKey={`${sourceId}:${hours}:${topicQuery}:${topicPage}`}
+      >
         {selected && (
           <div className="border-b border-line p-4">
             <NodeDetail node={selected} sourceLabels={sourceLabels} />
@@ -575,7 +654,7 @@ export function TrendMapPage() {
           </div>
         )}
         <ol className="p-2" aria-label="Topics ranked by potential">
-          {topics.map((node, index) => (
+          {pageTopics.map(({ node, rank }) => (
             <li key={node.id}>
               <button
                 type="button"
@@ -587,21 +666,27 @@ export function TrendMapPage() {
                 onClick={() => selectNode(selectedId === node.id ? null : node.id)}
               >
                 <span className="mono pt-0.5 text-[10.5px] text-fg-3">
-                  {String(index + 1).padStart(2, "0")}
+                  {String(rank).padStart(2, "0")}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="line-clamp-2 block break-words text-[12px] leading-[18px] text-fg-2 group-hover:text-fg">
                     {node.label}
                   </span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[10.5px] text-fg-3">
-                    <Users className="size-3" aria-hidden="true" />
-                    Accounts: {node.authors}
-                    <span aria-hidden="true">·</span>
-                    <span>Posts: {node.discussionPosts}</span>
+                    {node.discussionPosts > 0 && (
+                      <>
+                        <Users className="size-3" aria-hidden="true" />
+                        <span>Accounts: {node.authors}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>Posts: {node.discussionPosts}</span>
+                      </>
+                    )}
                     {node.newsPosts > 0 && (
                       <>
-                        <span aria-hidden="true">·</span>
+                        {node.discussionPosts > 0 && <span aria-hidden="true">·</span>}
                         <span>News: {node.newsPosts}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>Publishers: {node.publishers}</span>
                       </>
                     )}
                   </span>
@@ -611,6 +696,20 @@ export function TrendMapPage() {
             </li>
           ))}
         </ol>
+        {topicQuery.trim() && matchingTopics.length === 0 && (
+          <div className="p-4 text-[12px] leading-5 text-fg-3">
+            <p>No ranked topic matches “{topicQuery}”. The graph is unchanged.</p>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setTopicQuery("");
+                setRequestedTopicPage(0);
+              }}
+            >
+              Clear search
+            </Button>
+          </div>
+        )}
         {data && topics.length === 0 && (
           <p className="p-4 text-[12px] leading-5 text-fg-3">
             {sourceId
@@ -620,25 +719,30 @@ export function TrendMapPage() {
         )}
       </TopicInspectorBody>
       <div className="shrink-0 space-y-1 border-t border-line px-4 py-3 text-[10.5px] leading-4 text-fg-3">
-        <p>
-          Bigger nodes have higher potential — a heuristic from evidence support and growth, not a
-          probability. Colour tracks measured related links.
-        </p>
+        <details>
+          <summary className="cursor-pointer font-medium text-fg-2">Map limits and scoring</summary>
+          <div className="mt-2 space-y-1">
+            <p>
+              Bigger nodes have higher potential — a heuristic from evidence support and growth, not
+              a probability. Colour tracks measured related links.
+            </p>
+            {stats?.limited && (
+              <p>
+                Up to 1,500 topics are shown from a bounded recent corpus. Some evidence or
+                lower-ranked topics may be omitted.
+              </p>
+            )}
+            {data && !data.method.velocityComparable && (
+              <p>New-evidence scoring stays neutral until twelve hours of history exist.</p>
+            )}
+          </div>
+        </details>
         {stats && stats.pendingEmbeddings > 0 && (
           <p>
             {stats.pendingEmbeddings} collected post
             {stats.pendingEmbeddings === 1 ? " is" : "s are"} still awaiting embeddings; topics may
             grow as they finish.
           </p>
-        )}
-        {stats?.limited && (
-          <p>
-            This map is bounded to 600 recent records and 90 displayed topics. Some evidence or
-            lower-ranked topics may be omitted.
-          </p>
-        )}
-        {data && !data.method.velocityComparable && (
-          <p>New-evidence scoring stays neutral until twelve hours of history exist.</p>
         )}
         {data && stale && (
           <p className="text-fg-2">
@@ -800,7 +904,10 @@ export function TrendMapPage() {
                       className="observation-option"
                       aria-pressed={hours === window.hours}
                       title={`Last ${window.text}`}
-                      onClick={() => setHours(window.hours)}
+                      onClick={() => {
+                        setHours(window.hours);
+                        setRequestedTopicPage(0);
+                      }}
                     >
                       {window.label}
                     </Button>
@@ -1021,7 +1128,7 @@ export function TrendMapPage() {
                 icon={<RefreshCw />}
                 loading={busy}
                 disabled={!status?.configured}
-                onClick={() => collect.mutate(25)}
+                onClick={() => collect.mutate(500)}
               >
                 Collect now
               </Button>
@@ -1049,7 +1156,9 @@ export function TrendMapPage() {
                       </dt>
                       <dd className="text-end text-fg-3">
                         {result?.error
-                          ? "Unavailable"
+                          ? result.stored + result.duplicates > 0
+                            ? `Partial · ${result.stored} stored · ${result.duplicates} unchanged`
+                            : "Unavailable"
                           : result
                             ? `${result.stored} stored · ${result.duplicates} unchanged`
                             : busy
@@ -1060,12 +1169,19 @@ export function TrendMapPage() {
                   );
                 })}
               </dl>
+              <p className="text-fg-3">
+                Each cycle examines up to 500 records per source; only accepted Vietnamese evidence
+                is stored. Publisher news remains separate from community discussion.
+              </p>
               <p>
                 {status?.lastBackfillAt
                   ? `Last collection ${formatRelative(status.lastBackfillAt)}.`
                   : "No completed collection reported."}{" "}
                 Sources are polled every ten minutes; the graph refreshes every two minutes.
               </p>
+              {progress?.note && (
+                <p className="rounded-lg bg-sunken p-3 text-fg-3">{progress.note}</p>
+              )}
               {collection.isError && (
                 <p role="alert" className="text-danger-fg">
                   {collection.error.message}
@@ -1078,7 +1194,9 @@ export function TrendMapPage() {
               )}
               <p role="status" className="text-fg-3">
                 {busy
-                  ? "A collection cycle is running. This can take time while media is embedded."
+                  ? progress
+                    ? `${progress.current ? `${sourceLabels.get(progress.current) ?? progress.current}: ` : ""}${progress.phase}. ${progress.segmentsDone}/${progress.segments} sources processed; ${progress.fetched} records fetched, ${progress.stored} stored, ${progress.duplicates} unchanged, ${progress.rejected} rejected.`
+                    : "A collection cycle is running. New records are being collected and embedded."
                   : status?.lastBackfill
                     ? `Last cycle: ${status.lastBackfill.stored} stored, ${status.lastBackfill.duplicates} unchanged, ${status.lastBackfill.skippedLanguage + status.lastBackfill.skippedQuality} rejected. ${status.lastBackfill.errors.length} source errors.`
                     : collect.isSuccess
