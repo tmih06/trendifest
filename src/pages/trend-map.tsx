@@ -7,48 +7,75 @@ import {
   SidebarSection,
   cn,
 } from "@trendifest/opendesk";
+// Each icon is imported through its own public subpath. The package root
+// re-exports every icon module (over two thousand), so a barrel import makes
+// the dev server prebundle and serve all of them for the sixteen drawn below.
+import Activity from "lucide-react/icons/activity";
+import ArrowUpRight from "lucide-react/icons/arrow-up-right";
+import ChevronRight from "lucide-react/icons/chevron-right";
+import Circle from "lucide-react/icons/circle";
+import Database from "lucide-react/icons/database";
+import Home from "lucide-react/icons/home";
+import Info from "lucide-react/icons/info";
+import Menu from "lucide-react/icons/menu";
+import Moon from "lucide-react/icons/moon";
+import Network from "lucide-react/icons/network";
+import PanelLeftClose from "lucide-react/icons/panel-left-close";
+import PanelLeftOpen from "lucide-react/icons/panel-left-open";
+import PanelRight from "lucide-react/icons/panel-right";
+import RefreshCw from "lucide-react/icons/refresh-cw";
+import Sun from "lucide-react/icons/sun";
+import ListOrdered from "lucide-react/icons/list-ordered";
+import Users from "lucide-react/icons/users";
+import X from "lucide-react/icons/x";
 import {
-  Activity,
-  ArrowUpRight,
-  ChevronRight,
-  Circle,
-  Database,
-  Home,
-  Info,
-  Menu,
-  Moon,
-  Network,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRight,
-  Radio,
-  RefreshCw,
-  Sun,
-  Users,
-  X,
-} from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
-import type { TrendMapNode } from "../../shared/types.ts";
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import type { SocialSource, TopicExample, TrendMapNode } from "../../shared/types.ts";
 import { DbNotice } from "@/components/db-notice";
 import { ThemeToggle, useThemeToggle } from "@/components/motion/theme-toggle";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
+import { TopicBoard } from "@/components/topic-board";
 import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-trends";
-import { compactNumber, formatRelative } from "@/lib/format";
+import { compactNumber, formatRelative, topicSearchText } from "@/lib/format";
 import { toCanvas } from "@/lib/graph";
+import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
 
 const Dialog = lazy(() =>
   import("@trendifest/opendesk/dialog").then((module) => ({ default: module.Dialog })),
 );
 
+/** Default to a week so a topic reported days ago is still inside the window. */
+const DEFAULT_HOURS = 168;
+
 const WINDOWS = [
-  { hours: 24, label: "24h" },
-  { hours: 72, label: "3d" },
-  { hours: 168, label: "7d" },
+  { hours: 24, label: "24h", text: "24 hours" },
+  { hours: 72, label: "3d", text: "3 days" },
+  { hours: DEFAULT_HOURS, label: "7d", text: "7 days" },
 ] as const;
+
+/** Beyond this age the rendered map no longer describes the current window. */
+const STALE_MAP_MINUTES = 15;
+
+/** The entire graph renders; only this many ranking rows occupy the DOM at once. */
+const TOPIC_PAGE_SIZE = 80;
+
+/** Source roles follow the collection catalog rather than a second hardcoded list. */
+const NEWS_SOURCES: ReadonlySet<SocialSource> = new Set(
+  VIEWER_SEGMENTS.filter((segment) => segment.evidenceType === "news").map(
+    (segment) => segment.source,
+  ),
+);
 
 /** A heuristic score, deliberately not formatted as a probability. */
 function PotentialBadge({ node }: { node: TrendMapNode }) {
-  if (node.potential === null) return null;
   return (
     <Badge tone={node.potential >= 60 ? "ok" : "neutral"} className="mono">
       {node.potential}
@@ -57,9 +84,83 @@ function PotentialBadge({ node }: { node: TrendMapNode }) {
   );
 }
 
-/** The selected pattern's evidence remains readable without interpreting the canvas. */
-function NodeDetail({ node }: { node: TrendMapNode }) {
+/** One measured count; `undefined` is unmeasured, never zero. */
+function Metric({ label, value }: { label: string; value: string | number | undefined }) {
+  return (
+    <div>
+      <dt className="text-[11px] text-fg-3">{label}</dt>
+      {value === undefined ? (
+        <dd className="mt-1 text-[11px] leading-5 text-fg-3">Not measured</dd>
+      ) : (
+        <dd className="mono mt-1 text-[17px] text-fg">{value}</dd>
+      )}
+    </div>
+  );
+}
+
+function EvidenceCard({ example, sourceLabel }: { example: TopicExample; sourceLabel: string }) {
+  const byline =
+    example.evidenceType === "news"
+      ? (example.publisher ?? sourceLabel)
+      : (example.authorHandle ?? "Unknown account");
+  const excerpt =
+    example.title && example.text.startsWith(example.title)
+      ? example.text.slice(example.title.length).trim()
+      : example.text;
+  return (
+    <li className="rounded-lg border border-line p-2.5">
+      <div className="mb-1 flex items-start justify-between gap-2 text-[10.5px] text-fg-3">
+        <span className="min-w-0 flex-1 break-words">{byline}</span>
+        {(example.evidenceType === "discussion" || byline !== sourceLabel) && (
+          <Badge className="shrink-0">{sourceLabel}</Badge>
+        )}
+      </div>
+      <p className="break-words text-[11.5px] leading-5 text-fg-2">
+        {example.title || "Untitled record"}
+      </p>
+      {excerpt && (
+        <p className="mt-1 line-clamp-3 break-words text-[11px] leading-5 text-fg-3">{excerpt}</p>
+      )}
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-fg-3">
+        <span>
+          {example.evidenceType === "news" ? "News report" : "Community post"} ·{" "}
+          {example.timeKind === "published" ? "published" : "latest activity"}{" "}
+          {formatRelative(example.publishedAt)}
+        </span>
+        {example.mediaCount > 0 && (
+          <span>
+            {example.mediaCount} attachment{example.mediaCount === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
+      <a
+        href={example.permalink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 inline-flex min-h-6 items-center gap-1 text-[11px] text-fg underline underline-offset-4"
+      >
+        {example.evidenceType === "news" ? "Open the report" : "Open the original post"}
+        <ArrowUpRight className="size-3" aria-hidden="true" />
+      </a>
+    </li>
+  );
+}
+
+/** The selected topic's evidence stays readable without interpreting the canvas. */
+function NodeDetail({
+  node,
+  sourceLabels,
+}: {
+  node: TrendMapNode;
+  sourceLabels: ReadonlyMap<string, string>;
+}) {
   const score = node.score;
+  const discussion = node.examples.filter((example) => example.evidenceType === "discussion");
+  const news = node.examples.filter((example) => example.evidenceType === "news");
+  const labelFor = (example: TopicExample) =>
+    sourceLabels.get(example.source) ??
+    sourceLabels.get(example.segments[0] ?? "") ??
+    example.source;
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -69,95 +170,125 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
         <PotentialBadge node={node} />
       </div>
       <p className="text-[12px] leading-5 text-fg-3">{node.description}</p>
-      {score ? (
-        <>
-          <dl className="grid grid-cols-2 gap-3 rounded-lg bg-sunken p-3">
-            <div>
-              <dt className="text-[11px] text-fg-3">Independent authors</dt>
-              <dd className="mono mt-1 text-[17px] text-fg">{score.authors}</dd>
+      <dl className="grid grid-cols-2 gap-3 rounded-lg bg-sunken p-3">
+        <Metric label="Community posts" value={node.discussionPosts} />
+        <Metric label="News reports" value={node.newsPosts} />
+        <Metric label="Community accounts" value={node.authors} />
+        <Metric label="Publishers" value={node.publishers} />
+        <Metric
+          label="Likes"
+          value={node.likes === undefined ? undefined : compactNumber(node.likes)}
+        />
+        <Metric
+          label="Reposts + quotes"
+          value={node.shares === undefined ? undefined : compactNumber(node.shares)}
+        />
+      </dl>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fg-3">
+        <span>First seen {formatRelative(node.firstSeenAt)}</span>
+        <span aria-hidden="true">·</span>
+        <span>Last seen {formatRelative(node.lastSeenAt)}</span>
+        {node.mediaCount > 0 && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span>
+              {node.mediaCount} attachment{node.mediaCount === 1 ? "" : "s"}
+            </span>
+          </>
+        )}
+      </div>
+      <div className="space-y-2.5">
+        {[
+          { label: "Reach", value: score.reach },
+          { label: "New evidence", value: score.velocity },
+          { label: "Source spread", value: score.spread },
+          { label: "Persistence", value: score.persistence },
+          { label: "Evidence diversity", value: score.diversity },
+        ].map((part) => (
+          <div key={part.label}>
+            <div className="mb-1 flex justify-between gap-2 text-[11px]">
+              <span className="text-fg-3">{part.label}</span>
+              <span className="mono text-fg-2">{Math.round(part.value * 100)}/100</span>
             </div>
-            <div>
-              <dt className="text-[11px] text-fg-3">Collected posts</dt>
-              <dd className="mono mt-1 text-[17px] text-fg">{score.posts}</dd>
+            <div className="h-1 overflow-hidden rounded-full bg-active">
+              <div
+                className="h-full rounded-full bg-fg-2"
+                style={{ width: `${part.value * 100}%` }}
+              />
             </div>
-            <div>
-              <dt className="text-[11px] text-fg-3">Likes</dt>
-              <dd className="mono mt-1 text-[17px] text-fg">
-                {node.likes === undefined ? "—" : compactNumber(node.likes)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] text-fg-3">Reposts + quotes</dt>
-              <dd className="mono mt-1 text-[17px] text-fg">
-                {node.shares === undefined ? "—" : compactNumber(node.shares)}
-              </dd>
-            </div>
-          </dl>
-          <div className="space-y-2.5">
-            {[
-              { label: "Reach", value: score.reach },
-              { label: "Velocity", value: score.velocity },
-              { label: "Audience spread", value: score.spread },
-              { label: "Persistence", value: score.persistence },
-              { label: "Author diversity", value: score.diversity },
-            ].map((part) => (
-              <div key={part.label}>
-                <div className="mb-1 flex justify-between gap-2 text-[11px]">
-                  <span className="text-fg-3">{part.label}</span>
-                  <span className="mono text-fg-2">{Math.round(part.value * 100)}/100</span>
-                </div>
-                <div className="h-1 overflow-hidden rounded-full bg-active">
-                  <div
-                    className="h-full rounded-full bg-fg-2"
-                    style={{ width: `${part.value * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
           </div>
+        ))}
+      </div>
+      <p className="text-[11px] leading-5 text-fg-3">
+        Evidence multiplier ×{score.confidence.toFixed(2)}. One account posting repeatedly, or the
+        same headline copied across sites, cannot carry a topic on its own. Accounts on different
+        sources are not verified distinct people.
+      </p>
+      {node.examples.length > 0 ? (
+        <div className="space-y-4 border-t border-line pt-4">
           <p className="text-[11px] leading-5 text-fg-3">
-            Evidence multiplier ×{score.confidence.toFixed(2)}. Five independent authors are needed
-            for the full score. This is a ranking heuristic, not a prediction.
+            A bounded selection of supporting records, not the full set. Each link opens the
+            original source and keeps its attribution.
           </p>
-        </>
+          {discussion.length > 0 && (
+            <section aria-label="Community posts in this topic">
+              <h4 className="label-caps mb-2">Discussion posts</h4>
+              <ul className="space-y-2">
+                {discussion.map((example) => (
+                  <EvidenceCard
+                    key={example.uri}
+                    example={example}
+                    sourceLabel={labelFor(example)}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+          {news.length > 0 && (
+            <section aria-label="News reports in this topic">
+              <h4 className="label-caps mb-2">News reports</h4>
+              <p className="mb-2 text-[11px] leading-5 text-fg-3">
+                Headlines count as publisher evidence. They are never counted as community people or
+                reactions.
+              </p>
+              <ul className="space-y-2">
+                {news.map((example) => (
+                  <EvidenceCard
+                    key={example.uri}
+                    example={example}
+                    sourceLabel={labelFor(example)}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
       ) : (
-        <p className="text-[12px] leading-5 text-fg-3">
-          {node.posts.toLocaleString()} posts observed. Audience hubs have no trend score.
+        <p className="border-t border-line pt-4 text-[11px] leading-5 text-fg-3">
+          No supporting record was included in this payload.
         </p>
       )}
-      {node.kind === "pattern" && (
-        <section className="border-t border-line pt-4" aria-label="Source posts">
-          <h4 className="label-caps mb-2">Source posts</h4>
-          {node.examples?.length ? (
-            <ul className="space-y-2">
-              {node.examples.map((example) => (
-                <li key={example.uri} className="rounded-lg border border-line p-2.5">
-                  <div className="mb-1 flex items-center justify-between gap-2 text-[10.5px] text-fg-3">
-                    <span className="min-w-0 truncate">
-                      {example.authorHandle ? `@${example.authorHandle}` : "Unknown handle"}
-                    </span>
-                    <Badge>{example.kind}</Badge>
-                  </div>
-                  <p className="break-words text-[11.5px] leading-5 text-fg-2">
-                    {example.text || "Media-only post"}
-                  </p>
-                  <a
-                    href={example.permalink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 inline-flex min-h-6 items-center gap-1 text-[11px] text-fg underline underline-offset-4"
-                  >
-                    Open source post
-                    <ArrowUpRight className="size-3" aria-hidden="true" />
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-[11px] text-fg-3">No source posts available in this window.</p>
-          )}
-        </section>
-      )}
+    </div>
+  );
+}
+
+/** Reset evidence scroll on selection without remounting focused topic buttons. */
+function TopicInspectorBody({
+  topicId,
+  pageKey,
+  children,
+}: {
+  topicId: string | null;
+  pageKey: string;
+  children: ReactNode;
+}) {
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (body.current) body.current.scrollTop = 0;
+  }, [topicId, pageKey]);
+  return (
+    <div ref={body} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      {children}
     </div>
   );
 }
@@ -166,9 +297,13 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
 export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
   const { isDark, toggle: toggleTheme } = useThemeToggle({ start: "top-down" });
   const theme = isDark ? "dark" : "light";
-  const [hours, setHours] = useState<number>(72);
-  const [audience, setAudience] = useState<string | null>(null);
+  const [hours, setHours] = useState<number>(DEFAULT_HOURS);
+  const [view, setView] = useState<"graph" | "board">("graph");
+  const workspaceHeading = useRef<HTMLHeadingElement>(null);
+  const [sourceId, setSourceId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [topicQuery, setTopicQuery] = useState("");
+  const [requestedTopicPage, setRequestedTopicPage] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [collectionOpen, setCollectionOpen] = useState(false);
@@ -177,62 +312,131 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
   const [mobileInspector, setMobileInspector] = useState(false);
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 1199px)").matches);
   const [dialogsEnabled, setDialogsEnabled] = useState(false);
+  // A minute tick lets the staleness warning appear without waiting for a
+  // refetch; the map itself still refreshes on its own query interval.
+  const [now, setNow] = useState(() => Date.now());
   const map = useTrendMap(hours);
   const collection = useCollectionStatus();
   const collect = useCollectNow();
   const data = map.data;
-  const canvas = useMemo(() => (data ? toCanvas(data) : { nodes: [], links: [] }), [data]);
   const selected = data?.nodes.find((node) => node.id === selectedId) ?? null;
-  const connectedIds = useMemo(() => {
-    if (!audience) return new Set(canvas.nodes.map((node) => node.id));
-    const hubId = `segment:${audience}`;
-    return new Set([
-      hubId,
-      ...canvas.links.filter((edge) => edge.source === hubId).map((edge) => edge.target),
-    ]);
-  }, [audience, canvas]);
-  const patterns = useMemo(
+  /**
+   * A source is a filter over each topic's own collection contexts. Topics carry
+   * `segments`, and there are no source nodes and no observation edges, so this
+   * reads topic provenance directly instead of walking graph links.
+   */
+  const visibleIds = useMemo(() => {
+    const all = new Set((data?.nodes ?? []).map((node) => node.id));
+    if (!sourceId) return all;
+    return new Set(
+      (data?.nodes ?? []).filter((node) => node.segments.includes(sourceId)).map((node) => node.id),
+    );
+  }, [data, sourceId]);
+  /**
+   * A source filter narrows the drawn topics to those whose own `segments`
+   * include it; there are no source nodes to filter through. `toCanvas` drops
+   * links to topics that are no longer drawn, so the canvas, the ranked list and
+   * the footer count always describe one set. obi-graph seeds surviving nodes
+   * from their previous positions, so switching sources does not scatter the
+   * map into a fresh random layout.
+   */
+  const canvas = useMemo(
+    () =>
+      data
+        ? toCanvas({ ...data, nodes: data.nodes.filter((node) => visibleIds.has(node.id)) })
+        : { nodes: [], links: [] },
+    [data, visibleIds],
+  );
+  const topics = useMemo(
     () =>
       (data?.nodes ?? [])
-        .filter((node) => node.kind === "pattern" && connectedIds.has(node.id))
-        .sort((a, b) => (b.potential ?? 0) - (a.potential ?? 0)),
-    [data, connectedIds],
+        .filter((node) => visibleIds.has(node.id))
+        .sort(
+          (a, b) =>
+            b.potential - a.potential || b.posts - a.posts || a.label.localeCompare(b.label),
+        ),
+    [data, visibleIds],
   );
-  const relatedPatterns = useMemo(
+  const searchableTopics = useMemo(
+    () =>
+      topics.map((node, index) => ({ node, rank: index + 1, text: topicSearchText(node.label) })),
+    [topics],
+  );
+  const matchingTopics = useMemo(() => {
+    const query = topicSearchText(topicQuery).trim();
+    return query ? searchableTopics.filter((item) => item.text.includes(query)) : searchableTopics;
+  }, [searchableTopics, topicQuery]);
+  const lastTopicPage = Math.max(0, Math.ceil(matchingTopics.length / TOPIC_PAGE_SIZE) - 1);
+  const topicPage = Math.min(requestedTopicPage, lastTopicPage);
+  const topicPageStart = topicPage * TOPIC_PAGE_SIZE;
+  const pageTopics = matchingTopics.slice(topicPageStart, topicPageStart + TOPIC_PAGE_SIZE);
+  const relatedTopics = useMemo(
     () =>
       (data?.edges ?? [])
         .flatMap((edge) => {
-          if (edge.relation !== "similarity" || !selectedId) return [];
+          if (!selectedId) return [];
           const otherId =
             edge.source === selectedId
               ? edge.target
               : edge.target === selectedId
                 ? edge.source
                 : null;
-          const node = data?.nodes.find((item) => item.id === otherId);
-          return node ? [{ node, similarity: edge.similarity ?? edge.weight }] : [];
+          const node = data?.nodes.find((item) => item.id === otherId && visibleIds.has(item.id));
+          return node ? [{ node, similarity: edge.similarity }] : [];
         })
         .sort((a, b) => b.similarity - a.similarity),
-    [data, selectedId],
+    [data, selectedId, visibleIds],
   );
-  const audienceLabel =
-    data?.coverage.find((row) => row.segmentId === audience)?.label ?? "All audiences";
+  const sourceLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const row of data?.coverage ?? []) {
+      labels.set(row.segmentId, row.label);
+      labels.set(row.source, row.label);
+    }
+    return labels;
+  }, [data]);
+  const sourceLabel =
+    data?.coverage.find((row) => row.segmentId === sourceId)?.label ?? "All sources";
+  const windowText = WINDOWS.find((window) => window.hours === hours)?.text ?? `${hours} hours`;
+  const stats = data?.stats;
+  const stale =
+    data !== undefined && now - Date.parse(data.generatedAt) > STALE_MAP_MINUTES * 60_000;
   const status = collection.data;
+  const progress = status?.progress;
   const busy = collect.isPending || status?.backfilling === true;
-  const live = status?.configured === true && status.tailConnected;
+  const healthy =
+    status?.configured === true &&
+    status.enabled &&
+    status.lastBackfillAt !== null &&
+    status.lastErrors.length === 0;
   const statusLabel = collection.isError
     ? "Status unavailable"
     : !status
       ? "Connecting"
       : !status.configured
         ? "Database required"
-        : live
-          ? "Live feed"
-          : busy
-            ? "Collecting"
-            : "Feed disconnected";
+        : busy
+          ? "Collecting"
+          : status.lastErrors.length
+            ? "Source errors"
+            : !status.enabled
+              ? "Polling paused"
+              : healthy
+                ? "Polling active"
+                : "Waiting for first poll";
+  const viewLabel = view === "board" ? "Topic board" : "Trend graph";
+  const inspectorVisible = desktopInspector && !narrow && (view === "graph" || selected !== null);
   const unconfigured =
     map.error instanceof Error && "code" in map.error && map.error.code === "database_unconfigured";
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    document.title = `${viewLabel} — Trendifest`;
+  }, [viewLabel]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1199px)");
@@ -251,18 +455,32 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
     setSelectedId(null);
   }, [hours]);
 
-  /** Filtering only changes emphasis; it must not restart the force simulation. */
-  function chooseAudience(id: string | null) {
-    setAudience(id);
+  // A topic that leaves the current window or filter must not stay selected.
+  useEffect(() => {
+    if (selectedId && !visibleIds.has(selectedId)) setSelectedId(null);
+  }, [selectedId, visibleIds]);
+
+  /** A source filter narrows the drawn topics; it never fabricates source nodes. */
+  function chooseSource(id: string | null) {
+    setSourceId(id);
+    setRequestedTopicPage(0);
+    setTopicQuery("");
     setSelectedId(null);
     setNavOpen(false);
+  }
+
+  /** Views share the query and filters; navigation does not fetch another map. */
+  function chooseView(next: "graph" | "board") {
+    setView(next);
+    setNavOpen(false);
+    window.requestAnimationFrame(() => workspaceHeading.current?.focus());
   }
 
   /** Both the ranked list and canvas open the same details, including on narrow screens. */
   function selectNode(id: string | null) {
     setSelectedId(id);
     if (id) {
-      if (!connectedIds.has(id)) setAudience(null);
+      if (!visibleIds.has(id)) setSourceId(null);
       if (narrow) setMobileInspector(true);
       else setDesktopInspector(true);
     }
@@ -305,28 +523,51 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
         </div>
       }
     >
-      <div className="od-sidebar-section">
+      <SidebarSection label="Workspace" collapsed={rail}>
         <SidebarItem
           icon={<Network />}
-          active={!audience}
+          active={view === "graph"}
           collapsed={rail}
-          onClick={() => chooseAudience(null)}
-          count={data?.nodes.filter((node) => node.kind === "pattern").length}
-          title="All audiences"
+          onClick={() => chooseView("graph")}
+          count={data?.nodes.length}
+          title="Trend graph"
         >
           Trend graph
         </SidebarItem>
-      </div>
-      <SidebarSection label="Audience feeds" collapsed={rail}>
+        <SidebarItem
+          icon={<ListOrdered />}
+          active={view === "board"}
+          collapsed={rail}
+          onClick={() => chooseView("board")}
+          count={data?.nodes.length}
+          title="Topic board"
+        >
+          Topic board
+        </SidebarItem>
+      </SidebarSection>
+      <SidebarSection label="Sources" collapsed={rail}>
+        <SidebarItem
+          icon={<Circle className="size-3" />}
+          active={!sourceId}
+          collapsed={rail}
+          onClick={() => chooseSource(null)}
+          title="All collected sources"
+        >
+          All sources
+        </SidebarItem>
         {(data?.coverage ?? []).map((row) => (
           <SidebarItem
             key={row.segmentId}
-            icon={row.segmentId === "discover" ? <Radio /> : <Circle className="size-3" />}
-            active={audience === row.segmentId}
+            icon={<Circle className="size-3" />}
+            active={sourceId === row.segmentId}
             collapsed={rail}
-            onClick={() => chooseAudience(row.segmentId)}
+            onClick={() => chooseSource(row.segmentId)}
             count={row.posts}
-            title={row.error ? `${row.label}: ${row.error}` : row.label}
+            title={
+              row.error
+                ? `${row.label}: ${row.error}`
+                : `${row.label} — ${NEWS_SOURCES.has(row.source) ? "news publisher feed" : "community discussion feed"}`
+            }
           >
             {row.label}
           </SidebarItem>
@@ -343,114 +584,257 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
       <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-line px-4">
         <div>
           <h2 className="text-[12.5px] font-medium text-fg">
-            {selected ? "Pattern details" : "Highest potential"}
+            {selected ? "Topic details" : "Top topics"}
           </h2>
           <p className="mt-0.5 text-[10.5px] text-fg-3">
             {selected
-              ? "Evidence behind the node"
-              : `${patterns.length} patterns · last ${hours} hours`}
+              ? "Evidence behind this topic"
+              : `${topics.length} topics · last ${windowText}`}
           </p>
         </div>
         {selected && (
           <Button
             variant="ghost"
             square
-            aria-label="Clear node selection"
-            onClick={() => setSelectedId(null)}
+            aria-label="Clear topic selection"
+            onClick={() => {
+              setSelectedId(null);
+              if (view === "board") setMobileInspector(false);
+            }}
           >
             <X />
           </Button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      {view === "graph" && (
+        <div className="shrink-0 border-b border-line px-3 py-2">
+          <label className="mb-1 block text-[11px] text-fg-3">
+            Search ranked topics
+            <input
+              type="search"
+              value={topicQuery}
+              onChange={(event) => {
+                setTopicQuery(event.target.value);
+                setRequestedTopicPage(0);
+              }}
+              placeholder="Event, product or model"
+              className="mt-1 block w-full rounded-md border border-line bg-surface px-2.5 py-2 text-base text-fg placeholder:text-fg-3 xl:text-[12px]"
+            />
+          </label>
+          <nav
+            aria-label="Topic ranking pages"
+            className="mt-2 flex items-center justify-between gap-2"
+          >
+            <Button
+              variant="ghost"
+              disabled={topicPage === 0}
+              onClick={() => setRequestedTopicPage(topicPage - 1)}
+            >
+              Previous
+            </Button>
+            <span role="status" className="mono text-center text-[10.5px] text-fg-3">
+              {matchingTopics.length === 0
+                ? "0 matches"
+                : `${topicPageStart + 1}–${topicPageStart + pageTopics.length} of ${matchingTopics.length}`}
+            </span>
+            <Button
+              variant="ghost"
+              disabled={topicPage >= lastTopicPage}
+              onClick={() => setRequestedTopicPage(topicPage + 1)}
+            >
+              Next
+            </Button>
+          </nav>
+        </div>
+      )}
+      <TopicInspectorBody
+        topicId={selected?.id ?? null}
+        pageKey={`${sourceId}:${hours}:${topicQuery}:${topicPage}`}
+      >
         {selected && (
           <div className="border-b border-line p-4">
-            <NodeDetail node={selected} />
-            {selected.kind === "pattern" && (
-              <div className="mt-4 border-t border-line pt-4">
-                <h3 className="label-caps mb-2">Similar patterns</h3>
-                {relatedPatterns.length === 0 ? (
-                  <p className="text-[11px] leading-5 text-fg-3">
-                    No displayed pattern meets the same-model similarity threshold.
-                  </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {relatedPatterns.map(({ node, similarity }) => (
-                      <li key={node.id}>
-                        <button
-                          type="button"
-                          onClick={() => selectNode(node.id)}
-                          className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-start hover:bg-hover"
+            <NodeDetail node={selected} sourceLabels={sourceLabels} />
+            <div className="mt-4 border-t border-line pt-4">
+              <h3 className="label-caps mb-2">Related topics</h3>
+              {relatedTopics.length === 0 ? (
+                <p className="text-[11px] leading-5 text-fg-3">
+                  No displayed topic shares a measured relationship with this one. A missing link is
+                  not evidence that the topics are unrelated.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {relatedTopics.map(({ node, similarity }) => (
+                    <li key={node.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectNode(node.id)}
+                        className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-start hover:bg-hover"
+                      >
+                        <span className="min-w-0 flex-1 break-words text-[11.5px] leading-5 text-fg-2">
+                          {node.label}
+                        </span>
+                        <span
+                          className="mono pt-0.5 text-[10.5px] text-fg-3"
+                          title="Measured semantic similarity between the two topics"
                         >
-                          <span className="min-w-0 flex-1 break-words text-[11.5px] leading-5 text-fg-2">
-                            {node.label}
-                          </span>
-                          <span
-                            className="mono pt-0.5 text-[10.5px] text-fg-3"
-                            title="Cosine similarity"
-                          >
-                            {similarity.toFixed(3)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
+                          {similarity.toFixed(3)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
-        <ol className="p-2" aria-label="Patterns ranked by potential">
-          {patterns.map((node, index) => (
-            <li key={node.id}>
-              <button
-                type="button"
-                className={cn(
-                  "pattern-row group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-3 text-start hover:bg-hover",
-                  selectedId === node.id && "bg-active",
-                )}
-                aria-pressed={selectedId === node.id}
-                onClick={() => selectNode(selectedId === node.id ? null : node.id)}
-              >
-                <span className="mono pt-0.5 text-[10.5px] text-fg-3">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 block break-words text-[12px] leading-[18px] text-fg-2 group-hover:text-fg">
-                    {node.label}
+        {view === "graph" && (
+          <ol className="p-2" aria-label="Topics ranked by potential">
+            {pageTopics.map(({ node, rank }) => (
+              <li key={node.id}>
+                <button
+                  type="button"
+                  className={cn(
+                    "topic-row group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-3 text-start hover:bg-hover",
+                    selectedId === node.id && "bg-active",
+                  )}
+                  aria-pressed={selectedId === node.id}
+                  onClick={() => selectNode(selectedId === node.id ? null : node.id)}
+                >
+                  <span className="mono pt-0.5 text-[10.5px] text-fg-3">
+                    {String(rank).padStart(2, "0")}
                   </span>
-                  <span className="mt-1.5 flex items-center gap-1 text-[10.5px] text-fg-3">
-                    <Users className="size-3" aria-hidden="true" />
-                    {node.authors} authors
-                    <span className="mx-1" aria-hidden="true">
-                      ·
+                  <span className="min-w-0 flex-1">
+                    <span className="line-clamp-2 block break-words text-[12px] leading-[18px] text-fg-2 group-hover:text-fg">
+                      {node.label}
                     </span>
-                    {node.posts} posts
+                    <span className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[10.5px] text-fg-3">
+                      {node.discussionPosts > 0 && (
+                        <>
+                          <Users className="size-3" aria-hidden="true" />
+                          <span>Accounts: {node.authors}</span>
+                          <span aria-hidden="true">·</span>
+                          <span>Posts: {node.discussionPosts}</span>
+                        </>
+                      )}
+                      {node.newsPosts > 0 && (
+                        <>
+                          {node.discussionPosts > 0 && <span aria-hidden="true">·</span>}
+                          <span>News: {node.newsPosts}</span>
+                          <span aria-hidden="true">·</span>
+                          <span>Publishers: {node.publishers}</span>
+                        </>
+                      )}
+                    </span>
                   </span>
-                </span>
-                <PotentialBadge node={node} />
-              </button>
-            </li>
-          ))}
-        </ol>
-        {data && patterns.length === 0 && (
+                  <PotentialBadge node={node} />
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+        {view === "graph" && topicQuery.trim() && matchingTopics.length === 0 && (
+          <div className="p-4 text-[12px] leading-5 text-fg-3">
+            <p>No ranked topic matches “{topicQuery}”. The graph is unchanged.</p>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setTopicQuery("");
+                setRequestedTopicPage(0);
+              }}
+            >
+              Clear search
+            </Button>
+          </div>
+        )}
+        {data && topics.length === 0 && (
           <p className="p-4 text-[12px] leading-5 text-fg-3">
-            No patterns observed for this audience in this window. Try a wider window or collect
-            more posts.
+            {sourceId
+              ? "No topic in this window includes this source."
+              : "No topic groups were formed from the posts in this window."}
+          </p>
+        )}
+      </TopicInspectorBody>
+      <div className="shrink-0 space-y-1 border-t border-line px-4 py-3 text-[10.5px] leading-4 text-fg-3">
+        <details>
+          <summary className="cursor-pointer font-medium text-fg-2">Map limits and scoring</summary>
+          <div className="mt-2 space-y-1">
+            <p>
+              Bigger nodes have higher potential — a heuristic from evidence support and growth, not
+              a probability. Colour tracks measured related links.
+            </p>
+            {stats?.limited && (
+              <p>
+                Up to 1,500 topics are shown from a bounded recent corpus. Some evidence or
+                lower-ranked topics may be omitted.
+              </p>
+            )}
+            {data && !data.method.velocityComparable && (
+              <p>New-evidence scoring stays neutral until twelve hours of history exist.</p>
+            )}
+          </div>
+        </details>
+        {stats && stats.pendingEmbeddings > 0 && (
+          <p>
+            {stats.pendingEmbeddings} collected post
+            {stats.pendingEmbeddings === 1 ? " is" : "s are"} still awaiting embeddings; topics may
+            grow as they finish.
+          </p>
+        )}
+        {data && stale && (
+          <p className="text-fg-2">
+            This map was computed {formatRelative(data.generatedAt)}. Refresh, or check collection
+            status; the newest posts may be missing.
           </p>
         )}
       </div>
-      <p className="shrink-0 border-t border-line px-4 py-3 text-[10.5px] leading-4 text-fg-3">
-        Larger nodes mean higher potential. Scores rank collected evidence; they are not
-        predictions.
-      </p>
     </div>
   );
+
+  const emptyState = (() => {
+    if (!data || topics.length > 0) return null;
+    if (sourceId) {
+      return {
+        title: `No topics from ${sourceLabel} in this window`,
+        body: "Other sources may still have topics. Clear the filter to see every topic, or widen the window.",
+        action: (
+          <Button className="pointer-events-auto mt-4" onClick={() => chooseSource(null)}>
+            Show all sources
+          </Button>
+        ),
+      };
+    }
+    if (stats && stats.posts > 0) {
+      return {
+        title: "No topic groups yet",
+        body:
+          stats.pendingEmbeddings > 0
+            ? `${stats.posts} posts are collected and ${stats.pendingEmbeddings} still await embeddings. Topics appear as those vectors finish.`
+            : `${stats.posts} collected posts did not form any specific topic group in this window. Try a wider window or collect more.`,
+        action: (
+          <Button className="pointer-events-auto mt-4" onClick={() => setCollectionOpen(true)}>
+            Collection status
+          </Button>
+        ),
+      };
+    }
+    return {
+      title: `No collected posts in the last ${windowText}`,
+      body: "Collection may be paused, or every source failed this cycle. Check collection status to see which feeds reported.",
+      action: (
+        <Button className="pointer-events-auto mt-4" onClick={() => setCollectionOpen(true)}>
+          Collection status
+        </Button>
+      ),
+    };
+  })();
+
+  // `toCanvas` already dropped links whose endpoints are outside the filter.
+  const relatedLinkCount = canvas.links.length;
 
   return (
     <>
       <a className="skip-link" href="#graph-workspace">
-        Skip to graph
+        {view === "board" ? "Skip to topic board" : "Skip to graph"}
       </a>
       <Shell
         collapsed={collapsed}
@@ -461,17 +845,23 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               className="mobile-nav-trigger"
               variant="ghost"
               square
-              aria-label="Open audience sidebar"
+              aria-label="Open source sidebar"
               onClick={() => setNavOpen(true)}
             >
               <Menu />
             </Button>
             <div className="flex min-w-0 items-center gap-2">
-              <Network className="size-4 text-fg-3" aria-hidden="true" />
-              <h1 className="text-[13px] font-medium">Trend graph</h1>
+              {view === "board" ? (
+                <ListOrdered className="size-4 text-fg-3" aria-hidden="true" />
+              ) : (
+                <Network className="size-4 text-fg-3" aria-hidden="true" />
+              )}
+              <h1 ref={workspaceHeading} tabIndex={-1} className="text-[13px] font-medium">
+                {viewLabel}
+              </h1>
               <ChevronRight className="header-breadcrumb size-3 text-fg-4" aria-hidden="true" />
               <span className="header-breadcrumb max-w-40 truncate text-[12px] text-fg-3">
-                {audienceLabel}
+                {sourceLabel}
               </span>
             </div>
             <div className="ms-auto flex items-center gap-1.5">
@@ -493,14 +883,14 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
                 </Button>
               )}
               <span className="header-live">
-                <Badge dot tone={live ? "ok" : "neutral"}>
+                <Badge dot tone={healthy ? "ok" : "neutral"}>
                   {statusLabel}
                 </Badge>
               </span>
               <Button
                 variant="ghost"
                 square
-                aria-label="Refresh the map"
+                aria-label={view === "board" ? "Refresh topics" : "Refresh the map"}
                 disabled={map.isFetching}
                 onClick={() => void map.refetch()}
               >
@@ -509,7 +899,7 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               <Button
                 variant="ghost"
                 square
-                aria-label="How the score works"
+                aria-label="How topics and potential work"
                 onClick={() => setAboutOpen(true)}
               >
                 <Info />
@@ -520,20 +910,54 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
       >
         <div id="graph-workspace" tabIndex={-1} className="graph-workspace">
           <section
-            className="graph-surface relative min-h-0 min-w-0 overflow-hidden"
-            aria-label="Trend graph"
+            className={cn(
+              "graph-surface relative min-h-0 min-w-0 overflow-hidden",
+              view === "board" && "flex flex-col",
+            )}
+            aria-label={view === "board" ? "Topic board" : "Topic graph"}
             aria-describedby="graph-description"
           >
             <p id="graph-description" className="sr-only">
-              Collected patterns connected to audience feeds. Larger pattern nodes have higher
-              emergence scores. Use the pattern inspector to select nodes with the keyboard.
+              {view === "board" ? (
+                "Specific topics ranked by heuristic potential. Select a title or View evidence to inspect source records. Source and time filters match the graph."
+              ) : (
+                <>
+                  Graph of specific topics collected from Vietnamese sources. Each node is one topic
+                  — an event, product, or model version — and each line is a measured relationship
+                  between two topics. Larger nodes have higher heuristic potential. Use the ranked
+                  topic list in the inspector for keyboard navigation and full evidence.
+                </>
+              )}
             </p>
-            <div className="graph-toolbar pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-3 p-4">
+            <div
+              className={cn(
+                "graph-toolbar z-20 flex shrink-0 flex-wrap items-start justify-between gap-3 p-4",
+                view === "graph"
+                  ? "pointer-events-none absolute inset-x-0 top-0"
+                  : "relative border-b border-line",
+              )}
+            >
               <div className="min-w-0">
-                <p className="text-[11px] font-medium text-fg-2">{audienceLabel}</p>
-                <p className="mt-1 text-[11px] text-fg-3">
-                  {data ? `${patterns.length} patterns in view` : "Connecting to collected signals"}
+                <p className="text-[11px] font-medium text-fg-2">{sourceLabel}</p>
+                <p className="mt-1 max-w-[36ch] text-[11px] text-fg-3">
+                  {data
+                    ? sourceId
+                      ? `${topics.length} of ${data.nodes.length} topics from ${sourceLabel} · last ${windowText}`
+                      : `${topics.length} topic${topics.length === 1 ? "" : "s"} · last ${windowText}`
+                    : "Connecting to collected signals"}
                 </p>
+                {data && (stale || (stats?.pendingEmbeddings ?? 0) > 0 || stats?.limited) && (
+                  <p className="mt-1 flex max-w-[42ch] flex-wrap items-center gap-1 text-[10.5px] text-fg-3">
+                    {stale && <Badge>Stale · {formatRelative(data.generatedAt)}</Badge>}
+                    {(stats?.pendingEmbeddings ?? 0) > 0 && (
+                      <Badge>
+                        {stats?.pendingEmbeddings} post
+                        {stats?.pendingEmbeddings === 1 ? "" : "s"} awaiting embeddings
+                      </Badge>
+                    )}
+                    {stats?.limited && <Badge>Bounded sample</Badge>}
+                  </p>
+                )}
               </div>
               <div className="pointer-events-auto flex items-center gap-2">
                 <div
@@ -554,41 +978,61 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
                       size="xs"
                       className="observation-option"
                       aria-pressed={hours === window.hours}
-                      onClick={() => setHours(window.hours)}
+                      title={`Last ${window.text}`}
+                      onClick={() => {
+                        setHours(window.hours);
+                        setRequestedTopicPage(0);
+                      }}
                     >
                       {window.label}
                     </Button>
                   ))}
                 </div>
-                <Button
-                  variant="ghost"
-                  square
-                  aria-label="Toggle pattern inspector"
-                  aria-expanded={narrow ? mobileInspector : desktopInspector}
-                  onClick={() =>
-                    narrow
-                      ? setMobileInspector(!mobileInspector)
-                      : setDesktopInspector(!desktopInspector)
-                  }
-                >
-                  <PanelRight />
-                </Button>
+                {(view === "graph" || selected) && (
+                  <Button
+                    variant="ghost"
+                    square
+                    aria-label="Toggle topic inspector"
+                    aria-expanded={narrow ? mobileInspector : desktopInspector}
+                    onClick={() =>
+                      narrow
+                        ? setMobileInspector(!mobileInspector)
+                        : setDesktopInspector(!desktopInspector)
+                    }
+                  >
+                    <PanelRight />
+                  </Button>
+                )}
               </div>
             </div>
-            {canvas.nodes.length > 0 && (
+            {view === "graph" && canvas.nodes.length > 0 && (
               <TrendGraphCanvas
                 theme={theme}
                 nodes={canvas.nodes}
                 links={canvas.links}
                 selectedId={selectedId}
-                activeIds={connectedIds}
+                activeIds={visibleIds}
                 onSelect={selectNode}
               />
+            )}
+            {view === "board" && data && topics.length > 0 && (
+              <div className="min-h-0 flex-1">
+                <TopicBoard
+                  key={`${sourceId}:${hours}`}
+                  topics={topics}
+                  selectedId={selectedId}
+                  sourceLabels={sourceLabels}
+                  generatedAt={data.generatedAt}
+                  limited={data.stats.limited}
+                  detailsOpen={inspectorVisible}
+                  onSelect={selectNode}
+                />
+              </div>
             )}
             {map.isLoading && (
               <div className="graph-state" role="status">
                 <Activity className="size-5 text-fg-3" aria-hidden="true" />
-                <p>Loading collected patterns…</p>
+                <p>Grouping collected posts into topics…</p>
               </div>
             )}
             {unconfigured && (
@@ -599,71 +1043,64 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
             {map.isError && !unconfigured && (
               <div className="graph-error" role="alert">
                 <p>
-                  {data
-                    ? "Graph refresh failed. Showing the last collected data."
-                    : map.error.message}
+                  {data ? "Refresh failed. Showing the last computed topics." : map.error.message}
                 </p>
                 <Button onClick={() => void map.refetch()}>Try again</Button>
               </div>
             )}
-            {data && patterns.length === 0 && !map.isError && (
-              <div className="graph-empty pointer-events-none">
+            {emptyState && !map.isError && (
+              <div className="graph-empty">
                 <Network className="mx-auto mb-3 size-6 text-fg-3" aria-hidden="true" />
-                <p className="text-[13px] font-medium">No patterns in this view yet</p>
-                <p className="mt-1 text-[12px] text-fg-3">
-                  Choose another audience or collect more posts.
+                <p className="text-[13px] font-medium">{emptyState.title}</p>
+                <p className="mx-auto mt-1 max-w-[46ch] text-[12px] leading-5 text-fg-3">
+                  {emptyState.body}
                 </p>
-                <Button
-                  className="pointer-events-auto mt-4"
-                  onClick={() => setCollectionOpen(true)}
-                >
-                  Collection status
-                </Button>
+                {emptyState.action}
               </div>
             )}
-            <div className="graph-footer pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-[10.5px] text-fg-3">
-              <span>
-                {data ? (
-                  <>
-                    {data.edges.filter((edge) => edge.relation === "similarity").length} similarity
-                    links
-                    <span className="footer-updated">
-                      {" "}
-                      · updated {formatRelative(data.generatedAt)}
-                    </span>
-                  </>
-                ) : (
-                  "Waiting for data"
-                )}
-              </span>
-              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded bg-surface/90 px-1.5 py-1">
-                <span className="flex items-center gap-1" aria-hidden="true">
-                  <span className="graph-legend-swatch" data-shape="text" data-level="1" />
-                  <span className="graph-legend-swatch" data-shape="text" data-level="2" />
-                  <span className="graph-legend-swatch" data-shape="text" data-level="3" />
+            {view === "graph" && (
+              <div className="graph-footer pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-[10.5px] text-fg-3">
+                <span>
+                  {data ? (
+                    <>
+                      {relatedLinkCount} related-topic link
+                      {relatedLinkCount === 1 ? "" : "s"}
+                      <span className="footer-updated">
+                        {" "}
+                        · computed {formatRelative(data.generatedAt)}
+                      </span>
+                    </>
+                  ) : (
+                    "Waiting for data"
+                  )}
                 </span>
-                <span>colour · connections</span>
-                <span className="flex items-center gap-1">
-                  <span className="graph-legend-swatch" data-shape="image" data-level="2" />
-                  <span className="graph-legend-swatch" data-shape="video" data-level="2" />
-                  <span className="graph-legend-swatch" data-shape="audio" data-level="2" />
-                  <span className="graph-legend-swatch" data-shape="link" data-level="2" />
+                <span className="graph-legend flex flex-wrap items-center gap-x-3 gap-y-1 rounded bg-surface/90 px-1.5 py-1">
+                  <span className="flex items-center gap-1" aria-hidden="true">
+                    <span className="graph-legend-dot" style={{ width: 5, height: 5 }} />
+                    <span className="graph-legend-dot" style={{ width: 9, height: 9 }} />
+                    <span className="graph-legend-dot" style={{ width: 13, height: 13 }} />
+                  </span>
+                  <span>size · topic potential</span>
+                  <span className="flex items-center gap-1" aria-hidden="true">
+                    <span className="graph-legend-swatch" data-level="1" />
+                    <span className="graph-legend-swatch" data-level="2" />
+                    <span className="graph-legend-swatch" data-level="3" />
+                  </span>
+                  <span>colour · related links</span>
+                  <span className="flex items-center gap-1" aria-hidden="true">
+                    <span className="graph-legend-line" />
+                  </span>
+                  <span>line · measured link</span>
                 </span>
-                <span>shape · type</span>
-                <span className="flex items-center gap-1" aria-hidden="true">
-                  <span className="graph-legend-dot" style={{ width: 5, height: 5 }} />
-                  <span className="graph-legend-dot" style={{ width: 9, height: 9 }} />
-                </span>
-                <span>size · potential</span>
-              </span>
-            </div>
+              </div>
+            )}
           </section>
           <aside
             className="graph-inspector min-h-0 min-w-0 border border-line bg-surface"
-            aria-label="Pattern inspector"
-            data-open={desktopInspector && !narrow}
-            inert={!desktopInspector || narrow}
-            aria-hidden={!desktopInspector || narrow}
+            aria-label="Topic inspector"
+            data-open={inspectorVisible}
+            inert={!inspectorVisible}
+            aria-hidden={!inspectorVisible}
           >
             {inspector}
           </aside>
@@ -671,13 +1108,13 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
       </Shell>
       {dialogsEnabled && (
         <Suspense fallback={null}>
-          <Dialog open={navOpen} onOpenChange={setNavOpen} title="Audience feeds" size="sm">
+          <Dialog open={navOpen} onOpenChange={setNavOpen} title="Workspace and sources" size="sm">
             <div className="mobile-sidebar">{sidebar(false)}</div>
           </Dialog>
           <Dialog
             open={mobileInspector && narrow}
             onOpenChange={setMobileInspector}
-            title="Pattern inspector"
+            title="Topic inspector"
             size="sm"
           >
             <div className="mobile-inspector">{inspector}</div>
@@ -685,49 +1122,89 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
           <Dialog
             open={aboutOpen}
             onOpenChange={setAboutOpen}
-            title="How trend potential works"
-            description="A transparent ranking heuristic over collected evidence, not a probability."
+            title="How topics and potential work"
+            description="Specific topics grouped from collected evidence, ranked by a transparent heuristic."
           >
             <div className="space-y-4 text-[12.5px] leading-5 text-fg-2">
-              <p>
-                Solid edges mean an audience feed observed a pattern. Dashed edges connect patterns
-                with similar embedding centroids, compared only within the same model, modality, and
-                native dimension.
-              </p>
-              <p>
-                Similarity links use cosine thresholds of 0.75 for text and 0.78 for images or
-                audio. Each pattern has at most three similarity links. These are affinity
-                heuristics, not probabilities or proof that two posts mean the same thing.
-              </p>
-              <dl className="space-y-2">
-                {Object.entries(
-                  data?.method.weights ?? {
-                    reach: 0.34,
-                    velocity: 0.26,
-                    spread: 0.18,
-                    persistence: 0.12,
-                    diversity: 0.1,
-                  },
-                ).map(([label, weight]) => (
-                  <div className="flex justify-between gap-4" key={label}>
-                    <dt className="capitalize">{label}</dt>
-                    <dd className="mono">{Math.round(weight * 100)}%</dd>
-                  </div>
-                ))}
-              </dl>
-              <p>
-                The weighted result is reduced when evidence is limited. Five independent authors
-                are needed for the full score. Larger pattern nodes have higher scores; audience
-                hubs carry no score. Connections do not inflate the score.
-              </p>
-              <p className="rounded-lg bg-sunken p-3">
-                {data?.method.velocityComparable
-                  ? "Velocity compares distinct authors in the latest and preceding six-hour windows."
-                  : "Velocity stays neutral until at least twelve hours of observation history are available."}
-              </p>
+              <section className="space-y-1.5">
+                <h3 className="text-[12.5px] font-medium text-fg">Where topics come from</h3>
+                <p>
+                  Each dot is one specific topic: an event, a product, or a model version that
+                  several collected posts describe. Posts are grouped by semantic similarity in a
+                  multilingual embedding space, and posts that only share a broad category or forum
+                  chatter stay separate. Several independent posts about the same model reinforce
+                  one bigger topic; different products or versions remain different topics.
+                </p>
+                <p>
+                  Grouping is a heuristic over a sampled collection, not a census of Vietnamese
+                  discussion. An event that happened but was not collected cannot appear.
+                </p>
+              </section>
+              <section className="space-y-1.5">
+                <h3 className="text-[12.5px] font-medium text-fg">What the lines mean</h3>
+                <p>
+                  A line joins two distinct topics with a measured semantic relationship plus
+                  supporting anchors. Each topic has at most three. No line is drawn merely because
+                  two posts came from the same site, and an absent line is not evidence that two
+                  topics are unrelated.
+                </p>
+              </section>
+              <section className="space-y-1.5">
+                <h3 className="text-[12.5px] font-medium text-fg">How potential is scored</h3>
+                <dl className="space-y-2">
+                  {Object.entries(
+                    data?.method.weights ?? {
+                      reach: 0.3,
+                      velocity: 0.25,
+                      spread: 0.2,
+                      persistence: 0.15,
+                      diversity: 0.1,
+                    },
+                  ).map(([label, weight]) => (
+                    <div className="flex justify-between gap-4" key={label}>
+                      <dt className="capitalize">{label}</dt>
+                      <dd className="mono">{Math.round(weight * 100)}%</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p>
+                  The weighted result is reduced while evidence is thin, so one account posting
+                  repeatedly — or one headline copied across sites — cannot outrank a topic with
+                  several independent posts. Node size follows potential; meaning in the graph never
+                  depends on colour alone.
+                </p>
+                <p className="rounded-lg bg-sunken p-3">
+                  {data?.method.velocityComparable
+                    ? "New evidence compares consecutive six-hour windows of collection, not verified new publications. Forum timestamps can reflect thread activity."
+                    : "New-evidence scoring stays neutral until at least twelve hours of observation history exist, so a young map does not fake a spike."}
+                </p>
+              </section>
+              <section className="space-y-1.5">
+                <h3 className="text-[12.5px] font-medium text-fg">What counts as evidence</h3>
+                <p>
+                  Discussion posts and news reports are shown separately. A news headline counts as
+                  a publisher source; it is never counted as a community person, a like, or a
+                  reaction. Likes and reposts appear only as measured counters — an unmeasured
+                  counter is shown as not measured, never as zero.
+                </p>
+                <p className="text-[11px] text-fg-3">
+                  {data
+                    ? `Grouped with ${data.method.topicModel} at a ${data.method.groupingThreshold.toFixed(2)} similarity floor, method version ${data.method.version}.`
+                    : "Grouping model details appear once the map loads."}{" "}
+                  Source links in the inspector are evidence for a topic; sources are never graph
+                  nodes.
+                </p>
+              </section>
               <p className="text-[11px] text-fg-3">
-                Audience feeds are collection contexts, not verified viewer demographics. Feed
-                selection cannot prove a poster’s age.
+                {!stats
+                  ? "Embedding status appears once the map loads."
+                  : stats.pendingEmbeddings > 0
+                    ? `${stats.pendingEmbeddings} collected posts still await embeddings; topics may grow and their counts may rise.`
+                    : stats.posts > 0
+                      ? "Every collected post in this window has a topic embedding."
+                      : "No posts are collected in this window."}{" "}
+                Collection is sampled and bounded, so this map does not promise complete internet
+                coverage.
               </p>
             </div>
           </Dialog>
@@ -735,14 +1212,14 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
             open={collectionOpen}
             onOpenChange={setCollectionOpen}
             title="Collection status"
-            description="Live social feeds, local embeddings, and your Postgres database."
+            description="Vietnamese source polling, bounded local inference, and Postgres storage."
             footer={
               <Button
                 variant="primary"
                 icon={<RefreshCw />}
                 loading={busy}
                 disabled={!status?.configured}
-                onClick={() => collect.mutate(25)}
+                onClick={() => collect.mutate(500)}
               >
                 Collect now
               </Button>
@@ -750,17 +1227,52 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
           >
             <div className="space-y-4 text-[12px] leading-5 text-fg-2">
               <div className="flex items-center justify-between gap-3">
-                <span>Bluesky feed</span>
-                <Badge tone={live ? "ok" : "neutral"} dot>
+                <span>Source polling</span>
+                <Badge tone={healthy ? "ok" : "neutral"} dot>
                   {statusLabel}
                 </Badge>
               </div>
+              <dl className="space-y-2" aria-label="Source collection results">
+                {(data?.coverage ?? []).map((source) => {
+                  const result = status?.lastBackfill?.sources.find(
+                    (item) => item.segmentId === source.segmentId,
+                  );
+                  return (
+                    <div key={source.segmentId} className="flex items-start justify-between gap-3">
+                      <dt>
+                        {source.label}
+                        <span className="ms-1.5 text-[10.5px] text-fg-3">
+                          {NEWS_SOURCES.has(source.source) ? "news" : "discussion"}
+                        </span>
+                      </dt>
+                      <dd className="text-end text-fg-3">
+                        {result?.error
+                          ? result.stored + result.duplicates > 0
+                            ? `Partial · ${result.stored} stored · ${result.duplicates} unchanged`
+                            : "Unavailable"
+                          : result
+                            ? `${result.stored} stored · ${result.duplicates} unchanged`
+                            : busy
+                              ? "Collecting"
+                              : "Not collected"}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+              <p className="text-fg-3">
+                Each cycle examines up to 500 records per source; only accepted Vietnamese evidence
+                is stored. Publisher news remains separate from community discussion.
+              </p>
               <p>
                 {status?.lastBackfillAt
                   ? `Last collection ${formatRelative(status.lastBackfillAt)}.`
                   : "No completed collection reported."}{" "}
-                The graph refreshes every two minutes; feed status refreshes separately.
+                Sources are polled every ten minutes; the graph refreshes every two minutes.
               </p>
+              {progress?.note && (
+                <p className="rounded-lg bg-sunken p-3 text-fg-3">{progress.note}</p>
+              )}
               {collection.isError && (
                 <p role="alert" className="text-danger-fg">
                   {collection.error.message}
@@ -773,9 +1285,11 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               )}
               <p role="status" className="text-fg-3">
                 {busy
-                  ? "A collection cycle is running. This can take time while media is embedded."
+                  ? progress
+                    ? `${progress.current ? `${sourceLabels.get(progress.current) ?? progress.current}: ` : ""}${progress.phase}. ${progress.segmentsDone}/${progress.segments} sources processed; ${progress.fetched} records fetched, ${progress.stored} stored, ${progress.duplicates} unchanged, ${progress.rejected} rejected.`
+                    : "A collection cycle is running. New records are being collected and embedded."
                   : status?.lastBackfill
-                    ? `Last completed cycle: processed ${status.lastBackfill.stored} posts and ${status.lastBackfill.vectors} vectors. ${status.lastBackfill.errors.length} feed errors.`
+                    ? `Last cycle: ${status.lastBackfill.stored} stored, ${status.lastBackfill.duplicates} unchanged, ${status.lastBackfill.skippedLanguage + status.lastBackfill.skippedQuality} rejected. ${status.lastBackfill.errors.length} source errors.`
                     : collect.isSuccess
                       ? "Collection accepted. Waiting for updated status."
                       : ""}

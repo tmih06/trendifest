@@ -21,3 +21,12 @@ export function compactNumber(value: number) {
     maximumFractionDigits: 1,
   }).format(value);
 }
+
+/** Match Vietnamese titles with or without typed accents; display stays unchanged. */
+export function topicSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase();
+}

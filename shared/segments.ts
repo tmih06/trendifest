@@ -1,166 +1,156 @@
 import type { ViewerSegment } from "./types.ts";
 
 /**
- * Viewer segments are the unit of stratified collection. Each segment is a
- * feed subscription whose contents plausibly reach a bounded audience.
+ * Verified public Vietnamese collection contexts. Each network gets one bounded
+ * collection context per cycle; RSS excerpts are not a census of its users or
+ * replies, and an aggregated headline is one article rather than a crowd.
+ * Do not add a global discovery pool or infer an author's age from a forum.
  *
- * ## What a segment can and cannot claim
+ * Community discussion and news are separate evidence: the news contexts carry
+ * `evidenceType: "news"` and are never counted as people, authors or reactions
+ * by anything downstream.
  *
- * Bluesky exposes no age, gender, or demographic data. "Gen Z" here is a
- * *declared analyst prior about who plausibly reads these feeds*, never an
- * inferred attribute of an author. The system does not guess anyone's age, and
- * the UI labels the catalog as a prior. What *is* verified is language: feeds
- * were sampled 2026-11-03 and the English share of self-tagged posts measured;
- * `englishFloor` records that number, and the pipeline drops posts that are
- * tagged as other languages.
- *
- * ## Selection criteria
- *
- * 1. Resolves against the public feed index (dead feeds are removed, not left
- *    to fail silently at ingest).
- * 2. Measured English share of tagged posts ≥ 71%.
- * 3. Content is youth-culture-adjacent: internet humour, fandom, gaming, music,
- *    short-form video, meme formats.
- *
- * Feeds deliberately excluded: News (verified organisations, not an audience),
- * Science/AcademicSky (professional), Gardening, Astronomy, Urbanism,
- * Home cooking. Those skew older and would dilute a Gen-Z read; a broad-age
- * "control" segment was also removed, because it makes the collection claim
- * narrower without making the panel more useful.
+ * The four publisher contexts below name their whole section catalog in
+ * `additionalFeedUrls` and are read fan-in inside one cycle. Every document was
+ * read live on 2026-11-05 before being enabled (53 documents, 2,564 distinct
+ * articles inside the seven-day window); front pages (`tin-moi-nhat`, `home`)
+ * and the Dân trí `xa-hoi` document (frozen at September 2025) are excluded
+ * because they only repeat other sections or carry stale records. VietnamNet is
+ * not enabled: its section documents exceed the 1 MB response cap, its `/rss/home`
+ * and `/rss/tin-moi-nhat` paths are 404, and its one small document had no
+ * article inside the window.
  */
-
-interface SegmentDefinition extends ViewerSegment {
-  /** Measured share of English-tagged posts at the sample date, 0-1. */
-  englishFloor: number;
-  /** Why this feed belongs to a Gen-Z prior. Shown in the UI. */
-  prior: string;
-}
-
-export const VIEWER_SEGMENTS: SegmentDefinition[] = [
+export const VIEWER_SEGMENTS: ViewerSegment[] = [
   {
-    id: "discover",
-    label: "Discover",
-    description: "Bluesky's general trending feed: the broad discovery pool.",
-    source: "bluesky",
-    feeds: ["at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"],
-    scope: "whole-network",
-    englishFloor: 0.62,
-    prior: "Whole-network pool. English share measured at 62% before filtering.",
+    id: "voz",
+    label: "VOZ",
+    description: "Vietnamese community discussion excerpts from VOZ's public RSS feed.",
+    source: "voz",
+    evidenceType: "discussion",
+    feedUrl: "https://voz.vn/f/17/index.rss",
   },
   {
-    id: "shitpost",
-    label: "Shitposting",
-    description: "Trans and queer shitposters: meme formats and internet humour.",
-    source: "bluesky",
-    feeds: ["at://did:plc:q6gjnaw2blty4crticxkmujt/app.bsky.feed.generator/cl-tqsp"],
-    scope: "collection",
-    englishFloor: 0.95,
-    prior: "Internet humour and meme formats; a young-adult posting culture.",
+    id: "otofun",
+    label: "Otofun",
+    description: "Vietnamese community discussion excerpts from Otofun's public RSS feed.",
+    source: "otofun",
+    evidenceType: "discussion",
+    feedUrl: "https://www.otofun.net.vn/forums/77/index.rss",
   },
   {
-    id: "overheard",
-    label: "Overheard",
-    description: "Out-of-context quotes and overheard replies.",
-    source: "bluesky",
-    feeds: ["at://did:plc:vjyot2w7zeomrslomwpfxirl/app.bsky.feed.generator/aaajjrj657mnm"],
-    scope: "collection",
-    englishFloor: 1,
-    prior: "Screenshot-style quote humour; 100% English when sampled.",
+    id: "google-news",
+    label: "Google News VN",
+    description:
+      "Vietnamese news headlines from Google News' public front-page RSS. Each item is one " +
+      "publisher article; related headlines in an item are other coverage, not this article.",
+    source: "google-news",
+    evidenceType: "news",
+    feedUrl: "https://news.google.com/rss?hl=vi&gl=VN&ceid=VN%3Avi",
   },
   {
-    id: "music",
-    label: "Music discovery",
-    description: "Posts using the headphones emoji to share music.",
-    source: "bluesky",
-    feeds: ["at://did:plc:stu4unkwieyt5suhyfl6u5e4/app.bsky.feed.generator/aaacjvrirvq2w"],
-    scope: "collection",
-    englishFloor: 0.86,
-    prior: "Music sharing and discovery; a core short-form-video crossover.",
+    id: "nguoi-viet",
+    label: "Người Việt",
+    description:
+      "Articles from Người Việt's public Vietnam section, sampled across the last seven days.",
+    source: "nguoi-viet",
+    evidenceType: "news",
+    feedUrl: "https://www.nguoi-viet.com/wp-json/wp/v2/posts",
   },
   {
-    id: "gaming",
-    label: "VTuber / gaming",
-    description: "VTuber fan activity and gaming culture.",
-    source: "bluesky",
-    feeds: ["at://did:plc:7dl6s4wfcygfxzxok46z5gtu/app.bsky.feed.generator/aaaiyn75rk3wy"],
-    scope: "collection",
-    englishFloor: 0.71,
-    prior: "VTuber and gaming fandom; strongly skews young.",
-  },
-  {
-    id: "himbofeed",
-    label: "Himbo feed",
-    description: "Opt-in primary posts from a self-selected humour community.",
-    source: "bluesky",
-    feeds: ["at://did:plc:cxuzwp5dzmxkrdr55qh25mgb/app.bsky.feed.generator/aaap2eo4gzzes"],
-    scope: "collection",
-    englishFloor: 0.93,
-    prior: "Self-selected shitposting community; 93% English when sampled.",
-  },
-  {
-    id: "newskies",
-    label: "New users",
-    description: "First posts from people who just joined Bluesky.",
-    source: "bluesky",
-    feeds: ["at://did:plc:wzsilnxf24ehtmmc3gssy5bu/app.bsky.feed.generator/newskies"],
-    scope: "collection",
-    englishFloor: 0.56,
-    prior: "Newcomer introductions; a strong proxy for recent cohort behaviour.",
-  },
-  {
-    id: "art",
-    label: "Artists",
-    description: "Human-made art, trending and new.",
-    source: "bluesky",
-    feeds: [
-      "at://did:plc:y7crv2yh74s7qhmtx3mvbgv5/app.bsky.feed.generator/art-new",
-      "at://did:plc:odqmsar3ikz5ubokya4sempk/app.bsky.feed.generator/aaabhy3bowhbo",
+    id: "vnexpress",
+    label: "VnExpress",
+    description:
+      "Articles from VnExpress' official section feeds, merged by canonical link across the " +
+      "last seven days.",
+    source: "vnexpress",
+    evidenceType: "news",
+    feedUrl: "https://vnexpress.net/rss/thoi-su.rss",
+    additionalFeedUrls: [
+      "https://vnexpress.net/rss/the-gioi.rss",
+      "https://vnexpress.net/rss/kinh-doanh.rss",
+      "https://vnexpress.net/rss/khoa-hoc.rss",
+      "https://vnexpress.net/rss/giai-tri.rss",
+      "https://vnexpress.net/rss/the-thao.rss",
+      "https://vnexpress.net/rss/phap-luat.rss",
+      "https://vnexpress.net/rss/giao-duc.rss",
+      "https://vnexpress.net/rss/suc-khoe.rss",
+      "https://vnexpress.net/rss/doi-song.rss",
+      "https://vnexpress.net/rss/du-lich.rss",
+      "https://vnexpress.net/rss/so-hoa.rss",
+      "https://vnexpress.net/rss/oto-xe-may.rss",
     ],
-    scope: "collection",
-    englishFloor: 0.72,
-    prior: "Fandom and OC art, a young creator-audience crossover.",
   },
   {
-    id: "film",
-    label: "Film & TV",
-    description: "Film watchers and makers.",
-    source: "bluesky",
-    feeds: ["at://did:plc:2hwwem55ce6djnk6bn62cstr/app.bsky.feed.generator/aaaotdzmoni2q"],
-    scope: "collection",
-    englishFloor: 0.75,
-    prior: "Fandom and media discussion.",
+    id: "tuoitre",
+    label: "Tuổi Trẻ",
+    description:
+      "Articles from Tuổi Trẻ's official section feeds, with Vietnam wall-clock timestamps " +
+      "read as UTC+07:00 and merged by canonical link.",
+    source: "tuoitre",
+    evidenceType: "news",
+    feedUrl: "https://tuoitre.vn/rss/thoi-su.rss",
+    additionalFeedUrls: [
+      "https://tuoitre.vn/rss/the-gioi.rss",
+      "https://tuoitre.vn/rss/kinh-doanh.rss",
+      "https://tuoitre.vn/rss/cong-nghe.rss",
+      "https://tuoitre.vn/rss/giai-tri.rss",
+      "https://tuoitre.vn/rss/the-thao.rss",
+      "https://tuoitre.vn/rss/phap-luat.rss",
+      "https://tuoitre.vn/rss/giao-duc.rss",
+      "https://tuoitre.vn/rss/suc-khoe.rss",
+      "https://tuoitre.vn/rss/nhip-song-tre.rss",
+      "https://tuoitre.vn/rss/du-lich.rss",
+      "https://tuoitre.vn/rss/xe.rss",
+      "https://tuoitre.vn/rss/nha-dat.rss",
+      "https://tuoitre.vn/rss/ban-doc.rss",
+    ],
+  },
+  {
+    id: "thanhnien",
+    label: "Thanh Niên",
+    description:
+      "Articles from Thanh Niên's official section feeds, merged by canonical link across the " +
+      "last seven days.",
+    source: "thanhnien",
+    evidenceType: "news",
+    feedUrl: "https://thanhnien.vn/rss/thoi-su.rss",
+    additionalFeedUrls: [
+      "https://thanhnien.vn/rss/the-gioi.rss",
+      "https://thanhnien.vn/rss/kinh-te.rss",
+      "https://thanhnien.vn/rss/cong-nghe.rss",
+      "https://thanhnien.vn/rss/giai-tri.rss",
+      "https://thanhnien.vn/rss/the-thao.rss",
+      "https://thanhnien.vn/rss/giao-duc.rss",
+      "https://thanhnien.vn/rss/suc-khoe.rss",
+      "https://thanhnien.vn/rss/doi-song.rss",
+      "https://thanhnien.vn/rss/du-lich.rss",
+      "https://thanhnien.vn/rss/xe.rss",
+      "https://thanhnien.vn/rss/ban-doc.rss",
+      "https://thanhnien.vn/rss/video.rss",
+      "https://thanhnien.vn/rss/gioi-tre.rss",
+    ],
+  },
+  {
+    id: "dantri",
+    label: "Dân trí",
+    description:
+      "Articles from Dân trí's official section feeds, revalidated with the publisher's own " +
+      "ETag/Last-Modified and merged by canonical link.",
+    source: "dantri",
+    evidenceType: "news",
+    feedUrl: "https://dantri.com.vn/rss/su-kien.rss",
+    additionalFeedUrls: [
+      "https://dantri.com.vn/rss/the-gioi.rss",
+      "https://dantri.com.vn/rss/kinh-doanh.rss",
+      "https://dantri.com.vn/rss/bat-dong-san.rss",
+      "https://dantri.com.vn/rss/the-thao.rss",
+      "https://dantri.com.vn/rss/giao-duc.rss",
+      "https://dantri.com.vn/rss/cong-nghe.rss",
+      "https://dantri.com.vn/rss/giai-tri.rss",
+      "https://dantri.com.vn/rss/phap-luat.rss",
+      "https://dantri.com.vn/rss/suc-khoe.rss",
+      "https://dantri.com.vn/rss/doi-song.rss",
+      "https://dantri.com.vn/rss/du-lich.rss",
+    ],
   },
 ];
-
-const BY_ID = new Map(VIEWER_SEGMENTS.map((segment) => [segment.id, segment]));
-
-export function findSegment(id: string): SegmentDefinition | undefined {
-  return BY_ID.get(id);
-}
-
-/**
- * Segments that may contribute to cross-segment adoption. The whole-network
- * discovery pool is excluded: a post reaching Discover and one niche segment is
- * not evidence of adoption *between* audiences.
- */
-export const ADOPTION_SEGMENTS = VIEWER_SEGMENTS.filter(
-  (segment) => segment.scope === "collection",
-);
-
-/**
- * Language gate for collected posts.
- *
- * `record.langs` is author-declared and sometimes absent or wrong, so this is a
- * filter, not a classifier. A post is kept when it declares English, or declares
- * nothing at all — untagged posts are unknown, and dropping them would silently
- * remove whatever a feed's authors forgot to tag. A post that declares only
- * non-English languages is dropped: keeping it would make an "English only"
- * collection claim false.
- */
-export function declaresEnglish(langs: string[] | undefined): boolean {
-  if (!langs || langs.length === 0) return true;
-  return langs.some((lang) => {
-    const lower = String(lang).toLowerCase();
-    return lower === "en" || lower.startsWith("en-");
-  });
-}

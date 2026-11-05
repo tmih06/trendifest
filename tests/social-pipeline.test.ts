@@ -1,18 +1,18 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { closeDb, getDb, toVectorLiteral } from "../server/db.ts";
 import {
   CLUSTER_THRESHOLDS,
-  ingestTailEvent,
+  deletePost,
+  expirePosts,
+  ingestPost,
   listClusters,
   searchAcrossSpaces,
   segmentCoverage,
   socialSignals,
 } from "../server/social/pipeline.ts";
 import type { Space } from "../server/db.ts";
-import { buildTrendMap } from "../server/social/trend-map.ts";
+import { postId, type SourcePost } from "../server/social/input.ts";
 import { VIEWER_SEGMENTS } from "../shared/segments.ts";
-import type { TailEvent } from "../server/social/bluesky.ts";
-
 /**
  * These tests exercise the collection invariants that are easy to regress and
  * expensive to notice: a post observed twice must not count as two posts, a
@@ -20,8 +20,8 @@ import type { TailEvent } from "../server/social/bluesky.ts";
  * failed segment must read as unknown rather than zero.
  *
  * They need a database. `TRENDIFEST_TEST_DATABASE_URL` points at a scratch
- * database whose `public` schema is truncated per run; without it the suite is
- * skipped so `bun test` stays runnable without Postgres.
+ * database whose collection tables are truncated for isolation; without it the
+ * suite is skipped so `bun test` stays runnable without Postgres.
  */
 
 const TEST_URL = process.env.TRENDIFEST_TEST_DATABASE_URL ?? "";
@@ -43,176 +43,186 @@ const enabled = TEST_URL.length > 0;
 
 if (enabled) process.env.TRENDIFEST_DATABASE_URL = TEST_URL;
 
-function event(overrides: Partial<TailEvent> & { uri: string }): TailEvent {
+/** Real Vietnamese records exercise the acceptance gate before database/inference work. */
+function fixturePost(overrides: Partial<SourcePost> & { uri: string }): SourcePost {
   return {
-    operation: "create",
-    did: "did:plc:test",
-    rkey: overrides.uri.split("/").pop() ?? "rkey",
-    seq: 1,
-    time: "2026-11-03T00:00:00.000Z",
-    record: { text: "placeholder", createdAt: "2026-11-03T00:00:00.000Z" },
+    source: "voz",
+    title: "",
+    evidenceType: "discussion",
+    publisher: null,
+    authorId: "test-author",
+    authorHandle: "test-author",
+    text: "Con mèo làm rơi chiếc cốc thủy tinh từ trên bàn xuống sàn nhà.",
+    kind: "text",
+    permalink: "https://voz.vn/t/test-thread.1/",
+    publishedAt: new Date().toISOString(),
+    timeKind: "activity",
+    media: [],
+    engagement: null,
     ...overrides,
   };
 }
 
+const CAT_TEXT = "Con mèo làm rơi chiếc cốc thủy tinh từ trên bàn xuống sàn nhà.";
+const FINANCE_TEXT = "Cuộc họp công bố kết quả kinh doanh quý này được chuyển sang chiều thứ Năm.";
+
 describe.skipIf(!enabled)("social collection pipeline", () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     const db = await getDb();
-    await db`
-      TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts
-      RESTART IDENTITY CASCADE
-    `;
+    await db`TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts RESTART IDENTITY CASCADE`;
   });
+  afterAll(closeDb);
 
-  afterAll(async () => {
-    await closeDb();
-  });
-
-  test("stores a post and one observation for its segment", async () => {
-    const result = await ingestTailEvent(
-      event({
-        uri: "at://did:plc:test/app.bsky.feed.post/one",
-        record: {
-          text: "a cat pushes a glass off the table",
-          createdAt: "2026-11-03T00:00:00.000Z",
-        },
-      }),
-    );
-    expect(result).toEqual({ stored: true, vectors: expect.any(Number) });
-
+  test("stores accepted Vietnamese input with its actual collection context", async () => {
+    await ingestPost(fixturePost({ uri: "urn:thread:one" }), "voz");
+    const db = await getDb();
+    const [stored] =
+      await db`SELECT source, lang, body FROM posts WHERE id = ${postId("voz", "urn:thread:one")}`;
+    expect(stored?.source).toBe("voz");
+    expect(stored?.lang).toEqual(["vi"]);
+    expect(stored?.body).toBe(CAT_TEXT);
     const signals = await socialSignals(72);
     expect(signals.stats.posts).toBe(1);
     expect(signals.stats.observations).toBe(1);
     expect(signals.stats.unvectorized).toBe(0);
   });
 
-  test("redelivery is idempotent and does not re-embed", async () => {
+  test("redelivery preserves vectors and keeps only the latest measured counters", async () => {
+    const post = fixturePost({
+      uri: "urn:thread:duplicate",
+      engagement: { replies: 3, capturedAt: new Date(Date.now() - 1000).toISOString() },
+    });
+    await ingestPost(post, "voz");
     const db = await getDb();
-    const before = await db`SELECT count(*)::int AS n FROM embeddings`;
-    const again = await ingestTailEvent(
-      event({
-        uri: "at://did:plc:test/app.bsky.feed.post/one",
-        record: {
-          text: "a cat pushes a glass off the table",
-          createdAt: "2026-11-03T00:00:00.000Z",
-        },
-      }),
+    const before =
+      await db`SELECT created_at FROM embeddings WHERE post_id = ${postId("voz", post.uri)}`;
+    await ingestPost(
+      { ...post, engagement: { replies: 7, capturedAt: new Date().toISOString() } },
+      "voz",
     );
-    const after = await db`SELECT count(*)::int AS n FROM embeddings`;
-
-    expect(again).toEqual({ duplicate: true });
-    // Jetstream is at-least-once, so the second delivery must add zero vectors.
-    expect(Number(after[0]!.n)).toBe(Number(before[0]!.n));
+    const after =
+      await db`SELECT created_at FROM embeddings WHERE post_id = ${postId("voz", post.uri)}`;
+    expect(after).toEqual(before);
+    const metrics =
+      await db`SELECT replies, likes FROM metric_snapshots WHERE post_id = ${postId("voz", post.uri)}`;
+    expect(metrics).toHaveLength(1);
+    expect(Number(metrics[0]?.replies)).toBe(7);
+    expect(metrics[0]?.likes).toBeNull();
   });
 
-  test("similar text joins one cluster instead of creating siblings", async () => {
-    await ingestTailEvent(
-      event({
-        uri: "at://did:plc:test/app.bsky.feed.post/two",
-        record: {
-          text: "a cat knocks a drinking glass off the desk",
-          createdAt: "2026-11-03T00:01:00.000Z",
-        },
+  test("Vietnamese paraphrases join while unrelated content remains separate", async () => {
+    await ingestPost(fixturePost({ uri: "urn:thread:cat-a" }), "voz");
+    await ingestPost(
+      fixturePost({
+        uri: "urn:thread:cat-b",
+        text: "Con mèo đẩy chiếc cốc thủy tinh trên bàn rơi xuống sàn nhà.",
       }),
+      "voz",
     );
-
-    const clusters = await listClusters(10);
-    const textCluster = clusters.find((cluster) => cluster.kind === "text");
-    expect(textCluster).toBeDefined();
-    expect(textCluster!.size).toBeGreaterThanOrEqual(2);
-    expect(textCluster!.cohesion).toBeGreaterThan(0);
-  });
-
-  test("unrelated text does not merge into an existing cluster", async () => {
-    await ingestTailEvent(
-      event({
-        uri: "at://did:plc:test/app.bsky.feed.post/three",
-        record: {
-          text: "quarterly earnings call scheduled for thursday afternoon",
-          createdAt: "2026-11-03T00:02:00.000Z",
-        },
-      }),
-    );
-
+    await ingestPost(fixturePost({ uri: "urn:thread:finance", text: FINANCE_TEXT }), "voz");
     const clusters = await listClusters(20);
-    const labels = clusters.map((cluster) => cluster.label.toLowerCase());
-    expect(labels.some((label) => label.includes("quarterly earnings"))).toBe(true);
-    // The finance sentence must not be absorbed by the cat cluster.
-    const cat = clusters.find((cluster) => cluster.label.toLowerCase().includes("cat"));
-    expect(cat?.examples.every((example) => !example.text.includes("quarterly"))).toBe(true);
+    const cat = clusters.find((cluster) =>
+      cluster.examples.some((example) => example.text.includes("mèo")),
+    );
+    expect(cat?.size).toBe(2);
+    expect(cat?.examples.every((example) => !example.text.includes("kinh doanh"))).toBe(true);
+    expect(
+      clusters.some((cluster) =>
+        cluster.examples.some((example) => example.text.includes("kinh doanh")),
+      ),
+    ).toBe(true);
   });
 
-  test("a delete tombstones the post and drops its vectors", async () => {
+  test("a source takedown removes vectors and cluster contributions", async () => {
+    const uri = "urn:thread:deleted";
+    await ingestPost(fixturePost({ uri }), "voz");
+    await deletePost("voz", uri);
     const db = await getDb();
-    const uri = "at://did:plc:test/app.bsky.feed.post/one";
-    await ingestTailEvent(event({ operation: "delete", uri, record: undefined }));
-
-    const [post] = await db`SELECT deleted_at FROM posts WHERE id = ${uri}`;
-    const vectors = await db`SELECT count(*)::int AS n FROM embeddings WHERE post_id = ${uri}`;
-    const members = await db`SELECT count(*)::int AS n FROM cluster_members WHERE post_id = ${uri}`;
-
+    const id = postId("voz", uri);
+    const [post] = await db`SELECT deleted_at FROM posts WHERE id = ${id}`;
     expect(post?.deleted_at).not.toBeNull();
-    expect(Number(vectors[0]!.n)).toBe(0);
-    expect(Number(members[0]!.n)).toBe(0);
+    expect(await db`SELECT 1 FROM embeddings WHERE post_id = ${id}`).toHaveLength(0);
+    expect(await db`SELECT 1 FROM cluster_members WHERE post_id = ${id}`).toHaveLength(0);
+    expect(
+      (await listClusters()).some((cluster) =>
+        cluster.examples.some((example) => example.uri === id),
+      ),
+    ).toBe(false);
   });
 
-  test("a post observed by two segments reports one crossing", async () => {
-    const db = await getDb();
-    const uri = "at://did:plc:test/app.bsky.feed.post/crossing";
-    await ingestTailEvent(
-      event({
-        uri,
-        record: {
-          text: "the same joke appears in two entirely different communities",
-          createdAt: "2026-11-03T00:03:00.000Z",
-        },
+  test("copies on independent sources retain provenance and cross-context evidence", async () => {
+    const text = "Cùng một câu chuyện hài hước đang được chia sẻ trong hai cộng đồng khác nhau.";
+    await ingestPost(fixturePost({ uri: "same-native-id", authorId: "same-handle", text }), "voz");
+    await ingestPost(
+      fixturePost({
+        uri: "same-native-id",
+        source: "otofun",
+        authorId: "same-handle",
+        text,
+        permalink: "https://www.otofun.net.vn/threads/test.1/",
       }),
+      "otofun",
     );
-    // Simulate the second audience seeing the identical post.
-    await db`
-      INSERT INTO observations (post_id, segment_id, observed_at, via)
-      VALUES (${uri}, ${"shitpost"}, now(), ${"feed"})
-    `;
-
-    const clusters = await listClusters(50);
-    const target = clusters.find((cluster) =>
-      cluster.examples.some((example) => example.text.includes("same joke")),
+    const clusters = await listClusters(20);
+    const shared = clusters.find((cluster) =>
+      cluster.examples.some((example) => example.text === text),
     );
-    expect(target).toBeDefined();
-    // Discover (whole-network) plus one collection segment is not adoption;
-    // only collection segments count, so this stays at zero crossings.
-    expect(target!.segments).not.toContain("discover");
-    expect(target!.crossings).toBe(0);
-
-    await db`
-      INSERT INTO observations (post_id, segment_id, observed_at, via)
-      VALUES (${uri}, ${"art"}, now(), ${"feed"})
-    `;
-    const after = await listClusters(50);
-    const updated = after.find((cluster) => cluster.id === target!.id);
-    expect(updated!.crossings).toBe(1);
-    expect(updated!.segments.sort()).toEqual(["art", "shitpost"]);
+    expect(shared?.size).toBe(2);
+    expect(shared?.crossings).toBe(1);
+    expect(shared?.segments.sort()).toEqual(["otofun", "voz"]);
+    expect(new Set(shared?.examples.map((example) => example.source))).toEqual(
+      new Set(["voz", "otofun"]),
+    );
   });
 
-  test("coverage reports every segment, including ones with no posts", async () => {
+  test("coverage includes an unobserved source without inventing posts", async () => {
+    await ingestPost(fixturePost({ uri: "urn:thread:coverage" }), "voz");
     const coverage = await segmentCoverage(72);
-    const shitpost = coverage.find((row) => row.segmentId === "shitpost");
-    const film = coverage.find((row) => row.segmentId === "film");
-
-    expect(shitpost?.posts).toBeGreaterThan(0);
-    // Absence must be reported as zero for a segment that ran successfully...
-    expect(film?.posts).toBe(0);
-    expect(film?.lastObservedAt).toBeNull();
-    // ...and the row still exists, so the client can show it rather than omit it.
-    // Every catalog segment is reported, including ones with no posts.
-    expect(coverage.length).toBe(VIEWER_SEGMENTS.length);
+    expect(coverage.find((row) => row.segmentId === "voz")?.posts).toBe(1);
+    expect(coverage.find((row) => row.segmentId === "otofun")?.posts).toBe(0);
+    expect(coverage.find((row) => row.segmentId === "otofun")?.lastObservedAt).toBeNull();
+    expect(coverage.map((row) => row.segmentId).sort()).toEqual(
+      VIEWER_SEGMENTS.map((segment) => segment.id).sort(),
+    );
   });
 
-  test("rank fusion returns a real post for a text query", async () => {
-    const results = await searchAcrossSpaces("cat and a glass", 5);
-    expect(results.length).toBeGreaterThan(0);
-    expect(results[0]!.text.length).toBeGreaterThan(0);
-    expect(results[0]!.score).toBeGreaterThan(0);
+  test("an edited record cannot keep its former semantic evidence", async () => {
+    const post = fixturePost({ uri: "urn:thread:edited" });
+    await ingestPost(post, "voz");
+    await ingestPost({ ...post, text: FINANCE_TEXT }, "voz");
+    const clusters = await listClusters(20);
+    expect(clusters.flatMap((cluster) => cluster.examples).map((example) => example.text)).toEqual([
+      FINANCE_TEXT,
+    ]);
+    await ingestPost(
+      { ...post, text: "The best places to visit in Vietnam with your family this summer." },
+      "voz",
+    );
+    const db = await getDb();
+    expect(await db`SELECT 1 FROM posts WHERE id = ${postId("voz", post.uri)}`).toHaveLength(0);
+    expect(await listClusters()).toHaveLength(0);
+  });
+
+  test("expiry removes stale records and vectors without removing fresh input", async () => {
+    await ingestPost(fixturePost({ uri: "urn:thread:expired" }), "voz");
+    await ingestPost(fixturePost({ uri: "urn:thread:fresh", text: FINANCE_TEXT }), "voz");
+    const db = await getDb();
+    const expired = postId("voz", "urn:thread:expired");
+    await db`UPDATE posts SET published_at = now() - interval '31 days' WHERE id = ${expired}`;
+    expect(await expirePosts()).toBe(1);
+    expect(await db`SELECT 1 FROM posts WHERE id = ${expired}`).toHaveLength(0);
+    expect(await db`SELECT 1 FROM embeddings WHERE post_id = ${expired}`).toHaveLength(0);
+    expect(
+      (await listClusters()).flatMap((cluster) => cluster.examples).map((example) => example.text),
+    ).toEqual([FINANCE_TEXT]);
+  });
+
+  test("rank fusion retrieves the Vietnamese post matching the query", async () => {
+    await ingestPost(fixturePost({ uri: "urn:thread:cat" }), "voz");
+    await ingestPost(fixturePost({ uri: "urn:thread:business", text: FINANCE_TEXT }), "voz");
+    const results = await searchAcrossSpaces("con mèo và chiếc cốc thủy tinh", 5);
+    expect(results[0]?.uri).toBe(postId("voz", "urn:thread:cat"));
+    expect(results[0]?.source).toBe("voz");
   });
 });
 
@@ -247,23 +257,19 @@ describe.skipIf(!enabled)("cluster linkage invariant", () => {
     const db = await getDb();
     // Seed a genuine pair so the invariant is checked on a real multi-member
     // cluster rather than vacuously passing on singletons.
-    await ingestTailEvent(
-      event({
-        uri: "at://did:plc:test/app.bsky.feed.post/linkage-a",
-        record: {
-          text: "the new phone camera is incredible in low light conditions",
-          createdAt: "2026-11-03T00:10:00.000Z",
-        },
+    await ingestPost(
+      fixturePost({
+        uri: "urn:thread:linkage-a",
+        text: "Camera của chiếc điện thoại mới chụp ảnh ban đêm rất đẹp và rõ nét.",
       }),
+      "voz",
     );
-    await ingestTailEvent(
-      event({
-        uri: "at://did:plc:test/app.bsky.feed.post/linkage-b",
-        record: {
-          text: "this phone takes amazing photos at night",
-          createdAt: "2026-11-03T00:11:00.000Z",
-        },
+    await ingestPost(
+      fixturePost({
+        uri: "urn:thread:linkage-b",
+        text: "Chiếc điện thoại mới chụp ảnh rất đẹp và rõ nét khi trời tối.",
       }),
+      "voz",
     );
 
     const clusters = (await db`
@@ -308,15 +314,7 @@ describe.skipIf(!enabled)("cluster linkage invariant", () => {
     `) as unknown as Array<{ id: string }>;
     const before = pair[0]?.id;
 
-    await ingestTailEvent(
-      event({
-        uri: "at://did:plc:test/app.bsky.feed.post/linkage-c",
-        record: {
-          text: "the quarterly earnings call was moved to thursday afternoon",
-          createdAt: "2026-11-03T00:12:00.000Z",
-        },
-      }),
-    );
+    await ingestPost(fixturePost({ uri: "urn:thread:linkage-c", text: FINANCE_TEXT }), "voz");
 
     if (before) {
       const members = (await db`
@@ -342,217 +340,6 @@ describe.skipIf(!enabled)("cluster linkage invariant", () => {
   });
 });
 
-describe.skipIf(!enabled)("trend map scoring", () => {
-  /**
-   * The score is a heuristic, but its ordering must respect the one property a
-   * funder will check: independent authors outrank raw volume. The first
-   * cluster measured in production had 64 posts from a single account, so a
-   * post-count-driven score would rank a counter bot above real adoption.
-   */
-  test("a multi-author pattern outranks a single-account burst of the same size", async () => {
-    const db = await getDb();
-    await db`
-      TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts
-      RESTART IDENTITY CASCADE
-    `;
-
-    // One account posts six times about the same thing.
-    for (let index = 0; index < 6; index += 1) {
-      await db`
-        INSERT INTO posts (id, source, uri, author_did, body, kind, permalink, published_at, content_hash)
-        VALUES (${`at://did:plc:bot/app.bsky.feed.post/burst-${index}`}, ${"bluesky"},
-                ${`at://did:plc:bot/app.bsky.feed.post/burst-${index}`},
-                ${"did:plc:bot"}, ${"counter bot repeating itself exactly"}, ${"text"},
-                ${"https://bsky.app/profile/bot"}, now(), ${`burst-${index}`})
-      `;
-    }
-    // Six different accounts post the same meme.
-    for (let index = 0; index < 6; index += 1) {
-      await db`
-        INSERT INTO posts (id, source, uri, author_did, body, kind, permalink, published_at, content_hash)
-        VALUES (${`at://did:plc:human${index}/app.bsky.feed.post/meme-${index}`}, ${"bluesky"},
-                ${`at://did:plc:human${index}/app.bsky.feed.post/meme-${index}`},
-                ${`did:plc:human${index}`}, ${"a genuinely shared joke format here"}, ${"text"},
-                ${`https://bsky.app/profile/human${index}`}, now(), ${`meme-${index}`})
-      `;
-    }
-
-    // Two clusters with identical member counts but different author counts.
-    for (const clusterId of [
-      "00000000-0000-0000-0000-000000000001",
-      "00000000-0000-0000-0000-000000000002",
-    ] as const) {
-      await db`
-        INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
-        VALUES (${clusterId}, ${"text"}, ${"test"}, ${4},
-                ${PADDING_VECTOR}::vector, 6, now() - interval '2 hours', now())
-      `;
-    }
-    for (let index = 0; index < 6; index += 1) {
-      await db`
-        INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
-        VALUES (${"00000000-0000-0000-0000-000000000001"},
-                ${`at://did:plc:bot/app.bsky.feed.post/burst-${index}`}, ${"body"}, 1)
-      `;
-      // The map joins observations, so a cluster with members but no observed
-      // segment is invisible — a real invariant worth encoding here.
-      await db`
-        INSERT INTO observations (post_id, segment_id, observed_at, via)
-        VALUES (${`at://did:plc:bot/app.bsky.feed.post/burst-${index}`}, ${"gaming"}, now(), ${"feed"})
-      `;
-      await db`
-        INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
-        VALUES (${"00000000-0000-0000-0000-000000000002"},
-                ${`at://did:plc:human${index}/app.bsky.feed.post/meme-${index}`}, ${"body"}, 1)
-      `;
-      await db`
-        INSERT INTO observations (post_id, segment_id, observed_at, via)
-        VALUES (${`at://did:plc:human${index}/app.bsky.feed.post/meme-${index}`}, ${"gaming"}, now(), ${"feed"})
-      `;
-    }
-
-    const map = await buildTrendMap(24);
-    const patterns = map.nodes.filter((node) => node.kind === "pattern");
-    const bot = patterns.find((node) => node.clusterId === "00000000-0000-0000-0000-000000000001");
-    const humans = patterns.find(
-      (node) => node.clusterId === "00000000-0000-0000-0000-000000000002",
-    );
-
-    expect(bot?.posts).toBe(6);
-    expect(humans?.posts).toBe(6);
-    expect(humans?.potential ?? 0).toBeGreaterThan(bot?.potential ?? 0);
-    // Radius must follow the score, since size is the map's only encoding.
-    expect(humans?.radius ?? 0).toBeGreaterThan(bot?.radius ?? 0);
-  });
-
-  test("velocity is neutral while history is too short to compare", async () => {
-    const map = await buildTrendMap(24);
-    expect(map.method.velocityComparable).toBe(false);
-    const scores = map.nodes.flatMap((node) => (node.score ? [node.score.velocity] : []));
-    expect(scores.length).toBeGreaterThan(0);
-    // Neutral 0.5, never the 1.0 that "no prior window" used to imply.
-    expect(scores.every((value) => value === 0.5)).toBe(true);
-  });
-
-  test("every node and edge id is unique", async () => {
-    const map = await buildTrendMap(24);
-    const ids = map.nodes.map((node) => node.id);
-    const edgeIds = map.edges.map((edge) => edge.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(new Set(edgeIds).size).toBe(edgeIds.length);
-    // A pattern must be reachable from the map, never orphaned off-graph.
-    const targets = new Set(map.edges.map((edge) => edge.target));
-    const orphans = map.nodes.filter((node) => node.kind === "pattern" && !targets.has(node.id));
-    expect(orphans).toHaveLength(0);
-  });
-});
-
-describe.skipIf(!enabled)("trend map stratification", () => {
-  /**
-   * The map used to take the global top N clusters, so the discovery pool — the
-   * only segment that sees the whole network — took 30 of 40 slots and seven
-   * niche hubs drew no patterns at all. That read as "nothing happens in
-   * Science", which was false: its posts were clustered, just outranked.
-   */
-  test("a niche segment's pattern appears even when discover outranks it", async () => {
-    const db = await getDb();
-    await db`
-      TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts
-      RESTART IDENTITY CASCADE
-    `;
-
-    /** Seed one cluster of `size` posts, one account each, in one segment. */
-    const seed = async (clusterId: string, size: number, segment: string) => {
-      await db`
-        INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
-        VALUES (${clusterId}, ${"text"}, ${"test"}, ${4}, ${PADDING_VECTOR}::vector,
-                ${size}, now() - interval '2 hours', now())
-      `;
-      for (let index = 0; index < size; index += 1) {
-        const postId = `at://did:plc:${clusterId.slice(0, 6)}${index}/app.bsky.feed.post/x${index}`;
-        await db`
-          INSERT INTO posts (id, source, uri, author_did, body, kind, permalink, published_at, content_hash)
-          VALUES (${postId}, ${"bluesky"}, ${postId}, ${`did:plc:${clusterId.slice(0, 6)}${index}`},
-                  ${"a repeated pattern with enough text to cluster"}, ${"text"},
-                  ${"https://bsky.app/profile/x"}, now(), ${postId})
-        `;
-        await db`
-          INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
-          VALUES (${clusterId}, ${postId}, ${"body"}, 1)
-        `;
-        await db`
-          INSERT INTO observations (post_id, segment_id, observed_at, via)
-          VALUES (${postId}, ${segment}, now(), ${"feed"})
-        `;
-      }
-    };
-
-    // Discover gets a large, high-scoring cluster.
-    await seed("11111111-1111-1111-1111-111111111111", 30, "discover");
-    // A niche segment gets one small cluster that would never win globally.
-    await seed("22222222-2222-2222-2222-222222222222", 2, "shitpost");
-
-    const map = await buildTrendMap(72);
-    const sources = new Set(map.edges.map((edge) => edge.source));
-    expect(sources.has("segment:discover")).toBe(true);
-    // The whole point: the niche hub is represented despite losing on score.
-    expect(sources.has("segment:shitpost")).toBe(true);
-  });
-});
-
-describe.skipIf(!enabled)("pattern similarity graph", () => {
-  test("links measured neighbors without crossing model spaces or exceeding the degree cap", async () => {
-    const db = await getDb();
-    await db`TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts RESTART IDENTITY CASCADE`;
-    const belowThreshold = toVectorLiteral([0.74, Math.sqrt(1 - 0.74 ** 2)]);
-    const fixtures = [
-      { id: "near-a", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "near-b", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "near-c", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "near-d", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "near-e", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "weak", space: "text", model: "same", dim: 2, vector: belowThreshold },
-      { id: "other-model", space: "text", model: "different", dim: 2, vector: PADDING_VECTOR },
-      { id: "other-space", space: "image", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "other-dim", space: "text", model: "same", dim: 3, vector: PADDING_VECTOR },
-    ];
-    for (const fixture of fixtures) {
-      const uri = `at://did:plc:similarity/app.bsky.feed.post/${fixture.id}`;
-      await db`
-        INSERT INTO posts (id, source, uri, author_did, body, kind, permalink, published_at, content_hash)
-        VALUES (${uri}, 'bluesky', ${uri}, ${`did:plc:${fixture.id}`},
-          'A collected pattern with sufficient text for the map', 'text',
-          'https://bsky.app/profile/example', now(), ${fixture.id})
-      `;
-      await db`
-        INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
-        VALUES (${fixture.id}, ${fixture.space}, ${fixture.model}, ${fixture.dim},
-          ${fixture.vector}::vector, 1, now(), now())
-      `;
-      await db`INSERT INTO cluster_members (cluster_id, post_id, span, similarity) VALUES (${fixture.id}, ${uri}, 'body', 1)`;
-      await db`INSERT INTO observations (post_id, segment_id, observed_at, via) VALUES (${uri}, 'gaming', now(), 'feed')`;
-    }
-    const map = await buildTrendMap(24);
-    const links = map.edges.filter((edge) => edge.relation === "similarity");
-    // Five close centroids would form ten links without the degree cap. The
-    // deterministic cap admits six, excluding incompatible padded vectors.
-    expect(links).toHaveLength(6);
-    const degree = new Map<string, number>();
-    for (const link of links) {
-      expect(link.source).toStartWith("cluster:near-");
-      expect(link.target).toStartWith("cluster:near-");
-      expect(link.similarity).toBeCloseTo(1, 6);
-      degree.set(link.source, (degree.get(link.source) ?? 0) + 1);
-      degree.set(link.target, (degree.get(link.target) ?? 0) + 1);
-    }
-    expect([...degree.values()]).toEqual([3, 3, 3, 3]);
-    expect(new Set(links.map((edge) => edge.id)).size).toBe(6);
-    expect(map.edges.filter((edge) => edge.relation === "observed-in")).toHaveLength(
-      fixtures.length,
-    );
-  });
-});
-
 describe.skipIf(!enabled)("cluster retirement", () => {
   /**
    * The old cap path deleted *clusters*, and the foreign key cascaded their
@@ -565,12 +352,12 @@ describe.skipIf(!enabled)("cluster retirement", () => {
     const db = await getDb();
     await db`TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts RESTART IDENTITY CASCADE`;
 
-    const retiredUri = "at://did:plc:retire/app.bsky.feed.post/old";
+    const retiredUri = "urn:thread:retired";
     await db`
-      INSERT INTO posts (id, source, uri, author_did, body, kind, permalink, published_at, content_hash)
-      VALUES (${retiredUri}, 'bluesky', ${retiredUri}, 'did:plc:retire',
-        'a post that must keep its cluster membership', 'text',
-        'https://bsky.app/profile/retire', now(), 'retire')
+      INSERT INTO posts (id, source, uri, author_id, body, kind, permalink, published_at, content_hash)
+      VALUES (${retiredUri}, 'voz', ${retiredUri}, 'voz:retire',
+        'Một bài viết cần giữ lại bằng chứng thuộc về cụm nội dung.', 'text',
+        'https://voz.vn/t/retire.5/', now(), 'retire')
     `;
     await db`
       INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
@@ -584,11 +371,11 @@ describe.skipIf(!enabled)("cluster retirement", () => {
 
     // Fill a space past the cap with clusters that are newer than the victim.
     for (let index = 0; index < 401; index += 1) {
-      const uri = `at://did:plc:cap${index}/app.bsky.feed.post/${index}`;
+      const uri = `urn:thread:cap:${index}`;
       await db`
-        INSERT INTO posts (id, source, uri, author_did, body, kind, permalink, published_at, content_hash)
-        VALUES (${uri}, 'bluesky', ${uri}, ${`did:plc:cap${index}`},
-          'filler post for the cluster cap', 'text', 'https://bsky.app/profile/cap', now(), ${uri})
+        INSERT INTO posts (id, source, uri, author_id, body, kind, permalink, published_at, content_hash)
+        VALUES (${uri}, 'voz', ${uri}, ${`voz:cap${index}`},
+          'Nội dung thử nghiệm giới hạn số lượng cụm.', 'text', 'https://voz.vn/t/cap.6/', now(), ${uri})
       `;
       await db`
         INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
@@ -602,14 +389,12 @@ describe.skipIf(!enabled)("cluster retirement", () => {
     }
 
     // One more vector forces a retirement pass over the capped space.
-    await ingestTailEvent(
-      event({
-        uri: "at://did:plc:retire/app.bsky.feed.post/new",
-        record: {
-          text: "a completely different sentence about harbour cranes at dawn",
-          createdAt: "2026-11-03T00:30:00.000Z",
-        },
+    await ingestPost(
+      fixturePost({
+        uri: "urn:thread:retire-new",
+        text: "Buổi bình minh trên bến cảng, những chiếc cần cẩu đang nâng các thùng hàng.",
       }),
+      "voz",
     );
 
     const [row] = (await db`

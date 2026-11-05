@@ -1,5 +1,7 @@
 import { useId, useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+// Icon subpath, not the package root: the root re-exports every icon, which
+// would put the whole set in each consumer's dev module graph.
+import ChevronDown from "lucide-react/icons/chevron-down";
 import { cn } from "../lib/cn.ts";
 
 /**

@@ -1,12 +1,28 @@
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite-plus";
+import compression from "compression";
+import { defineConfig, type Connect, type Plugin } from "vite-plus";
+import { assetCompression } from "./scripts/asset-compression.ts";
 
 const src = fileURLToPath(new URL("./src", import.meta.url));
 
+/**
+ * Port forwarding otherwise transfers Vite's multi-megabyte debug modules raw.
+ * Negotiate streaming compression without removing source maps or changing HMR.
+ */
+const devCompression: Plugin = {
+  name: "trendifest-dev-compression",
+  apply: "serve",
+  /** Wrap module and proxy responses before Vite installs their handlers. */
+  configureServer(server) {
+    // Node HTTP-compatible at runtime; its published types are narrowed to Express.
+    server.middlewares.use(compression() as Connect.NextHandleFunction);
+  },
+};
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [devCompression, react(), tailwindcss(), assetCompression()],
   resolve: {
     alias: { "@": src },
   },

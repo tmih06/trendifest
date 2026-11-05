@@ -9,63 +9,55 @@ export interface ApiError {
 }
 
 /* ------------------------------------------------------------------ *
- * Social collection: viewer-segment stratified ingest of real feeds.
+ * Vietnamese-first collection of public community discussion excerpts.
  * ------------------------------------------------------------------ */
 
-/** Network a social adapter reads. */
-export type SocialSource = "bluesky";
+/** Collector identities; publisher attribution is separate for aggregated news. */
+export type SocialSource =
+  | "voz"
+  | "otofun"
+  | "google-news"
+  | "nguoi-viet"
+  | "vnexpress"
+  | "tuoitre"
+  | "thanhnien"
+  | "dantri";
+export type EvidenceType = "discussion" | "news";
 
-/** Media carried by a post; each maps to its own embedding space. */
 export type PostKind = "text" | "image" | "video" | "audio" | "link";
+export type SourceTimeKind = "published" | "activity";
 
+/** A concrete collection context, not a demographic or a whole-network pool. */
 export interface ViewerSegment {
   id: string;
   label: string;
   description: string;
   source: SocialSource;
-  /** Concrete feed URIs that make up this segment. */
-  feeds: string[];
-  /** Measured share of English-tagged posts at sample time; 0-1. */
-  englishFloor: number;
-  /** Why this feed belongs to the declared audience prior. Shown in the UI. */
-  prior: string;
+  evidenceType: EvidenceType;
+  feedUrl: string;
   /**
-   * `whole-network` segments are broad discovery pools (Bluesky's own trending
-   * feed). They are collected but never counted as cross-segment adoption,
-   * because a post reaching Discover and one niche is not a crossing.
+   * Further official feeds of the same provider, read fan-in within one cycle.
+   * `feedUrl` stays the primary document; a WordPress endpoint there keeps its
+   * own adapter and is never replaced by these section feeds.
    */
-  scope: "whole-network" | "collection";
+  additionalFeedUrls?: string[];
 }
 
+/** Only measured counters are present; absence is not a measured zero. */
 export interface EngagementSnapshot {
-  likes: number;
-  reposts: number;
-  replies: number;
-  quotes: number;
+  likes?: number;
+  reposts?: number;
+  replies?: number;
+  quotes?: number;
   capturedAt: string;
-}
-
-/** A deduplicated piece of creative content, independent of who saw it. */
-export interface SocialPost {
-  id: string;
-  source: SocialSource;
-  uri: string;
-  authorDid: string;
-  authorHandle: string | null;
-  text: string;
-  lang: string[];
-  tags: string[];
-  kind: PostKind;
-  permalink: string;
-  publishedAt: string;
-  /** CIDs of embedded media; the pipeline resolves them to CDN URLs. */
-  mediaCids: string[];
-  contentHash: string;
 }
 
 export interface ClusterExample {
   uri: string;
   permalink: string;
+  source: SocialSource;
+  /** Forum RSS dates can be latest thread activity, not original publication. */
+  timeKind: SourceTimeKind;
   text: string;
   authorHandle: string | null;
   kind: PostKind;
@@ -80,7 +72,7 @@ export interface PatternCluster {
   label: string;
   kind: PostKind;
   size: number;
-  /** Distinct segments (excluding whole-network pools) that observed a member. */
+  /** Distinct observed collection contexts, not verified demographic audiences. */
   segments: string[];
   crossings: number;
   firstSeenAt: string;
@@ -93,6 +85,7 @@ export interface PatternCluster {
 export interface SegmentCoverage {
   segmentId: string;
   label: string;
+  source: SocialSource;
   posts: number;
   mediaPosts: number;
   lastObservedAt: string | null;
@@ -116,6 +109,66 @@ export interface SocialSignals {
   coverage: SegmentCoverage[];
   clusters: PatternCluster[];
 }
+/** One bounded poll result; source outages remain visible rather than becoming zero coverage. */
+export interface SourceCollectionResult {
+  segmentId: string;
+  source: SocialSource;
+  fetched: number;
+  stored: number;
+  duplicates: number;
+  skippedLanguage: number;
+  skippedQuality: number;
+  error: string | null;
+}
+
+export interface IngestReport {
+  segments: number;
+  fetched: number;
+  stored: number;
+  observations: number;
+  vectors: number;
+  unvectorized: number;
+  clusters: number;
+  duplicates: number;
+  skippedLanguage: number;
+  skippedQuality: number;
+  expired: number;
+  sources: SourceCollectionResult[];
+  errors: Array<{ segmentId: string; message: string }>;
+}
+
+/**
+ * Receipts for the running (or last finished) collection cycle. Every counter
+ * is measured work, never an estimate: `segmentsDone` counts providers whose
+ * collection attempt finished, and `note` carries an operational message or is null.
+ */
+export interface CollectionProgress {
+  phase: "idle" | "fetching" | "ingesting" | "backfilling" | "expiring" | "done" | "failed";
+  limit: number;
+  segments: number;
+  segmentsDone: number;
+  fetched: number;
+  stored: number;
+  duplicates: number;
+  rejected: number;
+  embedded: number;
+  pending: number;
+  startedAt: string | null;
+  updatedAt: string | null;
+  current: string | null;
+  note: string | null;
+}
+
+export interface CollectionStatus {
+  configured: boolean;
+  enabled: boolean;
+  backfilling: boolean;
+  lastBackfillAt: string | null;
+  lastBackfill: IngestReport | null;
+  segments: number;
+  lastErrors: Array<{ segmentId: string; message: string }>;
+  progress: CollectionProgress;
+}
 
 /* ------------------------------------------------------------------ *
  * Trend map: the collection graph with an emergence score.
@@ -135,46 +188,47 @@ export interface TrendScore {
   posts: number;
 }
 
-export type TrendMapNodeKind = "segment" | "pattern" | "pool";
+/** Evidence belongs in the inspector, never as source or individual-post graph hubs. */
+export interface TopicExample extends ClusterExample {
+  title: string;
+  evidenceType: EvidenceType;
+  publisher: string | null;
+  /** Source-reported publication/activity time, distinct from local observation. */
+  publishedAt: string;
+}
 
 export interface TrendMapNode {
   id: string;
-  kind: TrendMapNodeKind;
+  kind: "topic";
+  /** A specific, evidence-backed event/product title, not a broad category. */
   label: string;
   description: string;
   radius: number;
-  /** Null for segment hubs, which carry no emergence claim. */
-  potential: number | null;
+  potential: number;
   posts: number;
+  /** Source-qualified community accounts, never news publishers presented as people. */
   authors: number;
   segments: string[];
-  /** Fixed layout position for hubs; derived by the force layout for patterns. */
-  x?: number;
-  y?: number;
-  score?: TrendScore;
-  clusterId?: string;
-  kind_?: string;
-  mediaCount?: number;
-  /** Latest measured engagement across member posts. */
+  score: TrendScore;
+  discussionPosts: number;
+  newsPosts: number;
+  publishers: number;
+  mediaCount: number;
   likes?: number;
   shares?: number;
-  firstSeenAt?: string;
-  lastSeenAt?: string;
-  /** A few member posts, so the inspector can show provenance without a list route. */
-  examples?: ClusterExample[];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  examples: TopicExample[];
 }
-
-export type TrendMapRelation = "observed-in" | "similarity";
 
 export interface TrendMapEdge {
   id: string;
   source: string;
   target: string;
-  /** `observed-in` is a collected observation; `similarity` is centroid cosine in one space. */
-  relation: TrendMapRelation;
+  /** A measured semantic relationship between distinct specific topics. */
+  relation: "related";
   weight: number;
-  /** Cosine similarity for `similarity` edges; absent on observations. */
-  similarity?: number;
+  similarity: number;
 }
 
 export interface TrendMap {
@@ -182,12 +236,21 @@ export interface TrendMap {
   generatedAt: string;
   nodes: TrendMapNode[];
   edges: TrendMapEdge[];
-  top: TrendMapNode[];
   coverage: SegmentCoverage[];
+  stats: {
+    posts: number;
+    topics: number;
+    discussionPosts: number;
+    newsPosts: number;
+    pendingEmbeddings: number;
+    limited: boolean;
+  };
   method: {
     version: number;
     velocityWindowHours: number;
     weights: Record<string, number>;
+    topicModel: string;
+    groupingThreshold: number;
     /** False while history is too short for two comparable velocity windows. */
     velocityComparable: boolean;
   };

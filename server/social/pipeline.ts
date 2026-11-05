@@ -1,21 +1,37 @@
-import { ADOPTION_SEGMENTS, VIEWER_SEGMENTS, declaresEnglish } from "../../shared/segments.ts";
+import type { SQL } from "bun";
+import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
 import type {
   ClusterExample,
-  EngagementSnapshot,
+  CollectionProgress,
+  IngestReport,
   PatternCluster,
   PostKind,
   SegmentCoverage,
-  SocialPost,
   SocialSignals,
+  SocialSource,
+  SourceCollectionResult,
+  SourceTimeKind,
 } from "../../shared/types.ts";
 import { SPACE_MODELS, getDb, toVectorLiteral } from "../db.ts";
 import type { Space } from "../db.ts";
 import type { Vector } from "./embed.ts";
 import { embedAudio, embedClipText, embedImage, embedText } from "./embed.ts";
-import { engagementOf, fetchFeedPage, openTail, toSocialPost } from "./bluesky.ts";
-import type { MediaRef, TailEvent } from "./bluesky.ts";
-import type { Extraction } from "./media.ts";
+import { fetchPublicFeed } from "./feeds.ts";
+import {
+  acceptInput,
+  clampCollectionLimit,
+  DEFAULT_COLLECTION_LIMIT,
+  postId,
+  RETENTION_DAYS,
+  type AcceptedPost,
+  type SourcePost,
+} from "./input.ts";
 import { extractAudio, extractVideoFrames, fetchImage } from "./media.ts";
+import {
+  backfillTopicEmbeddings,
+  deleteTopicEmbedding,
+  persistTopicEmbedding,
+} from "./topic-store.ts";
 
 /**
  * The ingest pipeline: observations -> vectors -> clusters -> crossings.
@@ -76,16 +92,6 @@ const JOIN_THRESHOLD: Record<Space, number> = { text: 0.75, image: 0.78, audio: 
 const MEMBER_FLOOR = JOIN_THRESHOLD;
 /** Below this, no threshold separates related from unrelated; skip clustering. */
 const MIN_CLUSTER_TEXT = 25;
-/**
- * The public tail is the whole network: roughly 1,500 posts a minute. Local CPU
- * embedding cannot keep up with that, and pretending otherwise would build an
- * unbounded queue that reports lag as if it were signal. The tail therefore
- * samples, and the sample rate is part of the honest coverage story: it is a
- * bounded subset of the network, not "all of Bluesky".
- */
-const TAIL_SAMPLE_RATE = Number(process.env.TRENDIFEST_TAIL_SAMPLE ?? "20");
-/** Pending embeddings; beyond this the oldest waiting post is dropped, not queued forever. */
-const TAIL_QUEUE_LIMIT = 64;
 /** Candidate clusters inspected per vector; bounds work against cluster count. */
 const CANDIDATE_CLUSTERS = 3;
 /** A stale centroid stops dominating after this long without a new member. */
@@ -93,96 +99,102 @@ const CLUSTER_IDLE_HOURS = 24;
 const MAX_CLUSTERS_PER_SPACE = 400;
 /** Oldest clusters retired when a space hits the cap; they keep their members. */
 const RETIRED_CLUSTERS_PER_CYCLE = 20;
+/** Repair up to one default source budget of missing topic vectors per cycle. */
+const TOPIC_BACKFILL_LIMIT = DEFAULT_COLLECTION_LIMIT;
 const TEXT_SPAN = "body";
-const MAX_INGEST_POSTS_PER_SEGMENT = 50;
-/**
- * Feed pages to walk per segment. One page is not enough: popular posts appear
- * across many feeds, so the first page of a niche segment is often entirely
- * posts already collected elsewhere. Stopping after one page left Science,
- * Artists, Film, Food, and Urbanism with zero attributed patterns.
- */
-const MAX_PAGES_PER_FEED = 3;
-
-export interface IngestReport {
-  segments: number;
-  fetched: number;
-  stored: number;
-  observations: number;
-  vectors: number;
-  unvectorized: number;
-  clusters: number;
-  /** Posts dropped for declaring only non-English languages. */
-  skippedLanguage: number;
-  errors: Array<{ segmentId: string; message: string }>;
-}
 
 interface PreparedVector {
   space: Space;
   span: string;
   vector: Vector;
-  /** Stable identity so a re-run overwrites instead of duplicating. */
-  identity: string;
   /** False when the vector is retrieval-only for its space (e.g. very short text). */
   clusterable: boolean;
 }
 
 /**
- * Persist a post, its observation, and an engagement snapshot in one
- * transaction. `ON CONFLICT` matters because Jetstream is at-least-once and
- * feed pages overlap between cycles.
+ * Remove old derived evidence before a source edit, deletion, or expiry. Repair
+ * affected centroids from remaining members so removed input cannot influence
+ * subsequent joins or displayed affinities. Topic vectors are invalidated in
+ * the same transaction: a grouping read must never see a vector computed from
+ * text the post no longer has.
  */
-async function storePost(
-  post: SocialPost,
-  media: MediaRef[],
-  segmentId: string,
-  engagement: EngagementSnapshot | null,
-) {
-  const db = await getDb();
-  await db.begin(async (tx) => {
-    await tx`
-      INSERT INTO posts (id, source, uri, author_did, author_handle, body, lang, tags,
-                         kind, permalink, published_at, media, content_hash)
-      VALUES (${post.id}, ${post.source}, ${post.uri}, ${post.authorDid}, ${post.authorHandle},
-              ${post.text}, ${post.lang}, ${post.tags}, ${post.kind}, ${post.permalink},
-              ${post.publishedAt}, ${JSON.stringify(media)}::text::jsonb, ${post.contentHash})
-      ON CONFLICT (id) DO UPDATE SET
-        author_handle = COALESCE(EXCLUDED.author_handle, posts.author_handle),
-        body = EXCLUDED.body,
-        lang = EXCLUDED.lang,
-        tags = EXCLUDED.tags,
-        kind = EXCLUDED.kind,
-        media = EXCLUDED.media,
-        deleted_at = NULL
-    `;
-
-    await tx`
-      INSERT INTO observations (post_id, segment_id, observed_at, via)
-      VALUES (${post.id}, ${segmentId}, ${new Date().toISOString()}, ${"feed"})
-      ON CONFLICT (post_id, segment_id) DO UPDATE SET observed_at = EXCLUDED.observed_at
-    `;
-
-    if (engagement) {
-      await tx`
-        INSERT INTO metric_snapshots (post_id, captured_at, likes, reposts, replies, quotes)
-        VALUES (${post.id}, ${engagement.capturedAt}, ${engagement.likes}, ${engagement.reposts},
-                ${engagement.replies}, ${engagement.quotes})
-        ON CONFLICT (post_id, captured_at) DO NOTHING
-      `;
-    }
-  });
+async function invalidateVectors(tx: SQL, ids: string[]) {
+  if (ids.length === 0) return;
+  const affected =
+    await tx`SELECT DISTINCT cluster_id FROM cluster_members WHERE post_id = ANY(${ids}::text[])`;
+  const clusterIds = affected.map((row: { cluster_id: string }) => row.cluster_id);
+  await tx`DELETE FROM cluster_members WHERE post_id = ANY(${ids}::text[])`;
+  await tx`DELETE FROM embeddings WHERE post_id = ANY(${ids}::text[])`;
+  await deleteTopicEmbedding(tx, ids);
+  if (clusterIds.length === 0) return;
+  await tx`
+    UPDATE clusters c SET centroid = remaining.centroid,
+      member_count = remaining.members, last_seen_at = remaining.last_seen
+    FROM (
+      SELECT cm.cluster_id, avg(e.vec) AS centroid, count(*)::int AS members,
+             max(cm.assigned_at) AS last_seen
+      FROM cluster_members cm JOIN embeddings e
+        ON e.post_id = cm.post_id AND e.span = cm.span
+      WHERE cm.cluster_id = ANY(${clusterIds}::text[]) GROUP BY cm.cluster_id
+    ) remaining WHERE c.id = remaining.cluster_id
+  `;
+  await tx`
+    DELETE FROM clusters c WHERE c.id = ANY(${clusterIds}::text[])
+      AND NOT EXISTS (SELECT 1 FROM cluster_members cm WHERE cm.cluster_id = c.id)
+  `;
 }
 
 /**
- * True when this post already has vectors. Embedding is the expensive step, so
- * an already-vectorized post costs one indexed lookup instead of three model
- * runs; Jetstream redelivery and overlapping feed pages both rely on this.
+ * Upsert one source record and observation atomically. Keep only the latest
+ * measured counters, and invalidate vectors when normalized content changes.
+ * The source-qualified author ID is not a claim of cross-network identity.
  */
-async function alreadyVectorized(postId: string) {
+async function storePost(post: AcceptedPost, segmentId: string) {
   const db = await getDb();
-  const rows = await db`
-    SELECT 1 AS present FROM embeddings WHERE post_id = ${postId} LIMIT 1
-  `;
-  return rows.length > 0;
+  return db.begin(async (tx) => {
+    const [previous] = await tx`
+      SELECT content_hash, deleted_at,
+        EXISTS (SELECT 1 FROM embeddings WHERE post_id = posts.id) AS vectorized
+      FROM posts WHERE id = ${post.id} FOR UPDATE
+    `;
+    const changed = previous?.content_hash !== post.contentHash || previous?.deleted_at != null;
+    if (previous && changed) await invalidateVectors(tx, [post.id]);
+    await tx`
+      INSERT INTO posts (id, source, uri, author_id, author_handle, body, lang,
+                         kind, permalink, published_at, time_kind, media, content_hash,
+                         title, evidence_type, publisher)
+      VALUES (${post.id}, ${post.source}, ${post.uri}, ${post.authorId}, ${post.authorHandle},
+              ${post.text}, ${["vi"]}, ${post.kind}, ${post.permalink}, ${post.publishedAt},
+              ${post.timeKind}, ${JSON.stringify(post.media)}::text::jsonb, ${post.contentHash},
+              ${post.title}, ${post.evidenceType}, ${post.publisher})
+      ON CONFLICT (id) DO UPDATE SET
+        author_id = EXCLUDED.author_id, author_handle = EXCLUDED.author_handle,
+        body = EXCLUDED.body, lang = EXCLUDED.lang, kind = EXCLUDED.kind,
+        permalink = EXCLUDED.permalink, published_at = EXCLUDED.published_at,
+        time_kind = EXCLUDED.time_kind, media = EXCLUDED.media,
+        content_hash = EXCLUDED.content_hash, title = EXCLUDED.title,
+        evidence_type = EXCLUDED.evidence_type, publisher = EXCLUDED.publisher,
+        deleted_at = NULL
+    `;
+    await tx`
+      INSERT INTO observations (post_id, segment_id, observed_at, via)
+      VALUES (${post.id}, ${segmentId}, ${new Date().toISOString()}, ${"rss"})
+      ON CONFLICT (post_id, segment_id) DO UPDATE SET observed_at = EXCLUDED.observed_at
+    `;
+    if (post.engagement) {
+      await tx`
+        INSERT INTO metric_snapshots (post_id, captured_at, likes, reposts, replies, quotes)
+        VALUES (${post.id}, ${post.engagement.capturedAt}, ${post.engagement.likes ?? null},
+                ${post.engagement.reposts ?? null}, ${post.engagement.replies ?? null},
+                ${post.engagement.quotes ?? null})
+        ON CONFLICT (post_id) DO UPDATE SET
+          captured_at = EXCLUDED.captured_at, likes = EXCLUDED.likes,
+          reposts = EXCLUDED.reposts, replies = EXCLUDED.replies, quotes = EXCLUDED.quotes
+        WHERE EXCLUDED.captured_at >= metric_snapshots.captured_at
+      `;
+    }
+    return { duplicate: !changed && previous?.vectorized === true };
+  });
 }
 
 async function saveVectors(postId: string, vectors: PreparedVector[]) {
@@ -355,7 +367,7 @@ async function assignCluster(postId: string, item: PreparedVector) {
  * as unvectorized spans rather than aborting the post: a blocked Blob CDN must
  * not lose the text.
  */
-async function vectorize(post: SocialPost, media: MediaRef[]) {
+async function vectorize(post: AcceptedPost) {
   const vectors: PreparedVector[] = [];
 
   const text = await embedText(post.text);
@@ -364,13 +376,12 @@ async function vectorize(post: SocialPost, media: MediaRef[]) {
       space: "text",
       span: TEXT_SPAN,
       vector: text.value,
-      identity: TEXT_SPAN,
       // Short text is still stored and searchable; it just cannot be clustered.
       clusterable: post.text.trim().length >= MIN_CLUSTER_TEXT,
     });
   }
 
-  for (const [index, item] of media.entries()) {
+  for (const [index, item] of post.media.entries()) {
     if (item.kind === "image") {
       const blob = await fetchImage(item.url);
       if (blob.status !== "ok") continue;
@@ -380,7 +391,6 @@ async function vectorize(post: SocialPost, media: MediaRef[]) {
           space: "image",
           span: `image:${index}`,
           vector: vector.value,
-          identity: `image:${item.cid}`,
           clusterable: true,
         });
       }
@@ -398,7 +408,6 @@ async function vectorize(post: SocialPost, media: MediaRef[]) {
               // Frame index keeps temporal order visible in the span name.
               span: `video:${index}:frame:${frameIndex}`,
               vector: vector.value,
-              identity: `video:${item.cid}:${frameIndex}`,
               // Individual frames are unstable evidence: a 100 ms shift changes
               // the image. They stay searchable but do not form their own clusters.
               clusterable: false,
@@ -414,7 +423,6 @@ async function vectorize(post: SocialPost, media: MediaRef[]) {
             space: "audio",
             span: `video:${index}:audio`,
             vector: vector.value,
-            identity: `video:${item.cid}:audio`,
             clusterable: true,
           });
         }
@@ -431,7 +439,6 @@ async function vectorize(post: SocialPost, media: MediaRef[]) {
           space: "audio",
           span: `audio:${index}`,
           vector: vector.value,
-          identity: `audio:${item.cid}`,
           clusterable: true,
         });
       }
@@ -442,183 +449,206 @@ async function vectorize(post: SocialPost, media: MediaRef[]) {
 }
 
 /**
- * Pull one page per segment and process it. Errors are collected per segment so
- * one broken feed cannot stop the others; the caller surfaces them as coverage
- * gaps rather than reporting zero posts for that segment.
+ * Process one adapter record through the same Vietnamese gate used by every
+ * source. Repeated deliveries refresh measured coverage but never re-embed
+ * unchanged content. Rejected edits remove stale previously accepted evidence.
+ */
+export async function ingestPost(input: SourcePost, segmentId: string) {
+  const accepted = acceptInput(input);
+  if (!accepted.accepted) {
+    const db = await getDb();
+    const id = postId(input.source, input.uri);
+    await db.begin(async (tx) => {
+      await invalidateVectors(tx, [id]);
+      await tx`DELETE FROM posts WHERE id = ${id}`;
+    });
+    return { skipped: true as const, reason: accepted.reason };
+  }
+  const post = accepted.post;
+  const stored = await storePost(post, segmentId);
+  const record = {
+    id: post.id,
+    contentHash: post.contentHash,
+    title: post.title,
+    body: post.text,
+  };
+  if (stored.duplicate) {
+    // Unchanged redelivery: no re-embedding of near-copy or topic vectors, but a
+    // vector that was never written (new table, interrupted cycle) is filled now.
+    const repaired = await persistTopicEmbedding(record);
+    return { duplicate: true as const, topicVector: repaired };
+  }
+  const vectors = await vectorize(post);
+  await saveVectors(post.id, vectors);
+  let clusters = 0;
+  for (const vector of vectors) {
+    if (!vector.clusterable) continue;
+    const assigned = await assignCluster(post.id, vector);
+    if (!assigned.joined) clusters += 1;
+  }
+  // Topic grouping is separate from near-copy clustering: its vector is written
+  // after the post row is durable, and a model failure leaves the record pending
+  // rather than inventing a placeholder.
+  const topic = await persistTopicEmbedding(record);
+  return {
+    stored: true as const,
+    vectors: vectors.length,
+    clusters,
+    topicVector: topic,
+  };
+}
+
+/** Apply an explicit source takedown without leaving vectors or centroid contributions behind. */
+export async function deletePost(source: SocialSource, uri: string) {
+  const db = await getDb();
+  const id = postId(source, uri);
+  await db.begin(async (tx) => {
+    await invalidateVectors(tx, [id]);
+    await tx`UPDATE posts SET deleted_at = now() WHERE id = ${id}`;
+  });
+}
+
+/** Retain only input that can contribute to the maximum supported 30-day map window. */
+export async function expirePosts() {
+  const db = await getDb();
+  return db.begin(async (tx) => {
+    const rows = await tx`
+      SELECT id FROM posts WHERE published_at < now() - ${`${RETENTION_DAYS} days`}::interval
+    `;
+    const ids = rows.map((row: { id: string }) => row.id);
+    await invalidateVectors(tx, ids);
+    if (ids.length) await tx`DELETE FROM posts WHERE id = ANY(${ids}::text[])`;
+    return ids.length;
+  });
+}
+
+/**
+ * Collect a finite budget from each provider and publish actual receipt counters.
+ * Model inference remains sequential: this bounds native model memory and keeps
+ * existing near-copy admission behavior while asynchronous inference leaves the
+ * HTTP event loop available. Source fetch fan-in has its own request bounds.
  */
 export async function ingestSegments(
   options: {
     limitPerSegment?: number;
     segmentIds?: string[];
+    onProgress?: (update: Partial<CollectionProgress>) => void;
   } = {},
 ): Promise<IngestReport> {
-  const limit = Math.min(options.limitPerSegment ?? 20, MAX_INGEST_POSTS_PER_SEGMENT);
+  const limit = clampCollectionLimit(options.limitPerSegment);
   const segments = options.segmentIds
     ? VIEWER_SEGMENTS.filter((segment) => options.segmentIds!.includes(segment.id))
     : VIEWER_SEGMENTS;
-
   const report: IngestReport = {
-    segments: 0,
+    segments: segments.length,
     fetched: 0,
     stored: 0,
     observations: 0,
     vectors: 0,
     unvectorized: 0,
     clusters: 0,
+    duplicates: 0,
     skippedLanguage: 0,
+    skippedQuality: 0,
+    expired: 0,
+    sources: [],
     errors: [],
   };
-
-  const seenPosts = new Set<string>();
-
+  let topicVectors = 0;
+  let pending = 0;
+  /** Receipts, not an estimated percentage; a caller owns timestamps and lifecycle. */
+  function publish(update: Partial<CollectionProgress>) {
+    options.onProgress?.({
+      limit,
+      segments: segments.length,
+      fetched: report.fetched,
+      stored: report.stored,
+      duplicates: report.duplicates,
+      rejected: report.skippedLanguage + report.skippedQuality,
+      embedded: topicVectors,
+      pending,
+      ...update,
+    });
+  }
+  let completed = 0;
   for (const segment of segments) {
-    report.segments += 1;
-    // `handled` counts posts accepted into THIS segment, not items inspected.
-    // Overlapping popular posts must not consume the budget, or a niche feed
-    // spends its whole allowance on content already collected.
-    let handled = 0;
-    let exhausted = false;
-
-    for (const feed of segment.feeds) {
-      if (handled >= limit) break;
-      let cursor: string | null = null;
-
-      for (let pageIndex = 0; pageIndex < MAX_PAGES_PER_FEED; pageIndex += 1) {
-        if (handled >= limit) break;
-
-        let page;
-        try {
-          page = await fetchFeedPage(feed, cursor, Math.min(limit, 50));
-        } catch (error) {
-          report.errors.push({
-            segmentId: segment.id,
-            message: error instanceof Error ? error.message : "feed failed",
-          });
-          break;
-        }
-
-        cursor = page.cursor;
-        if (page.posts.length === 0) {
-          // An empty page with no cursor is the end of the feed, not an error.
-          exhausted = true;
-          break;
-        }
-
-        for (const item of page.posts) {
-          if (handled >= limit) break;
-          report.fetched += 1;
-
-          try {
-            const isNew = !seenPosts.has(item.post.id);
-            seenPosts.add(item.post.id);
-
-            // English-only collection is a declared scope, so a post tagged
-            // exclusively with other languages is skipped before it costs an
-            // embedding. Untagged posts are kept: absence of a tag is unknown,
-            // not evidence of another language.
-            if (!declaresEnglish(item.post.lang)) {
-              report.skippedLanguage += 1;
-              continue;
-            }
-
-            await storePost(item.post, item.media, segment.id, engagementOf(item.engagement));
-            report.observations += 1;
-            handled += 1;
-
-            // A post seen in a second segment is still a new observation for
-            // that segment, but its vectors already exist and must not be
-            // recomputed.
-            if (!isNew || (await alreadyVectorized(item.post.id))) continue;
-
-            const vectors = await vectorize(item.post, item.media);
-            await saveVectors(item.post.id, vectors);
-            report.vectors += vectors.length;
-
-            if (vectors.length === 0) report.unvectorized += 1;
-
-            for (const vector of vectors) {
-              if (vector.clusterable) await assignCluster(item.post.id, vector);
-            }
-
+    const source: SourceCollectionResult = {
+      segmentId: segment.id,
+      source: segment.source,
+      fetched: 0,
+      stored: 0,
+      duplicates: 0,
+      skippedLanguage: 0,
+      skippedQuality: 0,
+      error: null,
+    };
+    report.sources.push(source);
+    publish({ phase: "fetching", current: segment.id, segmentsDone: completed });
+    try {
+      const feed = await fetchPublicFeed(segment, limit);
+      const posts = feed.posts;
+      if (feed.errors.length > 0) {
+        source.error = feed.errors.join("; ");
+        report.errors.push({ segmentId: segment.id, message: source.error });
+      }
+      source.fetched = posts.length;
+      report.fetched += posts.length;
+      publish({ phase: "ingesting", current: segment.id });
+      let processed = 0;
+      for (const post of posts) {
+        const result = await ingestPost(post, segment.id);
+        if ("skipped" in result) {
+          if (result.reason === "language") {
+            source.skippedLanguage += 1;
+            report.skippedLanguage += 1;
+          } else {
+            source.skippedQuality += 1;
+            report.skippedQuality += 1;
+          }
+        } else {
+          report.observations += 1;
+          if (result.topicVector === "embedded") topicVectors += 1;
+          if ("duplicate" in result) {
+            source.duplicates += 1;
+            report.duplicates += 1;
+          } else {
+            source.stored += 1;
             report.stored += 1;
-          } catch (error) {
-            report.unvectorized += 1;
-            report.errors.push({
-              segmentId: segment.id,
-              message: error instanceof Error ? error.message : "post failed",
-            });
+            report.vectors += result.vectors;
+            report.clusters += result.clusters;
+            if (result.vectors === 0) report.unvectorized += 1;
           }
         }
-
-        // No cursor means there is nothing further back to read.
-        if (!cursor || page.posts.length === 0) {
-          exhausted = true;
-          break;
-        }
+        if (++processed % 10 === 0) publish({ phase: "ingesting", current: segment.id });
       }
-
-      if (exhausted) continue;
+    } catch (error) {
+      source.error = error instanceof Error ? error.message : "source collection failed";
+      report.errors.push({ segmentId: segment.id, message: source.error });
     }
+    completed += 1;
+    publish({ phase: "ingesting", current: null, segmentsDone: completed });
   }
-
+  publish({ phase: "expiring", current: null });
+  report.expired = await expirePosts();
+  // One bounded batch per cycle keeps the map converging on a pre-existing
+  // corpus without letting inference stall a poll. Failures are reported, not
+  // retried here: the next cycle picks up whatever is still pending.
+  try {
+    publish({ phase: "backfilling", current: null });
+    const topicBatch = await backfillTopicEmbeddings(TOPIC_BACKFILL_LIMIT);
+    topicVectors += topicBatch.embedded;
+    pending = topicBatch.pending;
+    publish({ phase: "backfilling", current: null });
+    if (topicBatch.error) {
+      report.errors.push({ segmentId: "topic-embeddings", message: topicBatch.error });
+    }
+  } catch (error) {
+    report.errors.push({
+      segmentId: "topic-embeddings",
+      message: error instanceof Error ? error.message : "topic embedding backfill failed",
+    });
+  }
   return report;
-}
-
-/**
- * Handle one live tail event. Creates and updates are both upserts: Jetstream
- * redelivers after reconnects and an update carries a full record, so treating
- * them the same is correct and idempotent. A delete tombstones the post and
- * drops its vectors, which is what a takedown requires.
- */
-export async function ingestTailEvent(event: TailEvent) {
-  const db = await getDb();
-
-  if (event.operation === "delete") {
-    await db`UPDATE posts SET deleted_at = now() WHERE source = ${"bluesky"} AND uri = ${event.uri}`;
-    await db`DELETE FROM embeddings WHERE post_id = ${event.uri}`;
-    await db`DELETE FROM cluster_members WHERE post_id = ${event.uri}`;
-    return { deleted: true as const };
-  }
-
-  if (!event.record) return { skipped: true as const };
-
-  const { post, media } = toTailPost(event);
-  if (!declaresEnglish(post.lang)) return { skippedLanguage: true as const };
-  // The tail carries no viewer segment: it is the whole network, so the
-  // observation is attributed to the discovery pool and never to an audience.
-  await storePost(post, media, "discover", null);
-
-  if (await alreadyVectorized(post.id)) return { duplicate: true as const };
-
-  const vectors = await vectorize(post, media);
-  await saveVectors(post.id, vectors);
-  for (const vector of vectors) {
-    if (vector.clusterable) await assignCluster(post.id, vector);
-  }
-  return { stored: true as const, vectors: vectors.length };
-}
-
-/**
- * Convert a tail record with the same parser the feed path uses, so a video
- * post observed live carries its frames and audio just like one from a page.
- * The record arrives already decoded but in raw (blob-ref) form.
- */
-function toTailPost(event: TailEvent) {
-  const record = event.record ?? {};
-  const embed = record.embed;
-  return toSocialPost({
-    uri: event.uri,
-    did: event.did,
-    handle: null,
-    record: {
-      text: typeof record.text === "string" ? record.text : "",
-      langs: Array.isArray(record.langs) ? (record.langs as string[]) : [],
-      tags: Array.isArray(record.tags) ? (record.tags as string[]) : [],
-      createdAt: typeof record.createdAt === "string" ? record.createdAt : event.time,
-    },
-    embed,
-    indexedAt: event.time,
-  });
 }
 
 /**
@@ -679,7 +709,6 @@ export async function recluster(options: { space?: Space; limit?: number } = {})
       space: row.space,
       span: row.span,
       vector: { space: row.space, model: row.model, dim: row.dim, values },
-      identity: row.span,
       clusterable: true,
     });
     assigned += 1;
@@ -696,6 +725,8 @@ export async function recluster(options: { space?: Space; limit?: number } = {})
 interface MemberRow {
   id: string;
   permalink: string;
+  source: SocialSource;
+  time_kind: SourceTimeKind;
   body: string | null;
   author_handle: string | null;
   kind: string;
@@ -708,6 +739,8 @@ interface MemberRow {
 interface SearchRow {
   id: string;
   permalink: string;
+  source: SocialSource;
+  time_kind: SourceTimeKind;
   body: string | null;
   author_handle: string | null;
   kind: string;
@@ -724,14 +757,10 @@ interface ClusterRow {
   cohesion: number | null;
 }
 
-/**
- * Cluster list with crossings. A crossing counts distinct *collection*
- * segments, so a post that also appeared in the whole-network pool cannot
- * inflate adoption.
- */
+/** Cluster list with observed cross-context coverage, never inferred demographics. */
 export async function listClusters(limit = 20): Promise<PatternCluster[]> {
   const db = await getDb();
-  const adoptionIds = ADOPTION_SEGMENTS.map((segment) => segment.id);
+  const adoptionIds = VIEWER_SEGMENTS.map((segment) => segment.id);
 
   // `size` counts distinct posts, not vectors: one post contributes a text
   // span plus one span per image, and counting spans would inflate a gallery.
@@ -755,7 +784,7 @@ async function describeCluster(row: ClusterRow, adoptionIds: string[]): Promise<
   // Members that are still present (a takedown removes the member row) and
   // their segments, so the UI can show which audiences saw the pattern.
   const members = (await db`
-    SELECT p.id, p.permalink, p.body, p.author_handle, p.kind, p.media,
+    SELECT p.id, p.permalink, p.source, p.time_kind, p.body, p.author_handle, p.kind, p.media,
            p.published_at,
            array_remove(array_agg(DISTINCT o.segment_id), NULL) AS segments,
            min(o.observed_at) AS observed_at
@@ -776,6 +805,8 @@ async function describeCluster(row: ClusterRow, adoptionIds: string[]): Promise<
     return {
       uri: String(member.id),
       permalink: String(member.permalink),
+      source: member.source,
+      timeKind: member.time_kind,
       text: String(member.body ?? "").slice(0, 240),
       authorHandle: member.author_handle ? String(member.author_handle) : null,
       kind: String(member.kind) as PostKind,
@@ -838,6 +869,7 @@ export async function segmentCoverage(windowHours: number): Promise<SegmentCover
     return {
       segmentId: segment.id,
       label: segment.label,
+      source: segment.source,
       posts: Number(row?.posts ?? 0),
       mediaPosts: Number(row?.media_posts ?? 0),
       lastObservedAt: row?.last_observed_at?.toISOString() ?? null,
@@ -921,7 +953,7 @@ export async function searchAcrossSpaces(text: string, limit = 10) {
 
   const ids = ordered.map(([id]) => id);
   const posts = (await db`
-    SELECT id, permalink, body, author_handle, kind, published_at
+    SELECT id, permalink, source, time_kind, body, author_handle, kind, published_at
     FROM posts WHERE id = ANY(${ids}) AND deleted_at IS NULL
   `) as unknown as SearchRow[];
   const byId = new Map(posts.map((post) => [post.id, post]));
@@ -933,6 +965,8 @@ export async function searchAcrossSpaces(text: string, limit = 10) {
       return {
         uri: id,
         permalink: String(post.permalink),
+        source: post.source,
+        timeKind: post.time_kind,
         text: String(post.body ?? ""),
         authorHandle: post.author_handle ? String(post.author_handle) : null,
         kind: String(post.kind) as PostKind,
@@ -943,100 +977,5 @@ export async function searchAcrossSpaces(text: string, limit = 10) {
     .filter((item): item is NonNullable<typeof item> => item !== null);
 }
 
-/**
- * Start the live tail. Reconnects with exponential backoff and resumes from the
- * last processed seq, which Jetstream treats as inclusive. Processing is
- * serialized so a slow media download cannot reorder observations.
- */
-export function startTail(
-  options: {
-    onError?: (error: Error) => void;
-    /** Every Nth create is processed; deletes always are, so takedowns are never sampled away. */
-    sampleRate?: number;
-  } = {},
-) {
-  const rate = Math.max(1, Math.round(options.sampleRate ?? TAIL_SAMPLE_RATE));
-
-  let socket: WebSocket | null = null;
-  let closed = false;
-  let cursor: string | undefined;
-  let backoff = 1_000;
-  let seen = 0;
-  let dropped = 0;
-  let processing = false;
-  const pending: TailEvent[] = [];
-
-  const drain = async () => {
-    if (processing) return;
-    processing = true;
-    try {
-      while (pending.length > 0) {
-        const event = pending.shift()!;
-        try {
-          await ingestTailEvent(event);
-        } catch (error) {
-          options.onError?.(error instanceof Error ? error : new Error(String(error)));
-        }
-      }
-    } finally {
-      processing = false;
-    }
-  };
-
-  const connect = () => {
-    if (closed) return;
-    socket = openTail({
-      cursor,
-      onEvent: (event) => {
-        cursor = String(event.seq);
-        // Deletes must always apply: a takedown that was sampled away would keep
-        // removed content in the graph and in every cluster it joined.
-        if (event.operation === "create" || event.operation === "update") {
-          seen += 1;
-          if (seen % rate !== 0) return;
-        }
-        if (pending.length >= TAIL_QUEUE_LIMIT) {
-          pending.shift();
-          dropped += 1;
-        }
-        pending.push(event);
-        void drain();
-      },
-      onError: (error) => options.onError?.(error),
-      onClose: () => {
-        if (closed) return;
-        backoff = Math.min(backoff * 2, 30_000);
-        setTimeout(connect, backoff);
-      },
-    });
-  };
-
-  connect();
-
-  return {
-    stop() {
-      closed = true;
-      socket?.close();
-      socket = null;
-      pending.length = 0;
-    },
-    get open() {
-      return socket?.readyState === WebSocket.OPEN;
-    },
-    /** Sampling and drop counters, so coverage can state what the tail skipped. */
-    get counters() {
-      return {
-        seen,
-        processed: seen === 0 ? 0 : Math.floor(seen / rate),
-        dropped,
-        sampleRate: rate,
-      };
-    },
-  };
-}
-
 /** Exposed for tests: the join threshold is the whole clustering contract. */
 export const CLUSTER_THRESHOLDS = JOIN_THRESHOLD;
-
-/** Vector extraction result used by tests to assert failure semantics. */
-export type VectorExtraction = Extraction<Vector>;

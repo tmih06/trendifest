@@ -103,6 +103,13 @@ a {
   isolation: isolate;
 }
 
+/* The wrapper exists only to measure the surface: obi-graph positions its own
+   canvas absolutely, so the host must occupy the same box. */
+.trend-graph-host {
+  position: absolute;
+  inset: 0;
+}
+
 /* Map library tokens to the shell; defaults on .graph-canvas otherwise win
    over inherited root tokens. Keep controls clear of the inspector and footer. */
 .trend-graph {
@@ -239,62 +246,66 @@ a {
   font-size: 12px;
 }
 
+/* The message sits over the canvas but must not swallow pan and zoom, so only
+   its own action stays clickable. */
 .graph-empty {
   position: absolute;
-  inset-block-start: 50%;
+  inset-block: 88px 72px;
   inset-inline: 20px;
-  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
   text-align: center;
+  pointer-events: none;
 }
 
-/* Legend glyphs mirror the canvas vocabulary: the ramp and the type outlines
-   are drawn in CSS so they stay crisp without a second canvas. */
+.graph-empty > * {
+  pointer-events: none;
+}
+
+.graph-empty button {
+  pointer-events: auto;
+}
+
+/* Legend glyphs mirror the canvas vocabulary with no post-shape or media cue:
+   a filled dot for potential, a filled square for related-link degree and a
+   short stroke for the measured relationship line. The colour ramp is the same
+   neutral-to-accent mix the canvas uses, so the legend cannot promise a hue the
+   nodes never show. */
 .graph-legend-swatch {
   width: 8px;
   height: 8px;
   flex: none;
-  background: var(--graph-legend-level, #e0d7fa);
+  border-radius: 2px;
+  background: var(--graph-legend-level, var(--graph-node));
 }
 
 .graph-legend-swatch[data-level="1"] {
-  --graph-legend-level: color-mix(in srgb, var(--graph-node-focused) 12%, var(--surface));
+  --graph-legend-level: var(--graph-node);
 }
 
 .graph-legend-swatch[data-level="2"] {
-  --graph-legend-level: color-mix(in srgb, var(--graph-node-focused) 55%, var(--surface));
+  --graph-legend-level: color-mix(in srgb, var(--graph-node), var(--graph-node-focused) 50%);
 }
 
 .graph-legend-swatch[data-level="3"] {
   --graph-legend-level: var(--graph-node-focused);
 }
 
-.graph-legend-swatch[data-shape="text"] {
-  border-radius: 9999px;
-}
-
-.graph-legend-swatch[data-shape="image"] {
-  border-radius: 2px;
-}
-
-.graph-legend-swatch[data-shape="video"] {
-  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
-  border-radius: 1px;
-}
-
-.graph-legend-swatch[data-shape="audio"] {
-  transform: rotate(45deg);
-  border-radius: 1px;
-}
-
-.graph-legend-swatch[data-shape="link"] {
-  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
-  border-radius: 1px;
-}
-
 .graph-legend-dot {
   flex: none;
   border-radius: 9999px;
-  background: var(--graph-legend-level, #9578ee);
+  background: var(--graph-node);
+}
+
+.graph-legend-line {
+  width: 14px;
+  height: 2px;
+  flex: none;
+  border-radius: 1px;
+  background: var(--graph-line);
 }
 
 .mobile-nav-trigger {
@@ -309,14 +320,16 @@ a {
   height: min(65dvh, 640px);
 }
 
-.pattern-row {
+.topic-row {
   min-height: 64px;
 }
 
-.theme-switching *,
-.theme-switching *::before,
-.theme-switching *::after {
-  transition: none !important;
+/* Keep the board table beside the floating evidence inspector, not under it.
+   Narrow screens use the modal inspector and need the board's full width. */
+@media (min-width: 1200px) {
+  .topic-board[data-details-open="true"] {
+    padding-inline-end: 344px;
+  }
 }
 
 @media (max-width: 1199px) {
@@ -345,6 +358,22 @@ a {
   }
   .graph-toolbar {
     padding: 12px;
+  }
+  /* The legend and the counts share a narrow strip, so both the empty state
+     and the canvas view controls are lifted above the taller footer instead of
+     being clipped by it. */
+  .graph-footer {
+    padding-block: 8px;
+    row-gap: 4px;
+  }
+  .graph-legend {
+    column-gap: 8px;
+  }
+  .trend-graph .graph-canvas__toolbar {
+    inset-block-end: 92px;
+  }
+  .graph-empty {
+    inset-block-end: 116px;
   }
 }
 

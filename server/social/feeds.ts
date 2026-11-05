@@ -1,0 +1,165 @@
+import { Parser } from "htmlparser2";
+import type { ViewerSegment } from "../../shared/types.ts";
+import {
+  canonicalLink,
+  fetchNewsFeed,
+  isNewsSource,
+  object,
+  parseRssChannel,
+  requestBounded,
+  text,
+  type FeedReadResult,
+} from "./news.ts";
+import {
+  MAX_MEDIA_ITEMS,
+  MAX_POSTS_PER_SOURCE,
+  normalizeText,
+  type MediaRef,
+  type SourcePost,
+} from "./input.ts";
+
+const validators = new Map<string, { etag: string | null; modified: string | null }>();
+
+/**
+ * Extract visible first-post text, excluding quoted copies and script/style
+ * content. Only source-hosted attachments are eligible for inference; arbitrary
+ * third-party image URLs and avatars are not downloaded from RSS descriptions.
+ */
+function excerpt(html: string, permalink: string): { body: string; media: MediaRef[] } {
+  const parts: string[] = [];
+  const media: MediaRef[] = [];
+  let excluded = 0;
+  const skip: Record<string, true> = { script: true, style: true, blockquote: true };
+  const root = new URL(permalink);
+  const parser = new Parser(
+    {
+      onopentag(name, attributes) {
+        if (Object.hasOwn(skip, name)) excluded += 1;
+        if (excluded) return;
+        parts.push(" ");
+        if (name !== "img" || media.length >= MAX_MEDIA_ITEMS) return;
+        try {
+          const url = new URL(attributes.src ?? "", permalink);
+          const domain = root.hostname.replace(/^www\./, "");
+          if (
+            url.protocol !== "https:" ||
+            !(url.hostname === domain || url.hostname.endsWith(`.${domain}`))
+          )
+            return;
+          if (/\/(?:smilies|avatars)\//i.test(url.pathname)) return;
+          if (media.some((item) => item.url === url.href)) return;
+          media.push({ kind: "image", url: url.href });
+        } catch {
+          // A broken image URL does not discard the thread's usable text.
+        }
+      },
+      ontext(value) {
+        if (!excluded) parts.push(value);
+      },
+      onclosetag(name) {
+        if (Object.hasOwn(skip, name)) excluded = Math.max(0, excluded - 1);
+        if (!excluded) parts.push(" ");
+      },
+    },
+    { decodeEntities: true },
+  );
+  parser.end(html);
+  return { body: normalizeText(parts.join("")), media };
+}
+
+/**
+ * Parse the two verified XenForo RSS feeds into lean source records. RSS dates
+ * describe activity, not proven original publication. Missing counters remain
+ * absent, and missing dates are rejected later rather than invented as now.
+ * The thread subject is preserved as the post title; a forum thread is a
+ * community discussion, so it never claims a publisher or "published" time.
+ */
+export function parsePublicFeed(
+  xml: string,
+  segment: ViewerSegment,
+  limit = MAX_POSTS_PER_SOURCE,
+): SourcePost[] {
+  const channel = parseRssChannel(xml);
+  const rawItems =
+    channel.item === undefined ? [] : Array.isArray(channel.item) ? channel.item : [channel.item];
+  const posts: SourcePost[] = [];
+  const seen = new Set<string>();
+  for (const raw of rawItems) {
+    if (posts.length >= Math.min(MAX_POSTS_PER_SOURCE, Math.max(0, limit))) break;
+    const item = object(raw);
+    const permalink = canonicalLink(text(item.link), segment.feedUrl);
+    if (!permalink) continue;
+    const guid = text(item.guid);
+    const uri = guid.startsWith("urn:xenforo:thread:") ? guid : permalink;
+    if (seen.has(uri)) continue;
+    seen.add(uri);
+    const title = normalizeText(text(item.title)).slice(0, 180);
+    const { body, media } = excerpt(
+      text(item["content:encoded"]) || text(item.description),
+      permalink,
+    );
+    const author = normalizeText(
+      text(item["dc:creator"]) || text(item.author).match(/\(([^)]+)\)\s*$/)?.[1] || "",
+    );
+    const rawReplies = text(item["slash:comments"]);
+    const replies = /^\d+$/.test(rawReplies)
+      ? Math.min(Number(rawReplies), 2_147_483_647)
+      : undefined;
+    posts.push({
+      source: segment.source,
+      title,
+      evidenceType: "discussion",
+      publisher: null,
+      uri,
+      authorId: author || null,
+      authorHandle: author || null,
+      text: body.startsWith(title) ? body : `${title} ${body}`.trim(),
+      kind: media.length ? "image" : "text",
+      permalink,
+      publishedAt: text(item.pubDate),
+      timeKind: "activity",
+      media,
+      engagement: replies === undefined ? null : { replies, capturedAt: new Date().toISOString() },
+    });
+  }
+  return posts;
+}
+
+/** One conditional request for a forum feed; no hidden retries, login or challenge bypass. */
+async function fetchForumFeed(segment: ViewerSegment, limit: number): Promise<SourcePost[]> {
+  const cached = validators.get(segment.feedUrl);
+  const headers = new Headers({
+    accept: "application/rss+xml, application/xml",
+    "user-agent": "Trendifest/0.1 (public-feed reader)",
+  });
+  if (cached?.etag) headers.set("if-none-match", cached.etag);
+  if (cached?.modified) headers.set("if-modified-since", cached.modified);
+  const response = await requestBounded(segment.feedUrl, headers);
+  if (response.status === 304) return [];
+  if (response.status !== 200) throw new Error(`${segment.label} returned HTTP ${response.status}`);
+  const posts = parsePublicFeed(response.body, segment, limit);
+  validators.set(segment.feedUrl, { etag: response.etag, modified: response.lastModified });
+  return posts;
+}
+
+/**
+ * One bounded public read per collection context: real evidence plus the
+ * labelled failures that did not erase it. Forum feeds keep their
+ * conditional-request behaviour and report an unreadable feed as an error line
+ * instead of throwing away an accept for a sibling source; news sources go
+ * through the separate news adapters, which fan in their catalog and already
+ * preserve the sections that answered. An empty result with no errors is a
+ * measured zero; an empty result with errors is an unavailable source.
+ */
+export async function fetchPublicFeed(
+  segment: ViewerSegment,
+  limit = MAX_POSTS_PER_SOURCE,
+): Promise<FeedReadResult> {
+  if (isNewsSource(segment.source)) return fetchNewsFeed(segment, limit);
+  try {
+    return { posts: await fetchForumFeed(segment, limit), errors: [] };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { posts: [], errors: [`${segment.id}: ${message.slice(0, 200)}`] };
+  }
+}

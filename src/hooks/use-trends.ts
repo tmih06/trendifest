@@ -13,11 +13,18 @@ function retryUnlessUnconfigured(count: number, error: Error) {
   );
 }
 
+/**
+ * Keep exact window snapshots in memory for quick revisits. Active windows
+ * still poll every two minutes; collection completion invalidates every window.
+ * Never derive a smaller window from capped aggregate topics: that would lose
+ * evidence and reuse scores computed for the wrong observation interval.
+ */
 export function useTrendMap(hours: number) {
   return useQuery({
     queryKey: ["trend-map", hours],
     queryFn: () => fetchTrendMap(hours),
-    staleTime: 60_000,
+    staleTime: 15 * 60_000,
+    gcTime: 30 * 60_000,
     refetchInterval: 120_000,
     retry: retryUnlessUnconfigured,
   });
@@ -25,8 +32,8 @@ export function useTrendMap(hours: number) {
 
 /**
  * Collection status changes on the server's own schedule, so it polls faster
- * than the graph. The status is the only honest source for "configured",
- * "backfilling", and "tail connected"; the client never guesses them.
+ * than the graph. The server owns configuration, cycle state and completion
+ * timestamps; the client does not invent a live stream.
  */
 export function useCollectionStatus() {
   const client = useQueryClient();

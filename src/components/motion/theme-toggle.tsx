@@ -12,7 +12,8 @@
  * - Respects prefers-reduced-motion by falling back to instant theme swap.
  */
 
-import { Moon, Sun } from "lucide-react";
+import Moon from "lucide-react/icons/moon";
+import Sun from "lucide-react/icons/sun";
 import { useReducedMotion } from "motion/react";
 import { useTheme } from "next-themes";
 import { type ComponentPropsWithoutRef, useEffect, useState } from "react";
@@ -87,6 +88,13 @@ export function useThemeToggle({ start = "top-down" }: { start?: RectStart } = {
   }, []);
 
   const isDark = mounted && resolvedTheme === "dark";
+
+  // The shared theme provider owns both routes; retain the workspace's mobile
+  // browser-bar color without a second competing theme state.
+  useEffect(() => {
+    if (!mounted) return;
+    document.getElementById("theme-color")?.setAttribute("content", isDark ? "#141416" : "#f5f5f5");
+  }, [mounted, isDark]);
 
   const toggle = () => {
     const next = isDark ? "light" : "dark";

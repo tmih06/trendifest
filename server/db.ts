@@ -11,6 +11,13 @@ import { SQL } from "bun";
 const PADDED_DIM = 1024;
 
 /**
+ * Specific-topic vectors keep their native width. They live in their own table
+ * and their own model space (E5), so they must never be compared with the
+ * near-copy MiniLM or CLIP columns that share the padded `embeddings` table.
+ */
+export const TOPIC_VECTOR_DIM = 384;
+
+/**
  * Embedding spaces share one padded column. pgvector rejects HNSW on a
  * dimension-less `vector` column, and a column cannot hold mixed dimensions, so
  * every vector is L2-normalized and zero-padded to `PADDED_DIM`. Cosine
@@ -32,7 +39,7 @@ export function isSpace(value: string): value is Space {
 }
 
 export const SPACE_MODELS: Record<Space, { model: string; dim: number }> = {
-  // Multilingual so a Spanish or Japanese post can still join an English cluster.
+  // Multilingual text embeddings include Vietnamese; matching remains a heuristic.
   text: { model: "Xenova/paraphrase-multilingual-MiniLM-L12-v2", dim: 384 },
   // CLIP ViT-B/32: image and text towers share one space, so a frame can be
   // compared against captions as well as other frames.
@@ -76,16 +83,23 @@ function migrationSql() {
       id text PRIMARY KEY,
       source text NOT NULL,
       uri text NOT NULL,
-      author_did text NOT NULL,
+      author_id text NOT NULL,
       author_handle text,
       body text NOT NULL DEFAULT '',
       lang text[] NOT NULL DEFAULT '{}',
-      tags text[] NOT NULL DEFAULT '{}',
       kind text NOT NULL,
       permalink text NOT NULL,
       published_at timestamptz NOT NULL,
+      time_kind text NOT NULL DEFAULT 'published',
       media jsonb NOT NULL DEFAULT '[]'::jsonb,
       content_hash text NOT NULL,
+      -- Display/grouping metadata. A news headline is evidence, not a community post.
+      title text NOT NULL DEFAULT '',
+      evidence_type text NOT NULL DEFAULT 'discussion',
+      publisher text,
+      -- Collection time of the first accepted delivery. Never rewritten by a
+      -- later poll, so "when we first saw it" stays a fact.
+      first_collected_at timestamptz NOT NULL DEFAULT now(),
       deleted_at timestamptz,
       UNIQUE (source, uri)
     );
@@ -103,18 +117,17 @@ function migrationSql() {
     );
     CREATE INDEX IF NOT EXISTS observations_segment_idx ON observations (segment_id, observed_at DESC);
 
-    -- Engagement is a property of the post, and it moves. Snapshots keep the
-    -- measurement time so a later read cannot silently rewrite an earlier one.
+    -- Only the latest measured counters are consumed. Missing metrics stay
+    -- NULL; an RSS reply count is not a measured like/share count.
     CREATE TABLE IF NOT EXISTS metric_snapshots (
       post_id text NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
       captured_at timestamptz NOT NULL,
-      likes integer NOT NULL DEFAULT 0,
-      reposts integer NOT NULL DEFAULT 0,
-      replies integer NOT NULL DEFAULT 0,
-      quotes integer NOT NULL DEFAULT 0,
-      PRIMARY KEY (post_id, captured_at)
+      likes integer,
+      reposts integer,
+      replies integer,
+      quotes integer,
+      PRIMARY KEY (post_id)
     );
-    CREATE INDEX IF NOT EXISTS metrics_recent_idx ON metric_snapshots (post_id, captured_at DESC);
 
     -- One vector per (post, model, span). Spans keep per-modality provenance:
     -- body, image:0, video:frame:2, video:audio.
@@ -130,6 +143,18 @@ function migrationSql() {
     );
     CREATE INDEX IF NOT EXISTS embeddings_space_idx ON embeddings (space);
     ${spaceIndexes}
+
+    -- Specific-topic vectors live in their own table at the model's native 384
+    -- dimensions. They are NOT near-copy evidence: a row is valid only while
+    -- both its model and content_hash still match the post, so an edited post
+    -- silently stops contributing rather than matching on stale text.
+    CREATE TABLE IF NOT EXISTS topic_embeddings (
+      post_id text PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,
+      model text NOT NULL,
+      content_hash text NOT NULL,
+      vec vector(${TOPIC_VECTOR_DIM}) NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
 
     CREATE TABLE IF NOT EXISTS clusters (
       id text PRIMARY KEY,
@@ -158,21 +183,59 @@ function migrationSql() {
     CREATE INDEX IF NOT EXISTS clusters_active_idx
       ON clusters (space, last_seen_at DESC) WHERE archived_at IS NULL;
 
-    -- Ingestion checkpoints live beside the data so a restart resumes instead
-    -- of re-walking the same feed pages.
-    CREATE TABLE IF NOT EXISTS ingest_state (
-      key text PRIMARY KEY,
-      value jsonb NOT NULL,
-      updated_at timestamptz NOT NULL DEFAULT now()
-    );
   `;
 }
 
 async function migrate(sql: SQL) {
+  // Rename the source-specific column without losing provenance on an upgrade.
+  const oldAuthor = await sql`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'posts' AND column_name = 'author_did'
+  `;
+  if (oldAuthor.length) await sql.unsafe("ALTER TABLE posts RENAME COLUMN author_did TO author_id");
   for (const statement of migrationSql().split(/;\s*\n/)) {
     const trimmed = statement.trim();
     if (trimmed) await sql.unsafe(trimmed);
   }
+  await sql.unsafe(
+    "ALTER TABLE posts ADD COLUMN IF NOT EXISTS time_kind text NOT NULL DEFAULT 'published'",
+  );
+  // Metadata cutover. Existing rows get one shared collection timestamp (the
+  // migration instant) rather than a fabricated earlier history; `now()` is
+  // stable, so Postgres fills the column without rewriting the table.
+  await sql.unsafe("ALTER TABLE posts ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT ''");
+  await sql.unsafe(
+    "ALTER TABLE posts ADD COLUMN IF NOT EXISTS evidence_type text NOT NULL DEFAULT 'discussion'",
+  );
+  await sql.unsafe("ALTER TABLE posts ADD COLUMN IF NOT EXISTS publisher text");
+  await sql.unsafe(
+    "ALTER TABLE posts ADD COLUMN IF NOT EXISTS first_collected_at timestamptz NOT NULL DEFAULT now()",
+  );
+  await sql.unsafe(
+    "CREATE INDEX IF NOT EXISTS topic_embeddings_hash_idx ON topic_embeddings (content_hash)",
+  );
+  await sql.unsafe("ALTER TABLE posts DROP COLUMN IF EXISTS tags");
+  for (const column of ["likes", "reposts", "replies", "quotes"]) {
+    await sql.unsafe(
+      `ALTER TABLE metric_snapshots ALTER COLUMN ${column} DROP NOT NULL, ALTER COLUMN ${column} DROP DEFAULT`,
+    );
+  }
+  const oldMetricKey = await sql`
+    SELECT 1 FROM information_schema.key_column_usage
+    WHERE table_schema = 'public' AND table_name = 'metric_snapshots'
+      AND constraint_name = 'metric_snapshots_pkey' AND column_name = 'captured_at'
+  `;
+  if (oldMetricKey.length) {
+    await sql`
+      DELETE FROM metric_snapshots old USING metric_snapshots newer
+      WHERE old.post_id = newer.post_id AND old.captured_at < newer.captured_at
+    `;
+    await sql.unsafe(
+      "ALTER TABLE metric_snapshots DROP CONSTRAINT metric_snapshots_pkey, ADD PRIMARY KEY (post_id)",
+    );
+  }
+  await sql.unsafe("DROP INDEX IF EXISTS metrics_recent_idx");
+  await sql.unsafe("DROP TABLE IF EXISTS ingest_state");
 }
 
 /**

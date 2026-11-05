@@ -1,146 +1,176 @@
 import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
-import type { SegmentCoverage, SocialSignals } from "../../shared/types.ts";
-import { databaseConfigured } from "../db.ts";
-import { ingestSegments, socialSignals, startTail } from "./pipeline.ts";
-import type { IngestReport } from "./pipeline.ts";
+import type {
+  CollectionProgress,
+  CollectionStatus,
+  IngestReport,
+  SegmentCoverage,
+  SocialSignals,
+} from "../../shared/types.ts";
+import { databaseConfigured, getDb } from "../db.ts";
+import { clampCollectionLimit, DEFAULT_COLLECTION_LIMIT } from "./input.ts";
+import { ingestSegments, socialSignals } from "./pipeline.ts";
 
-/**
- * Background ingest scheduling and read caching.
- *
- * Two collection paths run together:
- * - periodic feed backfill, which supplies engagement counts and reaches posts
- *   the live tail dropped during a disconnect;
- * - the live Jetstream tail, which supplies new posts without polling.
- *
- * Segment errors are retained in `lastErrors` so the API can report "unknown"
- * for a failed segment instead of implying it observed zero posts.
- */
-
-const BACKFILL_INTERVAL_MS = 10 * 60 * 1000;
-const DEFAULT_WINDOW_HOURS = 72;
-
-export interface SocialServiceStatus {
-  configured: boolean;
-  backfilling: boolean;
-  lastBackfillAt: string | null;
-  /** The most recent completed cycle, so an operator can inspect what it did. */
-  lastBackfill: IngestReport | null;
-  lastErrors: Array<{ segmentId: string; message: string }>;
-  tailConnected: boolean;
-  /** What the live tail saw versus processed; null when the tail is not running. */
-  tail: { seen: number; processed: number; dropped: number; sampleRate: number } | null;
-  segments: number;
-}
-
-let timer: ReturnType<typeof setInterval> | null = null;
-let tail: ReturnType<typeof startTail> | null = null;
+/** Finite provider polls; a session lock also coordinates independent server/CLI processes. */
+const POLL_INTERVAL_MS = 10 * 60 * 1000;
+const COLLECTION_LOCK_NAMESPACE = 0x54524446;
+let timer: NodeJS.Timeout | undefined;
 let backfilling = false;
 let lastBackfillAt: string | null = null;
 let lastBackfill: IngestReport | null = null;
-const lastErrors = new Map<string, string>();
-let errorLog: Array<{ segmentId: string; message: string }> = [];
+let lastErrors: Array<{ segmentId: string; message: string }> = [];
+
+/** A new cycle starts with measured-zero receipts, not an estimated percentage. */
+function emptyProgress(limit: number): CollectionProgress {
+  return {
+    phase: "idle",
+    limit,
+    segments: VIEWER_SEGMENTS.length,
+    segmentsDone: 0,
+    fetched: 0,
+    stored: 0,
+    duplicates: 0,
+    rejected: 0,
+    embedded: 0,
+    pending: 0,
+    startedAt: null,
+    updatedAt: null,
+    current: null,
+    note: null,
+  };
+}
+
+let progress = emptyProgress(DEFAULT_COLLECTION_LIMIT);
 
 /**
- * Run one backfill cycle. Re-entrancy is guarded by `backfilling`: a slow cycle
- * covering video downloads must not stack behind the interval timer, and a
- * concurrent call returns null so the API can report "already running".
- *
- * `limitPerSegment` counts posts *accepted* per segment, and ingestion walks up
- * to three pages to find unseen ones. 25 keeps niche feeds producing patterns
- * without turning a cycle into a long media-embedding run.
+ * A timer, manual request and operator CLI share one collector per database.
+ * A reserved connection owns the advisory lock without putting inference into
+ * one long transaction. Process exit releases the lock automatically; every
+ * accepted post remains individually durable and resumable.
  */
-export async function runBackfill(limitPerSegment = 25): Promise<IngestReport | null> {
-  // A concurrent cycle returns null rather than a half-made report, so the API
-  // can say "already running" instead of reporting a stale success.
+export async function runBackfill(
+  limitPerSegment = DEFAULT_COLLECTION_LIMIT,
+  segmentIds?: string[],
+): Promise<IngestReport | null> {
   if (backfilling) return null;
   backfilling = true;
+  const limit = clampCollectionLimit(limitPerSegment);
+  const startedAt = new Date().toISOString();
+  progress = { ...emptyProgress(limit), phase: "fetching", startedAt, updatedAt: startedAt };
   try {
-    const report = await ingestSegments({ limitPerSegment });
-    lastBackfill = report;
-    lastBackfillAt = new Date().toISOString();
-
-    // Errors are per segment and replace the previous cycle's, so a fixed
-    // segment stops showing an error without any explicit clearing step.
-    lastErrors.clear();
-    for (const error of report.errors) lastErrors.set(error.segmentId, error.message);
-    errorLog = [...lastErrors.entries()].map(([segmentId, message]) => ({ segmentId, message }));
-    return report;
+    const db = await getDb();
+    const connection = await db.reserve();
+    let acquired = false;
+    try {
+      const [lock] = await connection`
+        SELECT pg_try_advisory_lock(${COLLECTION_LOCK_NAMESPACE}::int, 1) AS acquired
+      `;
+      acquired = lock?.acquired === true;
+      if (!acquired) {
+        progress = {
+          ...progress,
+          phase: "idle",
+          note: "Another process is collecting this database; no overlapping cycle was started.",
+          updatedAt: new Date().toISOString(),
+        };
+        return null;
+      }
+      const report = await ingestSegments({
+        limitPerSegment: limit,
+        segmentIds,
+        onProgress(update) {
+          progress = { ...progress, ...update, updatedAt: new Date().toISOString() };
+        },
+      });
+      lastBackfill = report;
+      lastBackfillAt = new Date().toISOString();
+      lastErrors = report.errors;
+      progress = {
+        ...progress,
+        phase: "done",
+        current: null,
+        updatedAt: lastBackfillAt,
+        note: report.errors.length
+          ? `${report.errors.length} collection errors; see source results.`
+          : null,
+      };
+      return report;
+    } finally {
+      try {
+        if (acquired) {
+          await connection`SELECT pg_advisory_unlock(${COLLECTION_LOCK_NAMESPACE}::int, 1)`;
+        }
+      } finally {
+        await connection.release();
+      }
+    }
   } catch (error) {
-    lastErrors.set("collection", error instanceof Error ? error.message : String(error));
-    errorLog = [...lastErrors.entries()].map(([segmentId, message]) => ({ segmentId, message }));
+    const message = error instanceof Error ? error.message : String(error);
+    lastErrors = [{ segmentId: "collection", message }];
+    progress = { ...progress, phase: "failed", note: message, updatedAt: new Date().toISOString() };
     throw error;
   } finally {
     backfilling = false;
   }
 }
 
-/**
- * Start the tail and the backfill timer. No database means social collection is
- * unavailable, which is a supported deployment; callers see `configured: false`
- * rather than a background crash.
- */
+/** Start once only when configured; kickoff is asynchronous and never delays HTTP readiness. */
 export function startSocialCollection() {
-  if (!databaseConfigured()) return status();
-  if (!tail) {
-    tail = startTail({
-      onError: (error) => {
-        console.warn("Social tail error:", error.message);
-      },
+  if (!databaseConfigured() || timer !== undefined) return status();
+  const poll = () => {
+    void runBackfill().catch((error: unknown) => {
+      console.warn(
+        "Public feed collection failed:",
+        error instanceof Error ? error.message : String(error),
+      );
     });
-  }
-  if (!timer) {
-    timer = setInterval(() => {
-      void runBackfill().catch((error: unknown) => {
-        // The interval must survive a database blip; the next cycle retries.
-        console.warn(
-          "Social backfill failed:",
-          error instanceof Error ? error.message : String(error),
-        );
-      });
-    }, BACKFILL_INTERVAL_MS);
-    void runBackfill().catch(() => undefined);
-  }
+  };
+  timer = setInterval(poll, POLL_INTERVAL_MS);
+  poll();
   return status();
 }
 
+/** Stop future polls; accepted in-flight work retains its database lock until completion. */
 export function stopSocialCollection() {
-  if (timer !== null) {
-    clearInterval(timer);
-    timer = null;
-  }
-  tail?.stop();
-  tail = null;
+  clearInterval(timer);
+  timer = undefined;
 }
 
-export function status(): SocialServiceStatus {
+/** Polling state and real progress receipts, never a fictional stream or audience estimate. */
+export function status(): CollectionStatus {
   return {
     configured: databaseConfigured(),
+    enabled: timer !== undefined,
     backfilling,
     lastBackfillAt,
     lastBackfill,
-    lastErrors: errorLog,
-    tailConnected: tail?.open ?? false,
-    tail: tail?.counters ?? null,
+    lastErrors,
     segments: VIEWER_SEGMENTS.length,
+    progress,
   };
 }
 
-/**
- * Signals with per-segment failure attached. Coverage rows for a failed segment
- * carry `error`, so the client can label them unknown instead of zero.
- */
-export async function signalsWithCoverage(windowHours = DEFAULT_WINDOW_HOURS) {
+/** Preserve known counts while making partial or complete source failures visible. */
+export function coverageWithErrors(coverage: SegmentCoverage[]): SegmentCoverage[] {
+  return coverage.map((row) => {
+    const error = lastErrors.find((item) => item.segmentId === row.segmentId);
+    return error ? { ...row, error: error.message } : row;
+  });
+}
+
+/** Operational near-copy results keep the same error accounting as the topic graph. */
+export async function signalsWithCoverage(windowHours = 72) {
   const signals = await socialSignals(windowHours);
   return {
     ...signals,
-    coverage: signals.coverage.map((row): SegmentCoverage => {
-      const message = lastErrors.get(row.segmentId);
-      return message && row.posts === 0 ? { ...row, error: message } : row;
-    }),
+    coverage: coverageWithErrors(signals.coverage),
   } satisfies SocialSignals;
 }
 
-/** Sanity check used by the health route: surface an unconfigured DB early. */
+/** Cheap health status; checking readiness never starts inference or waits for collection. */
 export function socialHealth() {
-  return { configured: databaseConfigured(), segments: VIEWER_SEGMENTS.length };
+  return {
+    configured: databaseConfigured(),
+    enabled: timer !== undefined,
+    segments: VIEWER_SEGMENTS.length,
+  };
 }
