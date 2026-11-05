@@ -493,72 +493,98 @@ const FAQS = [
 
 /**
  * @component SideScrollRuler
- * Minimalist vertical scroll progress indicator positioned on the right edge.
+ * Minimalist vertical viewport scroll indicator positioned on the right viewport edge.
  *
- * Design & Constraints:
- * - Employs a bare, frameless array of uniform horizontal hairline stripes (`h-[1px]`, `w-3.5`).
- * - Rejected approach: Container pill with background blur/border and milestone
- *   variations; user explicitly required zero container frames, no session title
- *   milestone emphasis, and strictly identical stripe geometry.
- * - Progress indicator semantics: Solid high-contrast black/white (`bg-black dark:bg-white`)
- *   for passed scroll positions, subdued contrast (`bg-black/20 dark:bg-white/25`) for
- *   unreached positions.
- * - Allows interactive smooth navigation: Clicking any stripe navigates smoothly to that
- *   scroll percentage of the page document.
+ * Behavior & Requirements:
+ * - Represents the document viewport window rather than an accumulated progress fill:
+ *   Only the stripes corresponding to the currently visible section of the total page
+ *   length protrude outward ("nhô ra") and light up in solid contrast (`bg-black dark:bg-white`).
+ * - Rejected approach: Filling all passed ticks black from top to bottom ("tô đen theo hết");
+ *   the user explicitly required a true viewport indicator where only currently visible
+ *   page ticks stick out.
+ * - Non-active stripes outside the viewport remain subtle and short (`w-2.5 h-[1px] bg-black/25 dark:bg-white/25`),
+ *   expanding when hovered.
+ * - Clicking any stripe smoothly scrolls to that document location.
  *
  * Concurrency & Side Effects:
- * - Attaches a passive window scroll listener on mount and detaches on unmount.
+ * - Attaches passive window `scroll` and `resize` listeners on mount and cleans them up on unmount.
  */
 function SideScrollRuler() {
-  const [scrollProgress, setScrollProgress] = useState(0);
+  const [viewportRange, setViewportRange] = useState({ start: 0, end: 1 });
   const TOTAL_TICKS = 24;
 
   useEffect(() => {
-    const handleScroll = () => {
+    const updateViewport = () => {
       const scrollY = window.scrollY;
-      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-      if (maxScroll <= 0) {
-        setScrollProgress(0);
+      const innerHeight = window.innerHeight;
+      const scrollHeight = document.documentElement.scrollHeight;
+
+      if (scrollHeight <= innerHeight) {
+        setViewportRange({ start: 0, end: 1 });
         return;
       }
-      setScrollProgress(Math.min(1, Math.max(0, scrollY / maxScroll)));
+
+      const start = Math.max(0, scrollY / scrollHeight);
+      const end = Math.min(1, (scrollY + innerHeight) / scrollHeight);
+      setViewportRange({ start, end });
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", updateViewport, { passive: true });
+    window.addEventListener("resize", updateViewport, { passive: true });
+    updateViewport();
+
+    return () => {
+      window.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+    };
   }, []);
 
   const scrollToPosition = (idx: number) => {
     const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    if (maxScroll <= 0) return;
     const targetY = (idx / (TOTAL_TICKS - 1)) * maxScroll;
     window.scrollTo({ top: targetY, behavior: "smooth" });
   };
 
   return (
     <nav
-      aria-label="Thước đo tiến độ cuộn trang"
+      aria-label="Thước đo vị trí khung nhìn trang"
       className="fixed right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-end gap-1.5 pointer-events-auto select-none"
     >
       {Array.from({ length: TOTAL_TICKS }).map((_, idx) => {
-        const tickProgress = idx / (TOTAL_TICKS - 1);
-        const isPassed = scrollProgress >= tickProgress - 0.01;
+        // Compute overlap of this tick's vertical segment with current viewport
+        const tickStart = idx / TOTAL_TICKS;
+        const tickEnd = (idx + 1) / TOTAL_TICKS;
+        const overlap = Math.max(
+          0,
+          Math.min(tickEnd, viewportRange.end) - Math.max(tickStart, viewportRange.start),
+        );
+        const overlapRatio = overlap * TOTAL_TICKS;
+
+        // Tick is active if it has meaningful overlap with current viewport,
+        // with boundary guards ensuring top and bottom ticks activate when pinned.
+        const isAtTopEdge = idx === 0 && viewportRange.start <= 0.005;
+        const isAtBottomEdge = idx === TOTAL_TICKS - 1 && viewportRange.end >= 0.995;
+        const isInViewport = overlapRatio >= 0.15 || isAtTopEdge || isAtBottomEdge;
+
+        const tickPercentage = Math.round((idx / (TOTAL_TICKS - 1)) * 100);
 
         return (
           <button
             key={idx}
             type="button"
             onClick={() => scrollToPosition(idx)}
-            aria-label={`Cuộn đến vị trí ${Math.round(tickProgress * 100)}%`}
+            aria-label={`Cuộn đến vị trí ${tickPercentage}%`}
+            aria-current={isInViewport ? "true" : undefined}
             className="py-0.5 flex items-center justify-end focus:outline-none cursor-pointer group/tick"
           >
-            {/* Uniform thin horizontal stripe */}
+            {/* Horizontal hairline stripe: protrudes ("nhô ra") and solidifies only when in current viewport */}
             <span
               className={cn(
-                "block w-3.5 h-[1px] transition-colors duration-150",
-                isPassed
-                  ? "bg-black dark:bg-white"
-                  : "bg-black/20 dark:bg-white/25 group-hover/tick:bg-black/60 dark:group-hover/tick:bg-white/60",
+                "block h-[1px] transition-all duration-150 ease-out",
+                isInViewport
+                  ? "w-6.5 bg-black dark:bg-white"
+                  : "w-2.5 bg-black/25 dark:bg-white/25 group-hover/tick:w-4 group-hover/tick:bg-black/60 dark:group-hover/tick:bg-white/60",
               )}
             />
           </button>
