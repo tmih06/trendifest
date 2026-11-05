@@ -1,9 +1,10 @@
 # Trendifest
 
-A Vietnamese-first topic graph: collect bounded community excerpts and labelled
-news, embed locally, and group evidence about specific events and model versions.
-The graph is the entire application. There is no Google Trends dashboard,
-forecasting workspace, watchlist, alerts system, or separate Signals page.
+A Vietnamese-first topic workspace: collect bounded community excerpts and
+labelled news, embed locally, and group evidence about specific events and model
+versions. Explore relationships in the graph or read a ranked topic board.
+There is no Google Trends dashboard, forecasting workspace, watchlist, alerts
+system, or separate Signals page.
 
 ## Run
 
@@ -75,8 +76,19 @@ The production build reached a populated graph in 1.3 s with about 170 kB of
 encoded resources at that point. These are local simulated-network snapshots,
 not production latency guarantees; the collector continued receiving new input.
 
-## Graph workspace
+## Topic workspace
 
+- **Workspace sidebar:** switch between **Trend graph** and **Topic board**.
+  Both use the same source/time filters and query cache; changing views does not
+  download another map. **All sources** clears the source filter independently.
+- **Topic board:** a potential-ranked table with full Vietnamese titles, scores,
+  separate community and publisher counts, sources and last-seen times. Search
+  without accents and browse 80 rows per page; sticky controls stay available
+  while scrolling. Select a title or **View evidence** for the score breakdown
+  and original records. Desktop details reserve space beside the table; mobile
+  details use the accessible inspector dialog. Narrow screens can scroll the
+  table horizontally without hiding columns. Ranking uses the graph's existing
+  heuristic, not invented popularity tiers; there is no introductory hero block.
 - **Source sidebar:** filter evidence from VOZ, Otofun, Google News VN, Người
   Việt, VnExpress, Tuổi Trẻ, Thanh Niên, or Dân trí. Counts are collected records,
   not audiences or replies. News publishers are not community accounts;
@@ -109,6 +121,15 @@ two seconds; unchanged-topology refreshes preserve positions and camera.
 Reduced-motion mode displays the settled layout without live relaxation.
 
 The graph polls every two minutes; collection status polls every fifteen seconds.
+Each visited time window keeps its exact response in the client cache for
+30 minutes after becoming inactive. Revisits within 15 minutes reuse it without
+a switch-triggered fetch; older cached results appear immediately while they
+refresh. The active window still polls every two minutes. Collection completion
+invalidates all windows, and manual refresh fetches the current one immediately.
+The cache is memory-only and is cleared by reloading the page. A capped 7-day
+map is not filtered into a pretend 24-hour map: each interval retains its own
+evidence selection, grouping and score.
+
 Manual collection returns HTTP 202 immediately. Fetching and inference continue
 in the background; `/api/collect/status` exposes the phase, current provider,
 completed providers, and actual fetched/stored/unchanged/rejected/embedded counts.

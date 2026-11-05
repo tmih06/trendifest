@@ -24,6 +24,7 @@ import PanelLeftOpen from "lucide-react/icons/panel-left-open";
 import PanelRight from "lucide-react/icons/panel-right";
 import RefreshCw from "lucide-react/icons/refresh-cw";
 import Sun from "lucide-react/icons/sun";
+import ListOrdered from "lucide-react/icons/list-ordered";
 import Users from "lucide-react/icons/users";
 import X from "lucide-react/icons/x";
 import {
@@ -39,9 +40,10 @@ import {
 import type { SocialSource, TopicExample, TrendMapNode } from "../../shared/types.ts";
 import { DbNotice } from "@/components/db-notice";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
+import { TopicBoard } from "@/components/topic-board";
 import { useTheme } from "@/hooks/use-app";
 import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-trends";
-import { compactNumber, formatRelative } from "@/lib/format";
+import { compactNumber, formatRelative, topicSearchText } from "@/lib/format";
 import { toCanvas } from "@/lib/graph";
 import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
 
@@ -63,15 +65,6 @@ const STALE_MAP_MINUTES = 15;
 
 /** The entire graph renders; only this many ranking rows occupy the DOM at once. */
 const TOPIC_PAGE_SIZE = 80;
-
-/** Match Vietnamese titles with or without typed accents; display stays unchanged. */
-function topicSearchText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/gi, "d")
-    .toLowerCase();
-}
 
 /** Source roles follow the collection catalog rather than a second hardcoded list. */
 const NEWS_SOURCES: ReadonlySet<SocialSource> = new Set(
@@ -303,6 +296,8 @@ function TopicInspectorBody({
 export function TrendMapPage() {
   const { theme, toggle } = useTheme();
   const [hours, setHours] = useState<number>(DEFAULT_HOURS);
+  const [view, setView] = useState<"graph" | "board">("graph");
+  const workspaceHeading = useRef<HTMLHeadingElement>(null);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [topicQuery, setTopicQuery] = useState("");
@@ -427,6 +422,8 @@ export function TrendMapPage() {
               : healthy
                 ? "Polling active"
                 : "Waiting for first poll";
+  const viewLabel = view === "board" ? "Topic board" : "Trend graph";
+  const inspectorVisible = desktopInspector && !narrow && (view === "graph" || selected !== null);
   const unconfigured =
     map.error instanceof Error && "code" in map.error && map.error.code === "database_unconfigured";
 
@@ -434,6 +431,10 @@ export function TrendMapPage() {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    document.title = `${viewLabel} — Trendifest`;
+  }, [viewLabel]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1199px)");
@@ -464,6 +465,13 @@ export function TrendMapPage() {
     setTopicQuery("");
     setSelectedId(null);
     setNavOpen(false);
+  }
+
+  /** Views share the query and filters; navigation does not fetch another map. */
+  function chooseView(next: "graph" | "board") {
+    setView(next);
+    setNavOpen(false);
+    window.requestAnimationFrame(() => workspaceHeading.current?.focus());
   }
 
   /** Both the ranked list and canvas open the same details, including on narrow screens. */
@@ -513,19 +521,38 @@ export function TrendMapPage() {
         </div>
       }
     >
-      <div className="od-sidebar-section">
+      <SidebarSection label="Workspace" collapsed={rail}>
         <SidebarItem
           icon={<Network />}
-          active={!sourceId}
+          active={view === "graph"}
           collapsed={rail}
-          onClick={() => chooseSource(null)}
+          onClick={() => chooseView("graph")}
           count={data?.nodes.length}
-          title="All collected sources"
+          title="Trend graph"
         >
           Trend graph
         </SidebarItem>
-      </div>
+        <SidebarItem
+          icon={<ListOrdered />}
+          active={view === "board"}
+          collapsed={rail}
+          onClick={() => chooseView("board")}
+          count={data?.nodes.length}
+          title="Topic board"
+        >
+          Topic board
+        </SidebarItem>
+      </SidebarSection>
       <SidebarSection label="Sources" collapsed={rail}>
+        <SidebarItem
+          icon={<Circle className="size-3" />}
+          active={!sourceId}
+          collapsed={rail}
+          onClick={() => chooseSource(null)}
+          title="All collected sources"
+        >
+          All sources
+        </SidebarItem>
         {(data?.coverage ?? []).map((row) => (
           <SidebarItem
             key={row.segmentId}
@@ -568,51 +595,56 @@ export function TrendMapPage() {
             variant="ghost"
             square
             aria-label="Clear topic selection"
-            onClick={() => setSelectedId(null)}
+            onClick={() => {
+              setSelectedId(null);
+              if (view === "board") setMobileInspector(false);
+            }}
           >
             <X />
           </Button>
         )}
       </div>
-      <div className="shrink-0 border-b border-line px-3 py-2">
-        <label className="mb-1 block text-[11px] text-fg-3">
-          Search ranked topics
-          <input
-            type="search"
-            value={topicQuery}
-            onChange={(event) => {
-              setTopicQuery(event.target.value);
-              setRequestedTopicPage(0);
-            }}
-            placeholder="Event, product or model"
-            className="mt-1 block w-full rounded-md border border-line bg-surface px-2.5 py-2 text-base text-fg placeholder:text-fg-3 xl:text-[12px]"
-          />
-        </label>
-        <nav
-          aria-label="Topic ranking pages"
-          className="mt-2 flex items-center justify-between gap-2"
-        >
-          <Button
-            variant="ghost"
-            disabled={topicPage === 0}
-            onClick={() => setRequestedTopicPage(topicPage - 1)}
+      {view === "graph" && (
+        <div className="shrink-0 border-b border-line px-3 py-2">
+          <label className="mb-1 block text-[11px] text-fg-3">
+            Search ranked topics
+            <input
+              type="search"
+              value={topicQuery}
+              onChange={(event) => {
+                setTopicQuery(event.target.value);
+                setRequestedTopicPage(0);
+              }}
+              placeholder="Event, product or model"
+              className="mt-1 block w-full rounded-md border border-line bg-surface px-2.5 py-2 text-base text-fg placeholder:text-fg-3 xl:text-[12px]"
+            />
+          </label>
+          <nav
+            aria-label="Topic ranking pages"
+            className="mt-2 flex items-center justify-between gap-2"
           >
-            Previous
-          </Button>
-          <span role="status" className="mono text-center text-[10.5px] text-fg-3">
-            {matchingTopics.length === 0
-              ? "0 matches"
-              : `${topicPageStart + 1}–${topicPageStart + pageTopics.length} of ${matchingTopics.length}`}
-          </span>
-          <Button
-            variant="ghost"
-            disabled={topicPage >= lastTopicPage}
-            onClick={() => setRequestedTopicPage(topicPage + 1)}
-          >
-            Next
-          </Button>
-        </nav>
-      </div>
+            <Button
+              variant="ghost"
+              disabled={topicPage === 0}
+              onClick={() => setRequestedTopicPage(topicPage - 1)}
+            >
+              Previous
+            </Button>
+            <span role="status" className="mono text-center text-[10.5px] text-fg-3">
+              {matchingTopics.length === 0
+                ? "0 matches"
+                : `${topicPageStart + 1}–${topicPageStart + pageTopics.length} of ${matchingTopics.length}`}
+            </span>
+            <Button
+              variant="ghost"
+              disabled={topicPage >= lastTopicPage}
+              onClick={() => setRequestedTopicPage(topicPage + 1)}
+            >
+              Next
+            </Button>
+          </nav>
+        </div>
+      )}
       <TopicInspectorBody
         topicId={selected?.id ?? null}
         pageKey={`${sourceId}:${hours}:${topicQuery}:${topicPage}`}
@@ -653,50 +685,52 @@ export function TrendMapPage() {
             </div>
           </div>
         )}
-        <ol className="p-2" aria-label="Topics ranked by potential">
-          {pageTopics.map(({ node, rank }) => (
-            <li key={node.id}>
-              <button
-                type="button"
-                className={cn(
-                  "topic-row group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-3 text-start hover:bg-hover",
-                  selectedId === node.id && "bg-active",
-                )}
-                aria-pressed={selectedId === node.id}
-                onClick={() => selectNode(selectedId === node.id ? null : node.id)}
-              >
-                <span className="mono pt-0.5 text-[10.5px] text-fg-3">
-                  {String(rank).padStart(2, "0")}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 block break-words text-[12px] leading-[18px] text-fg-2 group-hover:text-fg">
-                    {node.label}
+        {view === "graph" && (
+          <ol className="p-2" aria-label="Topics ranked by potential">
+            {pageTopics.map(({ node, rank }) => (
+              <li key={node.id}>
+                <button
+                  type="button"
+                  className={cn(
+                    "topic-row group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-3 text-start hover:bg-hover",
+                    selectedId === node.id && "bg-active",
+                  )}
+                  aria-pressed={selectedId === node.id}
+                  onClick={() => selectNode(selectedId === node.id ? null : node.id)}
+                >
+                  <span className="mono pt-0.5 text-[10.5px] text-fg-3">
+                    {String(rank).padStart(2, "0")}
                   </span>
-                  <span className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[10.5px] text-fg-3">
-                    {node.discussionPosts > 0 && (
-                      <>
-                        <Users className="size-3" aria-hidden="true" />
-                        <span>Accounts: {node.authors}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>Posts: {node.discussionPosts}</span>
-                      </>
-                    )}
-                    {node.newsPosts > 0 && (
-                      <>
-                        {node.discussionPosts > 0 && <span aria-hidden="true">·</span>}
-                        <span>News: {node.newsPosts}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>Publishers: {node.publishers}</span>
-                      </>
-                    )}
+                  <span className="min-w-0 flex-1">
+                    <span className="line-clamp-2 block break-words text-[12px] leading-[18px] text-fg-2 group-hover:text-fg">
+                      {node.label}
+                    </span>
+                    <span className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[10.5px] text-fg-3">
+                      {node.discussionPosts > 0 && (
+                        <>
+                          <Users className="size-3" aria-hidden="true" />
+                          <span>Accounts: {node.authors}</span>
+                          <span aria-hidden="true">·</span>
+                          <span>Posts: {node.discussionPosts}</span>
+                        </>
+                      )}
+                      {node.newsPosts > 0 && (
+                        <>
+                          {node.discussionPosts > 0 && <span aria-hidden="true">·</span>}
+                          <span>News: {node.newsPosts}</span>
+                          <span aria-hidden="true">·</span>
+                          <span>Publishers: {node.publishers}</span>
+                        </>
+                      )}
+                    </span>
                   </span>
-                </span>
-                <PotentialBadge node={node} />
-              </button>
-            </li>
-          ))}
-        </ol>
-        {topicQuery.trim() && matchingTopics.length === 0 && (
+                  <PotentialBadge node={node} />
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+        {view === "graph" && topicQuery.trim() && matchingTopics.length === 0 && (
           <div className="p-4 text-[12px] leading-5 text-fg-3">
             <p>No ranked topic matches “{topicQuery}”. The graph is unchanged.</p>
             <Button
@@ -798,7 +832,7 @@ export function TrendMapPage() {
   return (
     <>
       <a className="skip-link" href="#graph-workspace">
-        Skip to graph
+        {view === "board" ? "Skip to topic board" : "Skip to graph"}
       </a>
       <Shell
         collapsed={collapsed}
@@ -815,8 +849,14 @@ export function TrendMapPage() {
               <Menu />
             </Button>
             <div className="flex min-w-0 items-center gap-2">
-              <Network className="size-4 text-fg-3" aria-hidden="true" />
-              <h1 className="text-[13px] font-medium">Trend graph</h1>
+              {view === "board" ? (
+                <ListOrdered className="size-4 text-fg-3" aria-hidden="true" />
+              ) : (
+                <Network className="size-4 text-fg-3" aria-hidden="true" />
+              )}
+              <h1 ref={workspaceHeading} tabIndex={-1} className="text-[13px] font-medium">
+                {viewLabel}
+              </h1>
               <ChevronRight className="header-breadcrumb size-3 text-fg-4" aria-hidden="true" />
               <span className="header-breadcrumb max-w-40 truncate text-[12px] text-fg-3">
                 {sourceLabel}
@@ -831,7 +871,7 @@ export function TrendMapPage() {
               <Button
                 variant="ghost"
                 square
-                aria-label="Refresh the map"
+                aria-label={view === "board" ? "Refresh topics" : "Refresh the map"}
                 disabled={map.isFetching}
                 onClick={() => void map.refetch()}
               >
@@ -851,17 +891,33 @@ export function TrendMapPage() {
       >
         <div id="graph-workspace" tabIndex={-1} className="graph-workspace">
           <section
-            className="graph-surface relative min-h-0 min-w-0 overflow-hidden"
-            aria-label="Topic graph"
+            className={cn(
+              "graph-surface relative min-h-0 min-w-0 overflow-hidden",
+              view === "board" && "flex flex-col",
+            )}
+            aria-label={view === "board" ? "Topic board" : "Topic graph"}
             aria-describedby="graph-description"
           >
             <p id="graph-description" className="sr-only">
-              Graph of specific topics collected from Vietnamese sources. Each node is one topic —
-              an event, product, or model version — and each line is a measured relationship between
-              two topics. Larger nodes have higher heuristic potential. Use the ranked topic list in
-              the inspector for keyboard navigation and full evidence.
+              {view === "board" ? (
+                "Specific topics ranked by heuristic potential. Select a title or View evidence to inspect source records. Source and time filters match the graph."
+              ) : (
+                <>
+                  Graph of specific topics collected from Vietnamese sources. Each node is one topic
+                  — an event, product, or model version — and each line is a measured relationship
+                  between two topics. Larger nodes have higher heuristic potential. Use the ranked
+                  topic list in the inspector for keyboard navigation and full evidence.
+                </>
+              )}
             </p>
-            <div className="graph-toolbar pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-3 p-4">
+            <div
+              className={cn(
+                "graph-toolbar z-20 flex shrink-0 flex-wrap items-start justify-between gap-3 p-4",
+                view === "graph"
+                  ? "pointer-events-none absolute inset-x-0 top-0"
+                  : "relative border-b border-line",
+              )}
+            >
               <div className="min-w-0">
                 <p className="text-[11px] font-medium text-fg-2">{sourceLabel}</p>
                 <p className="mt-1 max-w-[36ch] text-[11px] text-fg-3">
@@ -913,22 +969,24 @@ export function TrendMapPage() {
                     </Button>
                   ))}
                 </div>
-                <Button
-                  variant="ghost"
-                  square
-                  aria-label="Toggle topic inspector"
-                  aria-expanded={narrow ? mobileInspector : desktopInspector}
-                  onClick={() =>
-                    narrow
-                      ? setMobileInspector(!mobileInspector)
-                      : setDesktopInspector(!desktopInspector)
-                  }
-                >
-                  <PanelRight />
-                </Button>
+                {(view === "graph" || selected) && (
+                  <Button
+                    variant="ghost"
+                    square
+                    aria-label="Toggle topic inspector"
+                    aria-expanded={narrow ? mobileInspector : desktopInspector}
+                    onClick={() =>
+                      narrow
+                        ? setMobileInspector(!mobileInspector)
+                        : setDesktopInspector(!desktopInspector)
+                    }
+                  >
+                    <PanelRight />
+                  </Button>
+                )}
               </div>
             </div>
-            {canvas.nodes.length > 0 && (
+            {view === "graph" && canvas.nodes.length > 0 && (
               <TrendGraphCanvas
                 theme={theme}
                 nodes={canvas.nodes}
@@ -937,6 +995,20 @@ export function TrendMapPage() {
                 activeIds={visibleIds}
                 onSelect={selectNode}
               />
+            )}
+            {view === "board" && data && topics.length > 0 && (
+              <div className="min-h-0 flex-1">
+                <TopicBoard
+                  key={`${sourceId}:${hours}`}
+                  topics={topics}
+                  selectedId={selectedId}
+                  sourceLabels={sourceLabels}
+                  generatedAt={data.generatedAt}
+                  limited={data.stats.limited}
+                  detailsOpen={inspectorVisible}
+                  onSelect={selectNode}
+                />
+              </div>
             )}
             {map.isLoading && (
               <div className="graph-state" role="status">
@@ -952,9 +1024,7 @@ export function TrendMapPage() {
             {map.isError && !unconfigured && (
               <div className="graph-error" role="alert">
                 <p>
-                  {data
-                    ? "Graph refresh failed. Showing the last computed topics."
-                    : map.error.message}
+                  {data ? "Refresh failed. Showing the last computed topics." : map.error.message}
                 </p>
                 <Button onClick={() => void map.refetch()}>Try again</Button>
               </div>
@@ -969,47 +1039,49 @@ export function TrendMapPage() {
                 {emptyState.action}
               </div>
             )}
-            <div className="graph-footer pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-[10.5px] text-fg-3">
-              <span>
-                {data ? (
-                  <>
-                    {relatedLinkCount} related-topic link
-                    {relatedLinkCount === 1 ? "" : "s"}
-                    <span className="footer-updated">
-                      {" "}
-                      · computed {formatRelative(data.generatedAt)}
-                    </span>
-                  </>
-                ) : (
-                  "Waiting for data"
-                )}
-              </span>
-              <span className="graph-legend flex flex-wrap items-center gap-x-3 gap-y-1 rounded bg-surface/90 px-1.5 py-1">
-                <span className="flex items-center gap-1" aria-hidden="true">
-                  <span className="graph-legend-dot" style={{ width: 5, height: 5 }} />
-                  <span className="graph-legend-dot" style={{ width: 9, height: 9 }} />
-                  <span className="graph-legend-dot" style={{ width: 13, height: 13 }} />
+            {view === "graph" && (
+              <div className="graph-footer pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-[10.5px] text-fg-3">
+                <span>
+                  {data ? (
+                    <>
+                      {relatedLinkCount} related-topic link
+                      {relatedLinkCount === 1 ? "" : "s"}
+                      <span className="footer-updated">
+                        {" "}
+                        · computed {formatRelative(data.generatedAt)}
+                      </span>
+                    </>
+                  ) : (
+                    "Waiting for data"
+                  )}
                 </span>
-                <span>size · topic potential</span>
-                <span className="flex items-center gap-1" aria-hidden="true">
-                  <span className="graph-legend-swatch" data-level="1" />
-                  <span className="graph-legend-swatch" data-level="2" />
-                  <span className="graph-legend-swatch" data-level="3" />
+                <span className="graph-legend flex flex-wrap items-center gap-x-3 gap-y-1 rounded bg-surface/90 px-1.5 py-1">
+                  <span className="flex items-center gap-1" aria-hidden="true">
+                    <span className="graph-legend-dot" style={{ width: 5, height: 5 }} />
+                    <span className="graph-legend-dot" style={{ width: 9, height: 9 }} />
+                    <span className="graph-legend-dot" style={{ width: 13, height: 13 }} />
+                  </span>
+                  <span>size · topic potential</span>
+                  <span className="flex items-center gap-1" aria-hidden="true">
+                    <span className="graph-legend-swatch" data-level="1" />
+                    <span className="graph-legend-swatch" data-level="2" />
+                    <span className="graph-legend-swatch" data-level="3" />
+                  </span>
+                  <span>colour · related links</span>
+                  <span className="flex items-center gap-1" aria-hidden="true">
+                    <span className="graph-legend-line" />
+                  </span>
+                  <span>line · measured link</span>
                 </span>
-                <span>colour · related links</span>
-                <span className="flex items-center gap-1" aria-hidden="true">
-                  <span className="graph-legend-line" />
-                </span>
-                <span>line · measured link</span>
-              </span>
-            </div>
+              </div>
+            )}
           </section>
           <aside
             className="graph-inspector min-h-0 min-w-0 border border-line bg-surface"
             aria-label="Topic inspector"
-            data-open={desktopInspector && !narrow}
-            inert={!desktopInspector || narrow}
-            aria-hidden={!desktopInspector || narrow}
+            data-open={inspectorVisible}
+            inert={!inspectorVisible}
+            aria-hidden={!inspectorVisible}
           >
             {inspector}
           </aside>
@@ -1017,7 +1089,7 @@ export function TrendMapPage() {
       </Shell>
       {dialogsEnabled && (
         <Suspense fallback={null}>
-          <Dialog open={navOpen} onOpenChange={setNavOpen} title="Sources" size="sm">
+          <Dialog open={navOpen} onOpenChange={setNavOpen} title="Workspace and sources" size="sm">
             <div className="mobile-sidebar">{sidebar(false)}</div>
           </Dialog>
           <Dialog
