@@ -176,6 +176,39 @@ const MARKET_STATS: MarketStat[] = [
   },
 ];
 
+const DATA_SOURCES = [
+  {
+    name: "Bluesky AT Protocol",
+    category: "Mạng xã hội mở",
+    icon: Radio,
+  },
+  {
+    name: "Meta Threads API",
+    category: "Đồ thị đối thoại",
+    icon: MessageSquare,
+  },
+  {
+    name: "TikTok Research API",
+    category: "Âm thanh & Video",
+    icon: Video,
+  },
+  {
+    name: "HuggingFace Local AI",
+    category: "Vector Embedding",
+    icon: Sparkles,
+  },
+  {
+    name: "Hawkes Point Process",
+    category: "Mô hình gia tốc",
+    icon: Activity,
+  },
+  {
+    name: "PyTorch Vector Space",
+    category: "Phân cụm đa chiều",
+    icon: Cpu,
+  },
+];
+
 const AUDIENCE_SEGMENTS = [
   {
     id: "shitpost",
@@ -459,82 +492,76 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* ------------------------------------------------------------ */}
       <header className="fixed top-0 inset-x-0 z-50 flex justify-center px-4 py-3 pointer-events-none">
         <nav
-          className="pointer-events-auto flex items-center justify-between gap-3 sm:gap-6 px-5 sm:px-7 py-3 rounded-full bg-white/90 dark:bg-[#262626]/95 backdrop-blur-md border border-neutral-200 dark:border-[#363636] shadow-xl max-w-5xl w-full"
+          className="pointer-events-auto flex items-center justify-between gap-2 sm:gap-4 px-4 sm:px-6 py-2.5 rounded-full bg-white/90 dark:bg-[#262626]/95 backdrop-blur-md border border-neutral-200 dark:border-[#363636] shadow-xl max-w-6xl w-full"
           aria-label="Thanh điều hướng chính"
         >
           {/* Brand Logo */}
           <a
             href="#"
-            className="flex items-center gap-2.5 text-[17px] font-bold text-neutral-900 dark:text-white tracking-tight hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
+            className="flex items-center gap-2 sm:gap-2.5 text-[16px] sm:text-[17px] font-bold text-neutral-900 dark:text-white tracking-tight hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
           >
-            <span className="flex size-8 items-center justify-center rounded-lg bg-[#a78bfa]/20 border border-[#a78bfa]/40 text-[#a78bfa] shrink-0">
-              <Network className="size-4.5 animate-pulse" />
+            <span className="flex size-7.5 sm:size-8 items-center justify-center rounded-lg bg-[#a78bfa]/20 border border-[#a78bfa]/40 text-[#a78bfa] shrink-0">
+              <Network className="size-4 sm:size-4.5 animate-pulse" />
             </span>
             <span>Trendifest</span>
-            <span className="hidden sm:inline-flex text-[11px] uppercase font-mono px-2.5 py-0.5 rounded bg-neutral-100 dark:bg-[#333333] text-[#7c3aed] dark:text-[#a78bfa] whitespace-nowrap border border-neutral-300 dark:border-[#444444]">
+            <span className="hidden sm:inline-flex text-[10.5px] uppercase font-mono px-2 py-0.5 rounded bg-neutral-100 dark:bg-[#333333] text-[#7c3aed] dark:text-[#a78bfa] whitespace-nowrap border border-neutral-300 dark:border-[#444444]">
               v1.4 LIVE
             </span>
           </a>
 
           {/* Desktop Nav Links */}
-          <div className="hidden md:flex items-center gap-1.5 lg:gap-2 text-[15px] text-neutral-600 dark:text-[#aaaaaa]">
-            <a
-              href="#problem"
-              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
-            >
-              Vấn đề
-            </a>
+          <div className="hidden lg:flex items-center gap-1 xl:gap-2 text-[14px] text-neutral-600 dark:text-[#aaaaaa]">
             <a
               href="#how-it-works"
-              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               Quy trình
             </a>
             <a
               href="#tech"
-              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               Công nghệ
             </a>
             <a
               href="#solutions"
-              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               Giải pháp
             </a>
             <a
               href="#compliance"
-              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               Pháp lý
             </a>
             <a
               href="#faq"
-              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               FAQ
             </a>
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <ThemeToggle
-              className="text-neutral-600 hover:text-neutral-900 hover:bg-black/5 dark:text-[#aaaaaa] dark:hover:text-white dark:hover:bg-white/10"
-              iconClassName="size-4.5"
+              className="text-neutral-600 hover:text-neutral-900 hover:bg-black/5 dark:text-[#aaaaaa] dark:hover:text-white dark:hover:bg-white/10 size-8 sm:size-9"
+              iconClassName="size-4 sm:size-4.5"
               start="top-down"
             />
             <button
               onClick={() => setDemoModalOpen(true)}
-              className="hidden sm:inline-flex items-center text-[14.5px] font-medium text-neutral-700 dark:text-[#dadada] hover:text-neutral-900 dark:hover:text-white px-3.5 py-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap shrink-0"
+              className="hidden xl:inline-flex items-center text-[13.5px] font-medium text-neutral-700 dark:text-[#dadada] hover:text-neutral-900 dark:hover:text-white px-3.5 py-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap shrink-0"
             >
               Đặt lịch Demo
             </button>
             <button
               onClick={onOpenApp}
-              className="inline-flex items-center gap-1.5 text-[14.5px] font-semibold bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] px-5 py-2 rounded-full shadow-lg transition-transform active:scale-95 whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 text-[13.5px] sm:text-[14px] font-semibold bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] px-4 sm:px-5 py-2 rounded-full shadow-md transition-all active:scale-95 whitespace-nowrap shrink-0"
             >
               <span>Vào Đồ Thị Live</span>
-              <ArrowRight className="size-4 shrink-0" />
+              <ArrowRight className="size-3.5 sm:size-4 shrink-0" />
             </button>
           </div>
         </nav>
@@ -1282,17 +1309,33 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           </div>
 
           {/* Protocol & Data Sources Proof Bar */}
-          <div className="mt-14 pt-8 border-t border-neutral-200 dark:border-[#333333] flex flex-col md:flex-row items-center justify-between gap-6 text-[14px] text-neutral-600 dark:text-[#888888]">
-            <span className="uppercase tracking-wider font-semibold text-[13px] text-neutral-500 dark:text-[#aaaaaa]">
-              Nguồn cấp dữ liệu & Chuẩn giao thức mở:
-            </span>
-            <div className="flex flex-wrap items-center gap-6 sm:gap-10 text-neutral-700 dark:text-[#bbbbbb] font-medium text-[14.5px]">
-              <span>Bluesky AT Protocol</span>
-              <span>Meta Threads API</span>
-              <span>TikTok Research API</span>
-              <span>HuggingFace Local AI</span>
-              <span>Hawkes Point Process</span>
-              <span>PyTorch Vector Space</span>
+          <div className="mt-16 pt-10 border-t border-neutral-200 dark:border-[#333333]">
+            <div className="text-center mb-6">
+              <span className="uppercase tracking-wider font-mono text-[12.5px] text-neutral-500 dark:text-[#999999] font-semibold">
+                Nguồn cấp dữ liệu & Chuẩn giao thức mở
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+              {DATA_SOURCES.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.name}
+                    className="flex flex-col items-center justify-center p-4 rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] shadow-sm hover:border-purple-300 dark:hover:border-[#a78bfa]/50 hover:-translate-y-0.5 transition-all text-center group"
+                  >
+                    <span className="flex size-8 items-center justify-center rounded-lg bg-purple-50 dark:bg-white/5 border border-purple-200/60 dark:border-white/10 text-purple-700 dark:text-[#a78bfa] mb-2.5 group-hover:scale-110 transition-transform shrink-0">
+                      <Icon className="size-4" />
+                    </span>
+                    <span className="text-[13.5px] font-bold text-neutral-900 dark:text-white leading-tight mb-1">
+                      {item.name}
+                    </span>
+                    <span className="text-[11px] font-mono text-neutral-500 dark:text-[#888888] leading-tight">
+                      {item.category}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
