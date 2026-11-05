@@ -30,8 +30,8 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { TrendMap, TrendMapNode } from "../../shared/types.ts";
 import { DbNotice } from "@/components/db-notice";
+import { ThemeToggle, useThemeToggle } from "@/components/motion/theme-toggle";
 import { TrendGraphCanvas } from "@/components/trend-graph-canvas";
-import { useTheme } from "@/hooks/use-app";
 import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-trends";
 import { compactNumber, formatRelative } from "@/lib/format";
 import type { GraphLink, GraphNode } from "@/lib/graph";
@@ -191,7 +191,8 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
 
 /** One graph workspace: collection controls and evidence live beside the graph, never on separate routes. */
 export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
-  const { theme, toggle } = useTheme();
+  const { isDark, toggle: toggleTheme } = useThemeToggle({ start: "top-down" });
+  const theme = isDark ? "dark" : "light";
   const [hours, setHours] = useState<number>(72);
   const [audience, setAudience] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -311,12 +312,12 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
             Collection status
           </SidebarItem>
           <SidebarItem
-            icon={theme === "dark" ? <Sun /> : <Moon />}
+            icon={isDark ? <Sun /> : <Moon />}
             collapsed={rail}
-            onClick={toggle}
-            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            onClick={toggleTheme}
+            title={isDark ? "Switch to light theme" : "Switch to dark theme"}
           >
-            {theme === "dark" ? "Light appearance" : "Dark appearance"}
+            {isDark ? "Light appearance" : "Dark appearance"}
           </SidebarItem>
           <div className="sidebar-collapse">
             <SidebarItem
@@ -501,6 +502,11 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               </span>
             </div>
             <div className="ms-auto flex items-center gap-1.5">
+              <ThemeToggle
+                className="size-7 rounded-md text-fg-3 hover:text-fg hover:bg-chrome-hover transition-colors"
+                iconClassName="size-3.5"
+                start="top-down"
+              />
               {onNavigateHome && (
                 <Button
                   variant="secondary"

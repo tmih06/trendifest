@@ -362,6 +362,24 @@ a {
   animation: dash-stream 1.8s linear infinite;
 }
 
+/* View Transitions API: Rectangle wipe reveal (beui.dev) */
+html[data-beui-vt="rect"]::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html[data-beui-vt="rect"]::view-transition-new(root) {
+  mix-blend-mode: normal;
+  animation: beui-rect-reveal 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes beui-rect-reveal {
+  from {
+    clip-path: var(--beui-vt-from, inset(0 0 100% 0));
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

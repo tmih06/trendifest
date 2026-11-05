@@ -34,8 +34,9 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@trendifest/opendesk";
+import { ThemeToggle } from "@/components/motion/theme-toggle";
 
 export interface LandingPageProps {
   onOpenApp: () => void;
@@ -448,85 +449,85 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
   // Interactive timeline step (0 to 3)
   const [activeTimelineStep, setActiveTimelineStep] = useState<number>(2);
 
-  // Keep dark theme active on body for the Obsidian aesthetic
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
-
   const currentUseCase = useMemo(
     () => USE_CASES.find((u) => u.id === activeUseCase) ?? USE_CASES[0],
     [activeUseCase],
   );
 
   return (
-    <div className="min-h-screen bg-[#1e1e1e] text-[#dadada] font-sans antialiased text-[16px] leading-relaxed selection:bg-[#7f6df2]/30 selection:text-[#ffffff]">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#1e1e1e] text-[#171717] dark:text-[#dadada] font-sans antialiased text-[16px] leading-relaxed selection:bg-[#7f6df2]/30 selection:text-[#ffffff] transition-colors duration-200">
       {/* ------------------------------------------------------------ */}
       {/* 1. Header / Floating Pill Navbar (Inspired by Lindy Tile 1)  */}
       {/* ------------------------------------------------------------ */}
       <header className="fixed top-0 inset-x-0 z-50 flex justify-center px-4 py-3 pointer-events-none">
         <nav
-          className="pointer-events-auto flex items-center justify-between gap-3 sm:gap-6 px-5 sm:px-7 py-3 rounded-full bg-[#262626]/95 backdrop-blur-md border border-[#363636] shadow-2xl max-w-5xl w-full"
+          className="pointer-events-auto flex items-center justify-between gap-3 sm:gap-6 px-5 sm:px-7 py-3 rounded-full bg-white/90 dark:bg-[#262626]/95 backdrop-blur-md border border-neutral-200 dark:border-[#363636] shadow-xl max-w-5xl w-full"
           aria-label="Thanh điều hướng chính"
         >
           {/* Brand Logo */}
           <a
             href="#"
-            className="flex items-center gap-2.5 text-[17px] font-bold text-white tracking-tight hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
+            className="flex items-center gap-2.5 text-[17px] font-bold text-neutral-900 dark:text-white tracking-tight hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
           >
             <span className="flex size-8 items-center justify-center rounded-lg bg-[#a78bfa]/20 border border-[#a78bfa]/40 text-[#a78bfa] shrink-0">
               <Network className="size-4.5 animate-pulse" />
             </span>
             <span>Trendifest</span>
-            <span className="hidden sm:inline-flex text-[11px] uppercase font-mono px-2.5 py-0.5 rounded bg-[#333333] text-[#a78bfa] whitespace-nowrap border border-[#444444]">
+            <span className="hidden sm:inline-flex text-[11px] uppercase font-mono px-2.5 py-0.5 rounded bg-neutral-100 dark:bg-[#333333] text-[#7c3aed] dark:text-[#a78bfa] whitespace-nowrap border border-neutral-300 dark:border-[#444444]">
               RTS 2026
             </span>
           </a>
 
           {/* Desktop Nav Links */}
-          <div className="hidden md:flex items-center gap-1.5 lg:gap-2 text-[15px] text-[#aaaaaa]">
+          <div className="hidden md:flex items-center gap-1.5 lg:gap-2 text-[15px] text-neutral-600 dark:text-[#aaaaaa]">
             <a
               href="#problem"
-              className="px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               Vấn đề
             </a>
             <a
               href="#how-it-works"
-              className="px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               Quy trình
             </a>
             <a
               href="#tech"
-              className="px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               Công nghệ
             </a>
             <a
               href="#solutions"
-              className="px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               Giải pháp
             </a>
             <a
               href="#compliance"
-              className="px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               Pháp lý
             </a>
             <a
               href="#faq"
-              className="px-3.5 py-1.5 rounded-full hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
+              className="px-3.5 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
             >
               FAQ
             </a>
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            <ThemeToggle
+              className="text-neutral-600 hover:text-neutral-900 hover:bg-black/5 dark:text-[#aaaaaa] dark:hover:text-white dark:hover:bg-white/10"
+              iconClassName="size-4.5"
+              start="top-down"
+            />
             <button
               onClick={() => setDemoModalOpen(true)}
-              className="hidden sm:inline-flex items-center text-[14.5px] font-medium text-[#dadada] hover:text-white px-4 py-2 rounded-full hover:bg-white/5 transition-colors whitespace-nowrap shrink-0"
+              className="hidden sm:inline-flex items-center text-[14.5px] font-medium text-neutral-700 dark:text-[#dadada] hover:text-neutral-900 dark:hover:text-white px-3.5 py-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap shrink-0"
             >
               Đặt lịch Demo
             </button>
@@ -628,7 +629,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         </div>
 
         {/* Display Headline with Shimmering Gradient */}
-        <h1 className="max-w-5xl text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-[#f7f7f7] leading-[1.12] mb-6">
+        <h1 className="max-w-5xl text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-neutral-900 dark:text-[#f7f7f7] leading-[1.12] mb-6">
           Trinh sát và dự báo sớm xu hướng mạng xã hội{" "}
           <span className="bg-gradient-to-r from-[#c084fc] via-[#a78bfa] to-[#60a5fa] bg-clip-text text-transparent animate-shimmer-gradient underline decoration-[#a78bfa]/30 underline-offset-8">
             trước khi trở thành hiện tượng đại chúng.
@@ -636,11 +637,13 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         </h1>
 
         {/* Sub-headline */}
-        <p className="max-w-3xl text-[18px] sm:text-[20px] text-[#b8b8b8] leading-relaxed mb-10">
+        <p className="max-w-3xl text-[18px] sm:text-[20px] text-neutral-600 dark:text-[#b8b8b8] leading-relaxed mb-10">
           Trendifest phân tích đa phương thức (văn bản, âm thanh, khung hình video và meme) trên
           thời gian thực, giúp thương hiệu và nhà sáng tạo nắm bắt làn sóng văn hóa Gen Z{" "}
-          <strong className="text-white font-medium">trước từ 6 đến 24 giờ</strong> — không cần chờ
-          đến khi từ khóa đạt đỉnh tìm kiếm.
+          <strong className="text-neutral-900 dark:text-white font-medium">
+            trước từ 6 đến 24 giờ
+          </strong>{" "}
+          — không cần chờ đến khi từ khóa đạt đỉnh tìm kiếm.
         </p>
 
         {/* Dual CTA Buttons */}
@@ -654,7 +657,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           </button>
           <button
             onClick={() => setVideoModalOpen(true)}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-medium text-[#dadada] hover:text-white bg-[#262626] hover:bg-[#303030] border border-[#363636] px-6 py-3.5 rounded-full transition-colors whitespace-nowrap shrink-0"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-medium text-neutral-700 dark:text-[#dadada] hover:text-black dark:hover:text-white bg-white dark:bg-[#262626] hover:bg-neutral-100 dark:hover:bg-[#303030] border border-neutral-200 dark:border-[#363636] px-6 py-3.5 rounded-full transition-colors whitespace-nowrap shrink-0 shadow-sm"
           >
             <PlayCircle className="size-5 text-[#a78bfa] shrink-0" />
             <span>Xem Video Cách Hoạt Động (2 phút)</span>
@@ -663,10 +666,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
         {/* Microcopy & Rating Badge (Lindy Hero Social Proof) */}
         <div className="flex flex-col items-center gap-2.5 mb-10">
-          <div className="text-[13.5px] text-[#aaaaaa]">
+          <div className="text-[13.5px] text-neutral-500 dark:text-[#aaaaaa]">
             Miễn phí trải nghiệm Open Source • Thiết lập trinh sát dưới 2 phút
           </div>
-          <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#262626]/80 border border-[#383838] shadow-md backdrop-blur text-[13px] text-[#dadada]">
+          <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-white/80 dark:bg-[#262626]/80 border border-neutral-200 dark:border-[#383838] shadow-md backdrop-blur text-[13px] text-neutral-800 dark:text-[#dadada]">
             <span className="flex items-center gap-0.5 text-amber-400">
               <Star className="size-3.5 fill-amber-400 text-amber-400" />
               <Star className="size-3.5 fill-amber-400 text-amber-400" />
@@ -674,9 +677,11 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               <Star className="size-3.5 fill-amber-400 text-amber-400" />
               <Star className="size-3.5 fill-amber-400 text-amber-400" />
             </span>
-            <span className="font-bold text-white">4.9 / 5.0</span>
-            <span className="text-[#666]">•</span>
-            <span className="text-[#aaaaaa]">Đánh giá Xuất sắc từ Hội đồng Khoa học RTS 2026</span>
+            <span className="font-bold text-neutral-900 dark:text-white">4.9 / 5.0</span>
+            <span className="text-neutral-400 dark:text-[#666]">•</span>
+            <span className="text-neutral-600 dark:text-[#aaaaaa]">
+              Đánh giá Xuất sắc từ Hội đồng Khoa học RTS 2026
+            </span>
           </div>
         </div>
 
@@ -1185,7 +1190,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* ------------------------------------------------------------ */}
       {/* 3. Market Stats & Scale Proof (Inspired by Lindy Tile 2)     */}
       {/* ------------------------------------------------------------ */}
-      <section className="py-20 border-y border-[#363636] bg-[#222222]">
+      <section className="py-20 border-y border-neutral-200 dark:border-[#363636] bg-neutral-100/70 dark:bg-[#222222]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {MARKET_STATS.map((stat) => (
@@ -1194,15 +1199,19 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                 className={cn(
                   "p-7 rounded-xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
                   stat.highlight
-                    ? "bg-[#2a2438] border-[#a78bfa]/50 shadow-lg hover:border-[#a78bfa]"
-                    : "bg-[#262626] border-[#363636] hover:border-[#a78bfa]/50",
+                    ? "bg-purple-50 dark:bg-[#2a2438] border-purple-200 dark:border-[#a78bfa]/50 shadow-lg hover:border-[#a78bfa]"
+                    : "bg-white dark:bg-[#262626] border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50",
                 )}
               >
-                <div className="text-4xl sm:text-5xl font-extrabold text-[#f7f7f7] tracking-tight mb-2.5">
+                <div className="text-4xl sm:text-5xl font-extrabold text-neutral-900 dark:text-[#f7f7f7] tracking-tight mb-2.5">
                   {stat.value}
                 </div>
-                <div className="text-[17px] font-bold text-[#dadada] mb-2">{stat.label}</div>
-                <div className="text-[15px] text-[#999999] leading-relaxed">{stat.description}</div>
+                <div className="text-[17px] font-bold text-neutral-800 dark:text-[#dadada] mb-2">
+                  {stat.label}
+                </div>
+                <div className="text-[15px] text-neutral-600 dark:text-[#999999] leading-relaxed">
+                  {stat.description}
+                </div>
               </div>
             ))}
           </div>
@@ -1267,10 +1276,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             <Clock className="size-4" />
             <span>Bài toán thời điểm sống còn</span>
           </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-5 leading-tight">
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
             Tại sao các công cụ Social Listening truyền thống đang làm bạn bỏ lỡ đỉnh sóng?
           </h2>
-          <p className="text-[17px] sm:text-[18px] text-[#aaaaaa] leading-relaxed">
+          <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
             Khi một từ khóa lọt vào bảng xếp hạng Google Trends, đối thủ đã ồ ạt đổ ngân sách quảng
             cáo và cộng đồng đã bắt đầu bội thực. Bạn cần nhìn thấy tia lửa từ lúc mới nhen nhóm,
             không phải lúc đám cháy đã tắt.
@@ -1278,30 +1287,34 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         </div>
 
         {/* Comparison Table / Cards */}
-        <div className="overflow-hidden rounded-2xl border border-[#363636] bg-[#262626]">
-          <div className="grid grid-cols-1 md:grid-cols-12 border-b border-[#363636] bg-[#222222] p-5 text-[15px] font-bold text-[#888888] hidden md:grid">
+        <div className="overflow-hidden rounded-2xl border border-neutral-200 dark:border-[#363636] bg-white dark:bg-[#262626] shadow-md">
+          <div className="grid grid-cols-1 md:grid-cols-12 border-b border-neutral-200 dark:border-[#363636] bg-neutral-50 dark:bg-[#222222] p-5 text-[15px] font-bold text-neutral-600 dark:text-[#888888] hidden md:grid">
             <div className="col-span-3">Tiêu chí đánh giá</div>
-            <div className="col-span-4 text-rose-300">Công cụ truyền thống / Google Trends</div>
-            <div className="col-span-5 text-[#a78bfa]">Giải pháp Đột phá Trendifest</div>
+            <div className="col-span-4 text-rose-500 dark:text-rose-300">
+              Công cụ truyền thống / Google Trends
+            </div>
+            <div className="col-span-5 text-[#7c3aed] dark:text-[#a78bfa]">
+              Giải pháp Đột phá Trendifest
+            </div>
           </div>
 
-          <div className="divide-y divide-[#363636]">
+          <div className="divide-y divide-neutral-200 dark:divide-[#363636]">
             {COMPARISON_ROWS.map((row, idx) => (
               <div
                 key={idx}
                 className="grid grid-cols-1 md:grid-cols-12 p-5 sm:p-6 gap-3 sm:gap-5 items-start text-[15px]"
               >
-                <div className="md:col-span-3 font-bold text-white flex items-center gap-2.5 text-[16px]">
+                <div className="md:col-span-3 font-bold text-neutral-900 dark:text-white flex items-center gap-2.5 text-[16px]">
                   <span className="size-2 rounded-full bg-[#a78bfa]" />
                   <span>{row.criteria}</span>
                 </div>
-                <div className="md:col-span-4 text-[#aaaaaa] bg-[#1e1e1e]/60 p-3.5 rounded-lg md:bg-transparent md:p-0 leading-relaxed">
-                  <span className="md:hidden block text-[12px] uppercase font-bold text-rose-400 mb-1">
+                <div className="md:col-span-4 text-neutral-600 dark:text-[#aaaaaa] bg-neutral-50 dark:bg-[#1e1e1e]/60 p-3.5 rounded-lg md:bg-transparent md:p-0 leading-relaxed">
+                  <span className="md:hidden block text-[12px] uppercase font-bold text-rose-500 dark:text-rose-400 mb-1">
                     Cách làm cũ:
                   </span>
                   {row.traditional}
                 </div>
-                <div className="md:col-span-5 text-[#f7f7f7] bg-[#2a2438]/50 border border-[#a78bfa]/30 p-3.5 rounded-lg md:bg-transparent md:border-0 md:p-0 leading-relaxed font-normal">
+                <div className="md:col-span-5 text-neutral-900 dark:text-[#f7f7f7] bg-purple-50 dark:bg-[#2a2438]/50 border border-purple-200 dark:border-[#a78bfa]/30 p-3.5 rounded-lg md:bg-transparent md:border-0 md:p-0 leading-relaxed font-normal">
                   <span className="md:hidden block text-[12px] uppercase font-bold text-[#a78bfa] mb-1">
                     Trendifest:
                   </span>
@@ -1426,10 +1439,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             <Cpu className="size-4" />
             <span>Nền tảng kỹ thuật chuyên sâu</span>
           </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-5 leading-tight">
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
             Bốn Trụ Cột Công Nghệ Đột Phá
           </h2>
-          <p className="text-[17px] sm:text-[18px] text-[#aaaaaa] leading-relaxed">
+          <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
             Hệ thống ứng dụng mô hình hóa toán học xác suất và kiến trúc AI đa phương thức cục bộ,
             đảm bảo tính khoa học và minh bạch cao nhất.
           </p>
@@ -1441,30 +1454,30 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             return (
               <div
                 key={pillar.number}
-                className="p-8 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group"
+                className="p-8 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group shadow-sm"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <span className="flex size-11 items-center justify-center rounded-lg bg-[#a78bfa]/15 border border-[#a78bfa]/30 text-[#a78bfa] group-hover:scale-110 group-hover:bg-[#a78bfa]/25 transition-all duration-300">
                       <Icon className="size-5.5" />
                     </span>
-                    <span className="font-mono text-3xl font-bold text-[#555555] group-hover:text-[#a78bfa]/50 transition-colors duration-300">
+                    <span className="font-mono text-3xl font-bold text-neutral-300 dark:text-[#555555] group-hover:text-[#a78bfa]/50 transition-colors duration-300">
                       {pillar.number}
                     </span>
                   </div>
-                  <h3 className="text-[19px] font-bold text-white mb-3 leading-snug">
+                  <h3 className="text-[19px] font-bold text-neutral-900 dark:text-white mb-3 leading-snug">
                     {pillar.title}
                   </h3>
-                  <p className="text-[15.5px] text-[#aaaaaa] leading-relaxed mb-6">
+                  <p className="text-[15.5px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-6">
                     {pillar.description}
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2 pt-4 border-t border-[#363636]">
+                <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-200 dark:border-[#363636]">
                   {pillar.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="text-[13px] font-mono px-2.5 py-1 rounded bg-[#1e1e1e] text-[#cccccc] border border-[#333333]"
+                      className="text-[13px] font-mono px-2.5 py-1 rounded bg-neutral-100 dark:bg-[#1e1e1e] text-neutral-700 dark:text-[#cccccc] border border-neutral-200 dark:border-[#333333]"
                     >
                       {tag}
                     </span>
@@ -1479,17 +1492,20 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* ------------------------------------------------------------ */}
       {/* 7. Target Personas & Interactive Use Cases (Lindy Tile 5)   */}
       {/* ------------------------------------------------------------ */}
-      <section id="solutions" className="py-24 px-4 sm:px-6 bg-[#222222] border-y border-[#363636]">
+      <section
+        id="solutions"
+        className="py-24 px-4 sm:px-6 bg-neutral-100/70 dark:bg-[#222222] border-y border-neutral-200 dark:border-[#363636]"
+      >
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-14">
             <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-[#a78bfa] mb-3 font-semibold">
               <Users className="size-4" />
               <span>Giải pháp cho từng đối tượng</span>
             </div>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-5 leading-tight">
+            <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
               Trendifest dành cho những ai cần đi trước thị trường?
             </h2>
-            <p className="text-[17px] sm:text-[18px] text-[#aaaaaa] leading-relaxed">
+            <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
               Chọn vai trò của bạn để khám phá kịch bản ứng dụng cụ thể.
             </p>
           </div>
@@ -1504,7 +1520,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
                   "px-5 py-2.5 rounded-full text-[15px] font-medium transition-all whitespace-nowrap",
                   activeUseCase === uc.id
                     ? "bg-[#a78bfa] text-[#141416] font-bold shadow-lg"
-                    : "bg-[#262626] text-[#aaaaaa] hover:text-white border border-[#363636] hover:bg-[#303030]",
+                    : "bg-white dark:bg-[#262626] text-neutral-600 dark:text-[#aaaaaa] hover:text-neutral-900 dark:hover:text-white border border-neutral-200 dark:border-[#363636] hover:bg-neutral-50 dark:hover:bg-[#303030]",
                 )}
               >
                 {uc.tab}
@@ -1513,23 +1529,23 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           </div>
 
           {/* Dynamic Active Use Case Display */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-[#262626] border border-[#363636] rounded-3xl p-7 sm:p-12 shadow-2xl">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] rounded-3xl p-7 sm:p-12 shadow-xl">
             {/* Left Content */}
             <div className="lg:col-span-7">
-              <div className="inline-block text-[13px] font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-md mb-4">
+              <div className="inline-block text-[13px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-md mb-4">
                 {currentUseCase.metric}
               </div>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-white mb-4 leading-snug">
+              <h3 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white mb-4 leading-snug">
                 {currentUseCase.headline}
               </h3>
-              <p className="text-[16px] text-[#aaaaaa] leading-relaxed mb-7">
+              <p className="text-[16px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-7">
                 {currentUseCase.description}
               </p>
               <ul className="space-y-3.5">
                 {currentUseCase.points.map((pt, i) => (
                   <li
                     key={i}
-                    className="flex items-start gap-3 text-[15.5px] text-[#dddddd] leading-relaxed"
+                    className="flex items-start gap-3 text-[15.5px] text-neutral-800 dark:text-[#dddddd] leading-relaxed"
                   >
                     <CheckCircle2 className="size-5 text-[#a78bfa] shrink-0 mt-0.5" />
                     <span>{pt}</span>
@@ -1585,10 +1601,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             <Layers className="size-4" />
             <span>Giao diện phân tích đột phá</span>
           </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-5 leading-tight">
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
             Bàn làm việc phân tích: Nơi đồ thị chính là toàn bộ ứng dụng
           </h2>
-          <p className="text-[17px] sm:text-[18px] text-[#aaaaaa] leading-relaxed">
+          <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
             Không cần chuyển đổi qua lại giữa hàng chục dashboard rối mắt. Mọi quan hệ văn hóa mạng
             đều hiển thị trong một đồ thị Obsidian canvas tối giản, mượt mà:
           </p>
@@ -1596,42 +1612,50 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
         {/* Visual Vocabulary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
-          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300">
-            <div className="text-[13px] font-mono text-[#a78bfa] mb-1.5 font-bold">
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300 shadow-sm">
+            <div className="text-[13px] font-mono text-[#7c3aed] dark:text-[#a78bfa] mb-1.5 font-bold">
               MÀU SẮC (COLOR)
             </div>
-            <div className="text-[16px] font-bold text-white mb-2">Số lượng liên kết</div>
-            <p className="text-[14px] text-[#aaaaaa] leading-relaxed">
+            <div className="text-[16px] font-bold text-neutral-900 dark:text-white mb-2">
+              Số lượng liên kết
+            </div>
+            <p className="text-[14px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
               Từ tím nhạt (kết nối đơn lẻ) đến tím đậm rực rỡ khi trào lưu tích lũy quan hệ xuyên
               cộng đồng.
             </p>
           </div>
-          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300">
-            <div className="text-[13px] font-mono text-[#a78bfa] mb-1.5 font-bold">
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300 shadow-sm">
+            <div className="text-[13px] font-mono text-[#7c3aed] dark:text-[#a78bfa] mb-1.5 font-bold">
               KÍCH THƯỚC (SIZE)
             </div>
-            <div className="text-[16px] font-bold text-white mb-2">Điểm bộc phát (0-100)</div>
-            <p className="text-[14px] text-[#aaaaaa] leading-relaxed">
+            <div className="text-[16px] font-bold text-neutral-900 dark:text-white mb-2">
+              Điểm bộc phát (0-100)
+            </div>
+            <p className="text-[14px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
               Tỷ lệ thuận với Điểm bộc phát (Emergence Score) tổng hợp từ Reach, Velocity, Spread và
               Persistence.
             </p>
           </div>
-          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300">
-            <div className="text-[13px] font-mono text-[#a78bfa] mb-1.5 font-bold">
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300 shadow-sm">
+            <div className="text-[13px] font-mono text-[#7c3aed] dark:text-[#a78bfa] mb-1.5 font-bold">
               HÌNH DÁNG (SHAPE)
             </div>
-            <div className="text-[16px] font-bold text-white mb-2">Dạng thức nội dung</div>
-            <p className="text-[14px] text-[#aaaaaa] leading-relaxed">
+            <div className="text-[16px] font-bold text-neutral-900 dark:text-white mb-2">
+              Dạng thức nội dung
+            </div>
+            <p className="text-[14px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
               Tròn (Văn bản), Vuông bo (Hình ảnh), Tam giác (Video), Quả trám (Âm thanh), Ngũ giác
               (Liên kết).
             </p>
           </div>
-          <div className="p-6 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300">
-            <div className="text-[13px] font-mono text-[#a78bfa] mb-1.5 font-bold">
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300 shadow-sm">
+            <div className="text-[13px] font-mono text-[#7c3aed] dark:text-[#a78bfa] mb-1.5 font-bold">
               INSPECTOR DRAWER
             </div>
-            <div className="text-[16px] font-bold text-white mb-2">Minh chứng bài gốc</div>
-            <p className="text-[14px] text-[#aaaaaa] leading-relaxed">
+            <div className="text-[16px] font-bold text-neutral-900 dark:text-white mb-2">
+              Minh chứng bài gốc
+            </div>
+            <p className="text-[14px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
               Nhấp vào bất kỳ nốt nào để mở trích dẫn nguồn, số lượt like/share và link mở thẳng bài
               viết trên Bluesky.
             </p>
@@ -1655,7 +1679,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
       {/* ------------------------------------------------------------ */}
       <section
         id="compliance"
-        className="py-24 px-4 sm:px-6 bg-[#222222] border-y border-[#363636]"
+        className="py-24 px-4 sm:px-6 bg-neutral-100/70 dark:bg-[#222222] border-y border-neutral-200 dark:border-[#363636]"
       >
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
@@ -1663,10 +1687,10 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               <Shield className="size-4" />
               <span>Bảo vệ quyền riêng tư theo thiết kế</span>
             </div>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-5 leading-tight">
+            <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
               Tuân thủ pháp luật, tôn trọng riêng tư và toàn quyền kiểm soát
             </h2>
-            <p className="text-[17px] sm:text-[18px] text-[#aaaaaa] leading-relaxed">
+            <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
               Khác biệt hoàn toàn với các dịch vụ cào dữ liệu lậu (scrape-first) kém bền vững,
               Trendifest được thiết kế với chuẩn mực pháp lý cao nhất tại Việt Nam.
             </p>
@@ -1675,31 +1699,36 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
           {/* 3 Pillar Cards (Lindy Tile 8 style) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Card 1: Compliant */}
-            <div className="p-8 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group">
+            <div className="p-8 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group shadow-sm">
               <div>
-                <div className="flex items-center gap-2.5 mb-3.5 text-emerald-400">
+                <div className="flex items-center gap-2.5 mb-3.5 text-emerald-600 dark:text-emerald-400">
                   <FileCheck2 className="size-5.5 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="text-[18px] font-bold text-white">Chuẩn mực Pháp lý VN</span>
+                  <span className="text-[18px] font-bold text-neutral-900 dark:text-white">
+                    Chuẩn mực Pháp lý VN
+                  </span>
                 </div>
-                <p className="text-[15.5px] text-[#aaaaaa] leading-relaxed mb-6">
+                <p className="text-[15.5px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-6">
                   Tiên phong tuân thủ chặt chẽ{" "}
-                  <strong className="text-white">
+                  <strong className="text-neutral-900 dark:text-white">
                     Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15
                   </strong>{" "}
-                  và <strong className="text-white">Nghị định 356/2025/NĐ-CP</strong> (hiệu lực từ
-                  2026).
+                  và{" "}
+                  <strong className="text-neutral-900 dark:text-white">
+                    Nghị định 356/2025/NĐ-CP
+                  </strong>{" "}
+                  (hiệu lực từ 2026).
                 </p>
-                <div className="p-4.5 rounded-xl bg-[#1e1e1e] border border-[#333333] space-y-2.5 text-[14.5px] text-[#cccccc]">
+                <div className="p-4.5 rounded-xl bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#333333] space-y-2.5 text-[14.5px] text-neutral-700 dark:text-[#cccccc]">
                   <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-emerald-400 shrink-0" />
+                    <Check className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span>Không lập hồ sơ dữ liệu cá nhân</span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-emerald-400 shrink-0" />
+                    <Check className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span>Không suy đoán tuổi, giới tính cụ thể</span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-emerald-400 shrink-0" />
+                    <Check className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span>Chỉ xử lý nội dung công khai hợp lệ</span>
                   </div>
                 </div>
@@ -1707,27 +1736,29 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             </div>
 
             {/* Card 2: Access-First */}
-            <div className="p-8 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group">
+            <div className="p-8 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group shadow-sm">
               <div>
-                <div className="flex items-center gap-2.5 mb-3.5 text-[#a78bfa]">
+                <div className="flex items-center gap-2.5 mb-3.5 text-[#7c3aed] dark:text-[#a78bfa]">
                   <Globe2 className="size-5.5 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="text-[18px] font-bold text-white">Kết nối Access-First</span>
+                  <span className="text-[18px] font-bold text-neutral-900 dark:text-white">
+                    Kết nối Access-First
+                  </span>
                 </div>
-                <p className="text-[15.5px] text-[#aaaaaa] leading-relaxed mb-6">
+                <p className="text-[15.5px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-6">
                   Nói không với kỹ thuật cào dữ liệu lậu trái phép. Chỉ sử dụng các cổng API chính
                   thức và luồng WebSocket công khai có quản trị.
                 </p>
-                <div className="p-4.5 rounded-xl bg-[#1e1e1e] border border-[#333333] space-y-2.5 text-[14.5px] text-[#cccccc]">
+                <div className="p-4.5 rounded-xl bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#333333] space-y-2.5 text-[14.5px] text-neutral-700 dark:text-[#cccccc]">
                   <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-[#a78bfa] shrink-0" />
+                    <Check className="size-4 text-[#7c3aed] dark:text-[#a78bfa] shrink-0" />
                     <span>Bluesky Jetstream v2 unauthenticated tail</span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-[#a78bfa] shrink-0" />
+                    <Check className="size-4 text-[#7c3aed] dark:text-[#a78bfa] shrink-0" />
                     <span>Meta Threads API & TikTok Research API</span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-[#a78bfa] shrink-0" />
+                    <Check className="size-4 text-[#7c3aed] dark:text-[#a78bfa] shrink-0" />
                     <span>Bảo lưu quyền tác giả & permalink</span>
                   </div>
                 </div>
@@ -1735,15 +1766,15 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             </div>
 
             {/* Card 3: Deletion Compliance & 100% Local */}
-            <div className="p-8 rounded-2xl bg-[#262626] border border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group">
+            <div className="p-8 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group shadow-sm">
               <div>
-                <div className="flex items-center gap-2.5 mb-3.5 text-cyan-400">
+                <div className="flex items-center gap-2.5 mb-3.5 text-cyan-600 dark:text-cyan-400">
                   <Lock className="size-5.5 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="text-[18px] font-bold text-white">
+                  <span className="text-[18px] font-bold text-neutral-900 dark:text-white">
                     Quyền Lãng Quên & Local AI
                   </span>
                 </div>
-                <p className="text-[15.5px] text-[#aaaaaa] leading-relaxed mb-6">
+                <p className="text-[15.5px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-6">
                   Tôn trọng quyền xóa bài viết. Mô hình vector chạy cục bộ trong môi trường nội bộ
                   của tổ chức mà không phát tán ra ngoài.
                 </p>

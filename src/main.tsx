@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Agentation } from "agentation";
+import { ThemeProvider } from "next-themes";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { LandingPage } from "./pages/landing-page";
@@ -72,7 +73,9 @@ if (!container) throw new Error("Root element is missing from index.html");
 createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={client}>
-      <App />
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+        <App />
+      </ThemeProvider>
       {import.meta.env.DEV && <Agentation />}
     </QueryClientProvider>
   </StrictMode>,
