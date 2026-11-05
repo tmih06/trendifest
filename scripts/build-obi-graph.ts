@@ -27,6 +27,8 @@ const bundle = await Bun.build({
   target: "browser",
   format: "esm",
   minify: true,
+  // Library output must work with React's production runtime regardless of install mode.
+  jsx: { runtime: "automatic", development: false },
   external: ["react", "react/jsx-runtime", "react-dom", "d3-force"],
 });
 if (!bundle.success) throw new AggregateError(bundle.logs, "obi-graph bundle failed");

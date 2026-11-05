@@ -46,6 +46,35 @@ For production, configure `TRENDIFEST_PASSWORD`, run `bun run build`, then
 `bun start`. Basic authentication protects the application and APIs except the
 public health endpoint. Protect the deployment with HTTPS.
 
+### Transfer behavior
+
+Development text responses negotiate streaming compression, including modules
+and proxied API responses. Source maps and hot reload remain enabled; slow
+connections do not need to transfer the debug modules uncompressed.
+
+Production builds emit gzip sidecars for beneficial text assets. The Bun server
+negotiates those files and compresses large API JSON while keeping API responses
+`no-store` and hashed assets immutable. Binary media is not re-compressed.
+Deploy the entire `dist/` directory, including `.gz` files.
+
+Icons use public per-icon imports rather than the full development icon barrel.
+Optional feedback tooling loads asynchronously after the document's load event;
+it does not block the graph's entry modules. Production excludes it entirely.
+
+Local browser smoke, 2026-11-05, cache disabled, simulated 80 ms latency and
+250,000 bytes/second download throughput:
+
+| Measurement                   |                         Before |                              After |
+| ----------------------------- | -----------------------------: | ---------------------------------: |
+| Development startup resources |          13.11 MB uncompressed | 1.18 MB encoded at graph readiness |
+| Development initial load      | Document loading exceeded 30 s |               Graph ready in 6.0 s |
+| Graph API representation      |         100,659 bytes identity |                  21,039 bytes gzip |
+
+The deferred development toolbar adds about 429 kB encoded after document load.
+The production build reached a populated graph in 1.3 s with about 170 kB of
+encoded resources at that point. These are local simulated-network snapshots,
+not production latency guarantees; the collector continued receiving new input.
+
 ## Graph workspace
 
 - **Source sidebar:** emphasize patterns actually observed in VOZ or Otofun.
@@ -141,6 +170,9 @@ Bun/TypeScript toolchain. Keep dev dependencies installed for this step:
 `@types/d3-force` is needed to emit upstream declarations, while `d3-force`
 itself is owned by the library. Do not skip install scripts before building.
 Library upgrades are explicit Git-pin updates followed by `bun install`.
+The install build explicitly uses production-compatible JSX even when invoked
+from a development environment; otherwise the production React runtime lacks
+the development-only `jsxDEV` function and the graph fails to render.
 
 ### Relationships
 
@@ -278,9 +310,9 @@ those tests as skipped; a successful CI command does not imply database coverage
 
 ### Visual feedback with Agentation
 
-`agentation` is installed as a development dependency and mounted in
-`src/main.tsx` behind Vite's `import.meta.env.DEV` guard. Run `bun dev`, open
-the desktop app, and use **Start feedback mode** in the bottom-right corner.
+`agentation` is a development dependency loaded asynchronously from `src/main.tsx`
+after the initial document load, behind Vite's `import.meta.env.DEV` guard. Run
+`bun dev` and use **Start feedback mode** in the bottom-right corner once it appears.
 Select an element, add a note, then choose **Copy feedback** and paste it into
 your coding agent. Clear temporary annotations when finished.
 

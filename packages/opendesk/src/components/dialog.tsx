@@ -1,5 +1,7 @@
 import * as D from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+// Icons come from their public subpaths: the package root re-exports every
+// icon, which would put the whole set in each consumer's dev module graph.
+import X from "lucide-react/icons/x";
 import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
 

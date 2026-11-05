@@ -7,24 +7,25 @@ import {
   SidebarSection,
   cn,
 } from "@trendifest/opendesk";
-import {
-  Activity,
-  ArrowUpRight,
-  ChevronRight,
-  Circle,
-  Database,
-  Info,
-  Menu,
-  Moon,
-  Network,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRight,
-  RefreshCw,
-  Sun,
-  Users,
-  X,
-} from "lucide-react";
+// Each icon is imported through its own public subpath. The package root
+// re-exports every icon module (over two thousand), so a barrel import makes
+// the dev server prebundle and serve all of them for the sixteen drawn below.
+import Activity from "lucide-react/icons/activity";
+import ArrowUpRight from "lucide-react/icons/arrow-up-right";
+import ChevronRight from "lucide-react/icons/chevron-right";
+import Circle from "lucide-react/icons/circle";
+import Database from "lucide-react/icons/database";
+import Info from "lucide-react/icons/info";
+import Menu from "lucide-react/icons/menu";
+import Moon from "lucide-react/icons/moon";
+import Network from "lucide-react/icons/network";
+import PanelLeftClose from "lucide-react/icons/panel-left-close";
+import PanelLeftOpen from "lucide-react/icons/panel-left-open";
+import PanelRight from "lucide-react/icons/panel-right";
+import RefreshCw from "lucide-react/icons/refresh-cw";
+import Sun from "lucide-react/icons/sun";
+import Users from "lucide-react/icons/users";
+import X from "lucide-react/icons/x";
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { TrendMapNode } from "../../shared/types.ts";
 import { DbNotice } from "@/components/db-notice";

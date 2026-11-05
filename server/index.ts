@@ -15,6 +15,7 @@ import {
   status,
 } from "./social/service.ts";
 import { buildTrendMap } from "./social/trend-map.ts";
+import { compressibleResponse, staticFileResponse } from "./compression.ts";
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
@@ -35,12 +36,17 @@ const JSON_HEADERS = {
   "referrer-policy": "strict-origin-when-cross-origin",
 };
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+/**
+ * JSON responses are never stored, so the graph payload is rebuilt on every
+ * request; only its transfer encoding is negotiated. The negotiation needs the
+ * request, hence every caller passes it through.
+ */
+function json(request: Request, body: unknown, status = 200) {
+  return compressibleResponse(request, JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-function apiError(status: number, error: string, code = "bad_request") {
-  return json({ error, code } satisfies ApiError, status);
+function apiError(request: Request, status: number, error: string, code = "bad_request") {
+  return json(request, { error, code } satisfies ApiError, status);
 }
 
 /** Both social read routes share one window contract. */
@@ -62,7 +68,7 @@ async function readJson(request: Request) {
 
 async function handleApi(request: Request, url: URL) {
   if (url.pathname === "/api/health") {
-    return json({
+    return json(request, {
       ok: true,
       mode: PRODUCTION ? "production" : "development",
       now: new Date().toISOString(),
@@ -71,20 +77,20 @@ async function handleApi(request: Request, url: URL) {
   }
 
   if (url.pathname === "/api/signals" && request.method === "GET") {
-    return json(await signalsWithCoverage(readWindowHours(url)));
+    return json(request, await signalsWithCoverage(readWindowHours(url)));
   }
 
   if (url.pathname === "/api/trend-map" && request.method === "GET") {
     const map = await buildTrendMap(readWindowHours(url));
     map.coverage = coverageWithErrors(map.coverage);
-    return json(map);
+    return json(request, map);
   }
 
   if (url.pathname === "/api/signals/search" && request.method === "GET") {
     const query = url.searchParams.get("q")?.trim() ?? "";
     if (query.length < 2)
       throw new ApiFailure(400, "Enter at least two characters", "invalid_query");
-    return json({ results: await searchAcrossSpaces(query.slice(0, 200)) });
+    return json(request, { results: await searchAcrossSpaces(query.slice(0, 200)) });
   }
 
   if (url.pathname === "/api/collect" && request.method === "POST") {
@@ -107,17 +113,17 @@ async function handleApi(request: Request, url: URL) {
     void runBackfill(limit).catch((error: unknown) => {
       console.warn("Manual collection failed:", error instanceof Error ? error.message : error);
     });
-    return json({ status: status() }, 202);
+    return json(request, { status: status() }, 202);
   }
 
   if (url.pathname === "/api/collect/status" && request.method === "GET") {
-    return json(status());
+    return json(request, status());
   }
 
-  return apiError(404, "API route not found", "not_found");
+  return apiError(request, 404, "API route not found", "not_found");
 }
 
-async function serveStatic(url: URL) {
+async function serveStatic(request: Request, url: URL) {
   const requested = url.pathname === "/" ? "/index.html" : url.pathname;
   const resolved = path.resolve(DIST, `.${requested}`);
   if (!resolved.startsWith(`${DIST}${path.sep}`)) return new Response("Not found", { status: 404 });
@@ -125,20 +131,19 @@ async function serveStatic(url: URL) {
   const file = Bun.file(resolved);
   if (await file.exists()) {
     const isAsset = requested.startsWith("/assets/");
-    return new Response(file, {
-      headers: {
-        "cache-control": isAsset ? "public, max-age=31536000, immutable" : "no-cache",
-        "x-content-type-options": "nosniff",
-        "referrer-policy": "strict-origin-when-cross-origin",
-      },
-    });
+    const headers = {
+      "cache-control": isAsset ? "public, max-age=31536000, immutable" : "no-cache",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "strict-origin-when-cross-origin",
+    };
+    return staticFileResponse(request, resolved, headers);
   }
 
   // Client-side routes fall back to the shell, but only for document requests.
   if (requested === "/index.html" || !path.extname(requested)) {
-    const shell = Bun.file(path.join(DIST, "index.html"));
-    if (await shell.exists())
-      return new Response(shell, { headers: { "cache-control": "no-cache" } });
+    const shell = path.join(DIST, "index.html");
+    if (await Bun.file(shell).exists())
+      return staticFileResponse(request, shell, { "cache-control": "no-cache" });
   }
 
   return new Response("Not found", { status: 404 });
@@ -198,19 +203,25 @@ async function fetch(request: Request) {
       return await handleApi(request, url);
     } catch (error) {
       if (error instanceof ApiFailure) {
-        return apiError(error.status, error.message, error.code);
+        return apiError(request, error.status, error.message, error.code);
       }
       if (error instanceof DatabaseMissingError) {
-        return apiError(error.status, error.message, error.code);
+        return apiError(request, error.status, error.message, error.code);
       }
       console.error(`API ${request.method} ${url.pathname} failed:`, error);
-      return apiError(500, "The server could not complete that request. Try again.", "internal");
+      return apiError(
+        request,
+        500,
+        "The server could not complete that request. Try again.",
+        "internal",
+      );
     }
   }
 
-  if (PRODUCTION) return serveStatic(url);
+  if (PRODUCTION) return serveStatic(request, url);
 
   return json(
+    request,
     {
       name: "trendifest-api",
       message: "API is running. The interface is served by Vite during development.",

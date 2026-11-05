@@ -1,4 +1,4 @@
-import { Database } from "lucide-react";
+import Database from "lucide-react/icons/database";
 
 /** Recoverable setup state: keep the exact local database instructions in the graph. */
 export function DbNotice() {
