@@ -493,49 +493,65 @@ const FAQS = [
 
 /**
  * @component SideScrollRuler
- * Minimalist vertical viewport scroll indicator positioned on the right viewport edge.
+ * Minimalist vertical viewport scroll indicator featuring an organic hill curve profile.
  *
- * Behavior & Requirements:
- * - Represents the document viewport window rather than an accumulated progress fill:
- *   Only the stripes corresponding to the currently visible section of the total page
- *   length protrude outward ("nhô ra") and light up in solid contrast (`bg-black dark:bg-white`).
- * - Rejected approach: Filling all passed ticks black from top to bottom ("tô đen theo hết");
- *   the user explicitly required a true viewport indicator where only currently visible
- *   page ticks stick out.
- * - Non-active stripes outside the viewport remain subtle and short (`w-2.5 h-[1px] bg-black/25 dark:bg-white/25`),
- *   expanding when hovered.
- * - Clicking any stripe smoothly scrolls to that document location.
+ * Behavior & Mathematical Model:
+ * - Emulates an organic hill / bell curve ("ngọn đồi") rather than a discrete multi-tick block:
+ *   The center of the current viewport represents the crest of the hill (maximum protrusion,
+ *   28px width, full contrast). Adjacent stripes taper down smoothly according to a raised
+ *   cosine falloff curve (0.5 * (1 + cos(pi * d / radius))), blending seamlessly into the base
+ *   hairlines (10px width, 20% opacity).
+ * - Responsive viewport radius: The base width of the hill adapts dynamically to the visible
+ *   proportion of the page (viewportHeight / scrollHeight), ensuring physical coherence.
+ * - Frame-budgeted animation: Throttles scroll recalculations via `requestAnimationFrame` for
+ *   buttery smooth 60fps/120fps glide without dropped frames.
+ * - Interactive navigation: Clicking any stripe triggers smooth scrolling to that exact document ratio.
  *
  * Concurrency & Side Effects:
  * - Attaches passive window `scroll` and `resize` listeners on mount and cleans them up on unmount.
  */
 function SideScrollRuler() {
-  const [viewportRange, setViewportRange] = useState({ start: 0, end: 1 });
+  const [scrollState, setScrollState] = useState({ ratio: 0, viewportRatio: 0.15 });
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const TOTAL_TICKS = 24;
+  const MIN_WIDTH = 10; // Hairline base width in px
+  const MAX_ADDITIONAL_WIDTH = 18; // Peak protrusion adds 18px (total 28px)
 
   useEffect(() => {
-    const updateViewport = () => {
+    let rafId: number | null = null;
+
+    const updateScroll = () => {
       const scrollY = window.scrollY;
       const innerHeight = window.innerHeight;
       const scrollHeight = document.documentElement.scrollHeight;
+      const maxScroll = scrollHeight - innerHeight;
 
-      if (scrollHeight <= innerHeight) {
-        setViewportRange({ start: 0, end: 1 });
+      if (maxScroll <= 0) {
+        setScrollState({ ratio: 0, viewportRatio: 1 });
         return;
       }
 
-      const start = Math.max(0, scrollY / scrollHeight);
-      const end = Math.min(1, (scrollY + innerHeight) / scrollHeight);
-      setViewportRange({ start, end });
+      const ratio = Math.min(1, Math.max(0, scrollY / maxScroll));
+      const viewportRatio = Math.min(1, Math.max(0.05, innerHeight / scrollHeight));
+      setScrollState({ ratio, viewportRatio });
     };
 
-    window.addEventListener("scroll", updateViewport, { passive: true });
-    window.addEventListener("resize", updateViewport, { passive: true });
-    updateViewport();
+    const handleScrollOrResize = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        updateScroll();
+        rafId = null;
+      });
+    };
+
+    window.addEventListener("scroll", handleScrollOrResize, { passive: true });
+    window.addEventListener("resize", handleScrollOrResize, { passive: true });
+    updateScroll();
 
     return () => {
-      window.removeEventListener("scroll", updateViewport);
-      window.removeEventListener("resize", updateViewport);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", handleScrollOrResize);
+      window.removeEventListener("resize", handleScrollOrResize);
     };
   }, []);
 
@@ -546,26 +562,31 @@ function SideScrollRuler() {
     window.scrollTo({ top: targetY, behavior: "smooth" });
   };
 
+  // Continuous index location corresponding to the crest of the hill
+  const centerIdx = scrollState.ratio * (TOTAL_TICKS - 1);
+
+  // Dynamic radius of the hill based on the visible viewport proportion of the page
+  const hillRadius = Math.max(2.6, Math.min(4.2, scrollState.viewportRatio * TOTAL_TICKS * 1.3));
+
   return (
     <nav
       aria-label="Thước đo vị trí khung nhìn trang"
       className="fixed right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-end gap-1.5 pointer-events-auto select-none"
     >
       {Array.from({ length: TOTAL_TICKS }).map((_, idx) => {
-        // Compute overlap of this tick's vertical segment with current viewport
-        const tickStart = idx / TOTAL_TICKS;
-        const tickEnd = (idx + 1) / TOTAL_TICKS;
-        const overlap = Math.max(
-          0,
-          Math.min(tickEnd, viewportRange.end) - Math.max(tickStart, viewportRange.start),
-        );
-        const overlapRatio = overlap * TOTAL_TICKS;
+        const dist = Math.abs(idx - centerIdx);
 
-        // Tick is active if it has meaningful overlap with current viewport,
-        // with boundary guards ensuring top and bottom ticks activate when pinned.
-        const isAtTopEdge = idx === 0 && viewportRange.start <= 0.005;
-        const isAtBottomEdge = idx === TOTAL_TICKS - 1 && viewportRange.end >= 0.995;
-        const isInViewport = overlapRatio >= 0.15 || isAtTopEdge || isAtBottomEdge;
+        // Raised-cosine hill curve (intensity from 0 at base to 1.0 at crest)
+        let intensity = 0;
+        if (dist < hillRadius) {
+          intensity = 0.5 * (1 + Math.cos((Math.PI * dist) / hillRadius));
+        }
+
+        const isHovered = hoveredIdx === idx;
+        const width = MIN_WIDTH + MAX_ADDITIONAL_WIDTH * intensity;
+        const effectiveWidth = isHovered ? Math.max(width, 16) : width;
+        const baseOpacity = 0.2 + 0.8 * intensity;
+        const effectiveOpacity = isHovered ? Math.max(baseOpacity, 0.85) : baseOpacity;
 
         const tickPercentage = Math.round((idx / (TOTAL_TICKS - 1)) * 100);
 
@@ -574,18 +595,18 @@ function SideScrollRuler() {
             key={idx}
             type="button"
             onClick={() => scrollToPosition(idx)}
+            onMouseEnter={() => setHoveredIdx(idx)}
+            onMouseLeave={() => setHoveredIdx(null)}
             aria-label={`Cuộn đến vị trí ${tickPercentage}%`}
-            aria-current={isInViewport ? "true" : undefined}
             className="py-0.5 flex items-center justify-end focus:outline-none cursor-pointer group/tick"
           >
-            {/* Horizontal hairline stripe: protrudes ("nhô ra") and solidifies only when in current viewport */}
+            {/* Smooth organic hill stripe with continuous width & opacity falloff */}
             <span
-              className={cn(
-                "block h-[1px] transition-all duration-150 ease-out",
-                isInViewport
-                  ? "w-6.5 bg-black dark:bg-white"
-                  : "w-2.5 bg-black/25 dark:bg-white/25 group-hover/tick:w-4 group-hover/tick:bg-black/60 dark:group-hover/tick:bg-white/60",
-              )}
+              style={{
+                width: `${effectiveWidth.toFixed(1)}px`,
+                opacity: Number(effectiveOpacity.toFixed(3)),
+              }}
+              className="block h-[1px] bg-black dark:bg-white transition-[width,opacity] duration-100 ease-out"
             />
           </button>
         );
