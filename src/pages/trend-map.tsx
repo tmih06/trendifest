@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Circle,
   Database,
+  Home,
   Info,
   Menu,
   Moon,
@@ -189,7 +190,7 @@ function NodeDetail({ node }: { node: TrendMapNode }) {
 }
 
 /** One graph workspace: collection controls and evidence live beside the graph, never on separate routes. */
-export function TrendMapPage() {
+export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void } = {}) {
   const { theme, toggle } = useTheme();
   const [hours, setHours] = useState<number>(72);
   const [audience, setAudience] = useState<string | null>(null);
@@ -500,6 +501,18 @@ export function TrendMapPage() {
               </span>
             </div>
             <div className="ms-auto flex items-center gap-1.5">
+              {onNavigateHome && (
+                <Button
+                  variant="secondary"
+                  size="xs"
+                  aria-label="Về trang giới thiệu"
+                  onClick={onNavigateHome}
+                  className="gap-1 text-[11px] me-1"
+                >
+                  <Home className="size-3" />
+                  <span className="hidden sm:inline">Trang chủ</span>
+                </Button>
+              )}
               <span className="header-live">
                 <Badge dot tone={live ? "ok" : "neutral"}>
                   {statusLabel}
