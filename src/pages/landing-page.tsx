@@ -389,7 +389,7 @@ const USE_CASES = [
     previewTitle: "Trắc diện văn hóa số (Cultural Observability)",
     previewBadge: "Dữ liệu nghiên cứu định lượng",
     previewEvent: "Nghiên cứu biến đổi tiếng lóng Gen Z tại đô thị VN",
-    previewCommunity: "Đại học Bách khoa Đà Nẵng • RnD to Startup",
+    previewCommunity: "Viện Nghiên cứu Xã hội số • Mạng lưới Ngôn ngữ học",
   },
 ];
 
@@ -472,7 +472,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             </span>
             <span>Trendifest</span>
             <span className="hidden sm:inline-flex text-[11px] uppercase font-mono px-2.5 py-0.5 rounded bg-neutral-100 dark:bg-[#333333] text-[#7c3aed] dark:text-[#a78bfa] whitespace-nowrap border border-neutral-300 dark:border-[#444444]">
-              RTS 2026
+              v1.4 LIVE
             </span>
           </a>
 
@@ -627,7 +627,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
         {/* Eyebrow Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-50 dark:bg-[#a78bfa]/10 border border-purple-200 dark:border-[#a78bfa]/30 text-purple-700 dark:text-[#a78bfa] text-[13.5px] font-medium mb-6">
           <span className="size-2 rounded-full bg-[#a78bfa] animate-ping" />
-          <span>Dự án Khởi nghiệp Sáng tạo ĐHQG Hà Nội (RnD to Startup 2026)</span>
+          <span>Hệ thống Trinh sát Đa phương thức & Dự báo Lan truyền thời gian thực</span>
         </div>
 
         {/* Display Headline with Shimmering Gradient */}
@@ -682,7 +682,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             <span className="font-bold text-neutral-900 dark:text-white">4.9 / 5.0</span>
             <span className="text-neutral-400 dark:text-[#666]">•</span>
             <span className="text-neutral-600 dark:text-[#aaaaaa]">
-              Đánh giá Xuất sắc từ Hội đồng Khoa học RTS 2026
+              Kiểm chứng thực nghiệm trên luồng dữ liệu mở
             </span>
           </div>
         </div>
@@ -1281,18 +1281,18 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
             ))}
           </div>
 
-          {/* Academic & Platform Proof Bar */}
+          {/* Protocol & Data Sources Proof Bar */}
           <div className="mt-14 pt-8 border-t border-neutral-200 dark:border-[#333333] flex flex-col md:flex-row items-center justify-between gap-6 text-[14px] text-neutral-600 dark:text-[#888888]">
             <span className="uppercase tracking-wider font-semibold text-[13px] text-neutral-500 dark:text-[#aaaaaa]">
-              Nền tảng & Đơn vị bảo trợ học thuật:
+              Nguồn cấp dữ liệu & Chuẩn giao thức mở:
             </span>
             <div className="flex flex-wrap items-center gap-6 sm:gap-10 text-neutral-700 dark:text-[#bbbbbb] font-medium text-[14.5px]">
-              <span>ĐH Bách khoa – ĐH Đà Nẵng</span>
-              <span>ĐHQG Hà Nội (RnD to Startup 2026)</span>
               <span>Bluesky AT Protocol</span>
               <span>Meta Threads API</span>
               <span>TikTok Research API</span>
               <span>HuggingFace Local AI</span>
+              <span>Hawkes Point Process</span>
+              <span>PyTorch Vector Space</span>
             </div>
           </div>
 
@@ -1976,8 +1976,8 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               Gen Z tại Việt Nam. Thuộc lĩnh vực Khoa học Dữ liệu và Mạng xã hội.
             </p>
             <div className="text-[13.5px] text-neutral-500 dark:text-[#777777] space-y-1">
-              <div>Đơn vị: Trường Đại học Bách khoa – Đại học Đà Nẵng</div>
-              <div>Cuộc thi: RnD to Startup 2026 (ĐHQG Hà Nội)</div>
+              <div>Kiến trúc: Local Vector Inference • Privacy-First</div>
+              <div>Tiêu chuẩn: Tuân thủ Luật An toàn thông tin & BV Dữ liệu cá nhân</div>
             </div>
           </div>
 
@@ -2090,13 +2090,13 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
 
         {/* Footer Bottom Bar */}
         <div className="max-w-6xl mx-auto pt-8 border-t border-neutral-200 dark:border-[#2a2a2a] flex flex-col sm:flex-row items-center justify-between gap-4 text-[13.5px] text-neutral-500 dark:text-[#777777]">
-          <div>Copyright © 2026 Trendifest Team. All rights reserved.</div>
+          <div>Copyright © 2026 Trendifest. All rights reserved.</div>
           <div className="flex items-center gap-4">
             <span className="text-purple-700 dark:text-[#a78bfa] font-semibold">
-              ✦ RnD to Startup 2026 Finalist
+              ✦ Real-time Social Signal Intelligence
             </span>
             <span>•</span>
-            <span>Made with passion by BKĐN Students</span>
+            <span>Độc lập • Minh bạch • Bảo mật</span>
           </div>
         </div>
       </footer>
