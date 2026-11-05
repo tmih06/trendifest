@@ -47,6 +47,8 @@ import { useCollectionStatus, useCollectNow, useTrendMap } from "@/hooks/use-tre
 import { compactNumber, formatRelative, topicSearchText } from "@/lib/format";
 import { toCanvas } from "@/lib/graph";
 import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
+import { useWatchlists } from "@/hooks/use-watchlists.ts";
+import type { WatchDraft } from "../../shared/intelligence.ts";
 
 const Dialog = lazy(() =>
   import("@trendifest/opendesk/dialog").then((module) => ({ default: module.Dialog })),
@@ -61,6 +63,15 @@ const TopicIntelligencePanel = lazy(() =>
 
 const TopicReviewPanel = lazy(() =>
   import("@/components/topic-review").then((module) => ({ default: module.TopicReviewPanel })),
+);
+
+const WatchlistPanel = lazy(() =>
+  import("@/components/watchlist-panel").then((module) => ({ default: module.WatchlistPanel })),
+);
+const TopicArchivePanel = lazy(() =>
+  import("@/components/topic-intelligence").then((module) => ({
+    default: module.TopicArchivePanel,
+  })),
 );
 
 /** Review code and paginated evidence load only after an explicit disclosure. */
@@ -343,7 +354,9 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
   const { isDark, toggle: toggleTheme } = useThemeToggle({ start: "top-down" });
   const theme = isDark ? "dark" : "light";
   const [hours, setHours] = useState<number>(DEFAULT_HOURS);
-  const [view, setView] = useState<"graph" | "board">("graph");
+  const [view, setView] = useState<"graph" | "board" | "watchlists">("graph");
+  const [watchDraft, setWatchDraft] = useState<WatchDraft | null>(null);
+  const [archiveTopicId, setArchiveTopicId] = useState<string | null>(null);
   const workspaceHeading = useRef<HTMLHeadingElement>(null);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -365,6 +378,7 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
   const collect = useCollectNow();
   const data = map.data;
   const selected = data?.nodes.find((node) => node.id === selectedId) ?? null;
+  const watches = useWatchlists(collection.data?.configured === true);
   /**
    * A source is a filter over each topic's own collection contexts. Topics carry
    * `segments`, and there are no source nodes and no observation edges, so this
@@ -473,8 +487,14 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               : healthy
                 ? "Polling active"
                 : "Waiting for first poll";
-  const viewLabel = view === "board" ? "Topic board" : "Trend graph";
-  const inspectorVisible = desktopInspector && !narrow && (view === "graph" || selected !== null);
+  const viewLabel =
+    view === "watchlists"
+      ? "Watchlists & alerts"
+      : view === "board"
+        ? "Topic board"
+        : "Trend graph";
+  const inspectorVisible =
+    view !== "watchlists" && desktopInspector && !narrow && (view === "graph" || selected !== null);
   const unconfigured =
     map.error instanceof Error && "code" in map.error && map.error.code === "database_unconfigured";
 
@@ -497,8 +517,9 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
   // Load accessible modal behavior only after the first dialog request. Keep
   // it mounted afterward so closing transitions and focus restoration finish.
   useEffect(() => {
-    if (navOpen || aboutOpen || collectionOpen || mobileInspector) setDialogsEnabled(true);
-  }, [navOpen, aboutOpen, collectionOpen, mobileInspector]);
+    if (navOpen || aboutOpen || collectionOpen || mobileInspector || archiveTopicId)
+      setDialogsEnabled(true);
+  }, [navOpen, aboutOpen, collectionOpen, mobileInspector, archiveTopicId]);
 
   useEffect(() => {
     setSelectedId(null);
@@ -519,7 +540,7 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
   }
 
   /** Views share the query and filters; navigation does not fetch another map. */
-  function chooseView(next: "graph" | "board") {
+  function chooseView(next: "graph" | "board" | "watchlists") {
     setView(next);
     setNavOpen(false);
     window.requestAnimationFrame(() => workspaceHeading.current?.focus());
@@ -533,6 +554,25 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
       if (narrow) setMobileInspector(true);
       else setDesktopInspector(true);
     }
+  }
+
+  /** A Follow action edits a real persistent rule; it never silently enables one. */
+  function follow(draft: WatchDraft) {
+    setWatchDraft(draft);
+    setSelectedId(null);
+    setMobileInspector(false);
+    chooseView("watchlists");
+  }
+
+  /** Retained notifications remain inspectable even outside the visible sample. */
+  function openWatchedTopic(id: string) {
+    if (!data?.nodes.some((node) => node.id === id)) {
+      setArchiveTopicId(id);
+      return;
+    }
+    setSourceId(null);
+    chooseView("board");
+    selectNode(id);
   }
 
   const sidebar = (rail: boolean) => (
@@ -592,6 +632,16 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
           title="Topic board"
         >
           Topic board
+        </SidebarItem>
+        <SidebarItem
+          icon={<Activity />}
+          active={view === "watchlists"}
+          collapsed={rail}
+          onClick={() => chooseView("watchlists")}
+          count={watches.unread || undefined}
+          title="Watchlists and alerts"
+        >
+          Watchlists &amp; alerts
         </SidebarItem>
       </SidebarSection>
       <SidebarSection label="Sources" collapsed={rail}>
@@ -703,6 +753,15 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
         {selected && (
           <div className="border-b border-line p-4">
             <NodeDetail node={selected} sourceLabels={sourceLabels} />
+            <Button
+              className="mt-3"
+              variant="secondary"
+              onClick={() =>
+                follow({ kind: "topic", targetId: selected.id, label: selected.label })
+              }
+            >
+              Follow topic
+            </Button>
             <Suspense
               fallback={
                 <p role="status" className="mt-4 text-[12px] text-fg-3">
@@ -981,13 +1040,15 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
           <section
             className={cn(
               "graph-surface relative min-h-0 min-w-0 overflow-hidden",
-              view === "board" && "flex flex-col",
+              view !== "graph" && "flex flex-col",
             )}
-            aria-label={view === "board" ? "Topic board" : "Topic graph"}
+            aria-label={viewLabel}
             aria-describedby="graph-description"
           >
             <p id="graph-description" className="sr-only">
-              {view === "board" ? (
+              {view === "watchlists" ? (
+                "Persistent topic and entity watches with publication-backed evidence alerts. Rules apply across all sources; notifications retain their original observation time."
+              ) : view === "board" ? (
                 "Specific topics ranked by heuristic potential. Select a title or View evidence to inspect source records. Source and time filters match the graph."
               ) : (
                 <>
@@ -1007,7 +1068,11 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               )}
             >
               <div className="min-w-0">
-                <p className="text-[11px] font-medium text-fg-2">{sourceLabel}</p>
+                <p className="text-[11px] font-medium text-fg-2">
+                  {view === "watchlists"
+                    ? "All-source watches · in-app notifications"
+                    : sourceLabel}
+                </p>
                 <p className="mt-1 max-w-[36ch] text-[11px] text-fg-3">
                   {data
                     ? sourceId
@@ -1097,7 +1162,32 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
                   limited={data.stats.limited}
                   detailsOpen={inspectorVisible}
                   onSelect={selectNode}
+                  onWatchTopic={(node) =>
+                    follow({ kind: "topic", targetId: node.id, label: node.label })
+                  }
+                  onWatchEntity={(entity) =>
+                    follow({ kind: "entity", targetId: entity.id, label: entity.label })
+                  }
                 />
+              </div>
+            )}
+            {view === "watchlists" && data && (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <Suspense
+                  fallback={
+                    <p role="status" className="p-4 text-sm text-fg-3">
+                      Loading watchlists…
+                    </p>
+                  }
+                >
+                  <WatchlistPanel
+                    topics={data.nodes}
+                    entities={data.entities}
+                    draft={watchDraft}
+                    onDraftConsumed={() => setWatchDraft(null)}
+                    onSelectTopic={openWatchedTopic}
+                  />
+                </Suspense>
               </div>
             )}
             {map.isLoading && (
@@ -1119,7 +1209,7 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
                 <Button onClick={() => void map.refetch()}>Try again</Button>
               </div>
             )}
-            {emptyState && !map.isError && (
+            {view !== "watchlists" && emptyState && !map.isError && (
               <div className="graph-empty">
                 <Network className="mx-auto mb-3 size-6 text-fg-3" aria-hidden="true" />
                 <p className="text-[13px] font-medium">{emptyState.title}</p>
@@ -1181,6 +1271,19 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
         <Suspense fallback={null}>
           <Dialog open={navOpen} onOpenChange={setNavOpen} title="Workspace and sources" size="sm">
             <div className="mobile-sidebar">{sidebar(false)}</div>
+          </Dialog>
+          <Dialog
+            open={archiveTopicId !== null}
+            onOpenChange={(open) => {
+              if (!open) setArchiveTopicId(null);
+            }}
+            title="Retained topic evidence"
+          >
+            {archiveTopicId && (
+              <Suspense fallback={<p role="status">Loading retained evidence…</p>}>
+                <TopicArchivePanel key={archiveTopicId} topicId={archiveTopicId} />
+              </Suspense>
+            )}
           </Dialog>
           <Dialog
             open={mobileInspector && narrow}

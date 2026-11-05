@@ -2,9 +2,9 @@
 
 A Vietnamese-first topic workspace: collect bounded community excerpts and
 labelled news, embed locally, and group evidence about specific events and model
-versions. Explore relationships in the graph or read a ranked topic board.
-There is no Google Trends dashboard, forecasting workspace, watchlist, alerts
-system, or separate Signals page.
+versions. Explore relationships in the graph, inspect a ranked topic board,
+correct grouping, or follow topics/entities with persistent in-app alerts.
+There is no forecasting dashboard or claim of complete internet coverage.
 
 ## Run
 
@@ -84,9 +84,9 @@ not production latency guarantees; the collector continued receiving new input.
 
 ## Topic workspace
 
-- **Workspace sidebar:** switch between **Trend graph** and **Topic board**.
-  Both use the same source/time filters and query cache; changing views does not
-  download another map. **All sources** clears the source filter independently.
+- **Workspace sidebar:** **Trend graph**, **Topic board**, and **Watchlists & alerts**.
+  The graph and table share source/time filters and query cache; switching views
+  does not download another map. Watches apply across all collected sources.
 - **Topic board:** a native table with canonical global ranks, rising/sustained/
   fading phases, real rank movement, hourly sparklines, new independent support,
   and separate news/community attention. Unknown history is explicit, not zero.
@@ -129,6 +129,21 @@ not production latency guarantees; the collector continued receiving new input.
   New evidence attaches only to one fully compatible reviewed partition;
   ambiguous evidence cannot bridge a manual split. Edits invalidate stale locks.
   Undo refuses to overwrite changed evidence or a newer dependent review.
+- **Watchlists & alerts:** follow a topic from the board/inspector or an entity
+  from the entity filter. Review thresholds and save; a Follow click alone never
+  enables a rule. Edit, pause, resume, or confirm deletion of up to 100 watches.
+  A new watch baselines existing evidence instead of flooding notifications.
+  New-account, publisher, and provider thresholds are OR-ed; the potential floor
+  is required. Sub-threshold support accumulates, and repeated polls cannot
+  credit one identity twice. Resuming or retargeting starts a fresh baseline.
+  Evaluation runs after collection and every five minutes, off the HTTP path.
+  Publication-backed evidence must be fresh (48h), discovered within 12h, and
+  first collected after the baseline. Current activity-only forum feeds cannot
+  establish new publication or trigger community-account alerts.
+  Notifications stay in Postgres, with read state, global unread count, and
+  keyset pages of 200 (including older unread items). Original evidence remains
+  openable outside the visible graph sample. Delivery is in-app only: no email,
+  webhook, or OS permission is implied.
 - **Collection status:** bounded polling state, per-source results/errors, and a
   manual collection action. No fictional live-stream connection is reported.
 - **Appearance:** light/dark preference, collapsible desktop sidebar, mobile
@@ -403,6 +418,11 @@ then exercise the graph. There is no floating Git dependency.
 | `GET /api/topic-reviews?topicId=...`              | Stored review audit history                                         |
 | `POST /api/topic-reviews`                         | Apply a guarded merge or selected-record split                      |
 | `DELETE /api/topic-reviews/:id`                   | Undo a review without overwriting newer evidence                    |
+| `GET /api/watchlists?before=...` | Watch rules and keyset-paginated notification history |
+| `POST /api/watchlists` | Create a rule with a fresh evidence baseline |
+| `PATCH /api/watchlists/:id` | Edit, pause, resume, or retarget a rule |
+| `DELETE /api/watchlists/:id` | Confirmed rule and related notification removal |
+| `POST /api/alerts/:id/read` | Persist notification read state |
 | `GET /api/collect/status`                         | Polling state, per-source results, and errors                       |
 | `POST /api/collect`                               | Bounded source poll; JSON `{ "limit": 25 }`                         |
 | `GET /api/signals?hours=72`                       | Operational cluster/coverage data                                   |

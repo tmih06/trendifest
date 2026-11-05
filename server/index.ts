@@ -24,6 +24,13 @@ import {
 } from "./social/intelligence-service.ts";
 import { compressibleResponse, staticFileResponse } from "./compression.ts";
 import { applyTopicReview, listTopicReviews, undoTopicReview } from "./social/topic-review.ts";
+import {
+  createWatchRule,
+  deleteWatchRule,
+  getWatchlists,
+  markAlertRead,
+  updateWatchRule,
+} from "./social/watchlists.ts";
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
@@ -161,6 +168,29 @@ async function handleApi(request: Request, url: URL) {
   if (reviewPath && request.method === "DELETE") {
     await undoTopicReview(readResourceId(reviewPath[1]!));
     refreshAfterReview();
+    return json(request, { ok: true });
+  }
+
+  if (url.pathname === "/api/watchlists") {
+    if (request.method === "GET") {
+      return json(request, await getWatchlists(url.searchParams.get("before") ?? undefined));
+    }
+    if (request.method === "POST")
+      return json(request, await createWatchRule(await readJson(request)), 201);
+  }
+  const watchPath = /^\/api\/watchlists\/([^/]+)$/u.exec(url.pathname);
+  if (watchPath) {
+    const id = readResourceId(watchPath[1]!);
+    if (request.method === "PATCH")
+      return json(request, await updateWatchRule(id, await readJson(request)));
+    if (request.method === "DELETE") {
+      await deleteWatchRule(id);
+      return json(request, { ok: true });
+    }
+  }
+  const alertPath = /^\/api\/alerts\/([^/]+)\/read$/u.exec(url.pathname);
+  if (alertPath && request.method === "POST") {
+    await markAlertRead(readResourceId(alertPath[1]!));
     return json(request, { ok: true });
   }
 

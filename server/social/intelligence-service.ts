@@ -1,5 +1,6 @@
 import { databaseConfigured } from "../db.ts";
 import { refreshTopicIntelligence } from "./topic-intelligence.ts";
+import { evaluateWatchAlerts } from "./watchlists.ts";
 
 /** Collection runs every ten minutes; materialized history also advances when idle. */
 const REFRESH_INTERVAL_MS = 5 * 60_000;
@@ -18,7 +19,7 @@ export function refreshIntelligence(afterCurrent = false): Promise<void> {
     return afterCurrent ? flight.catch(() => undefined).then(() => refreshIntelligence()) : flight;
   }
   const pending = refreshTopicIntelligence()
-    .then(() => undefined)
+    .then(evaluateWatchAlerts)
     .finally(() => {
       flight = undefined;
     });
