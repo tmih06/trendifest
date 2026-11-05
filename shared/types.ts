@@ -12,8 +12,9 @@ export interface ApiError {
  * Vietnamese-first collection of public community discussion excerpts.
  * ------------------------------------------------------------------ */
 
-/** Independent networks currently collected through their public RSS feeds. */
-export type SocialSource = "voz" | "otofun";
+/** Collector identities; publisher attribution is separate for aggregated news. */
+export type SocialSource = "voz" | "otofun" | "google-news" | "nguoi-viet";
+export type EvidenceType = "discussion" | "news";
 
 export type PostKind = "text" | "image" | "video" | "audio" | "link";
 export type SourceTimeKind = "published" | "activity";
@@ -24,6 +25,7 @@ export interface ViewerSegment {
   label: string;
   description: string;
   source: SocialSource;
+  evidenceType: EvidenceType;
   feedUrl: string;
 }
 
@@ -149,46 +151,47 @@ export interface TrendScore {
   posts: number;
 }
 
-export type TrendMapNodeKind = "segment" | "pattern";
+/** Evidence belongs in the inspector, never as source or individual-post graph hubs. */
+export interface TopicExample extends ClusterExample {
+  title: string;
+  evidenceType: EvidenceType;
+  publisher: string | null;
+  /** Source-reported publication/activity time, distinct from local observation. */
+  publishedAt: string;
+}
 
 export interface TrendMapNode {
   id: string;
-  kind: TrendMapNodeKind;
+  kind: "topic";
+  /** A specific, evidence-backed event/product title, not a broad category. */
   label: string;
   description: string;
   radius: number;
-  /** Null for segment hubs, which carry no emergence claim. */
-  potential: number | null;
+  potential: number;
   posts: number;
+  /** Source-qualified community accounts, never news publishers presented as people. */
   authors: number;
   segments: string[];
-  /** Fixed layout position for hubs; derived by the force layout for patterns. */
-  x?: number;
-  y?: number;
-  score?: TrendScore;
-  clusterId?: string;
-  kind_?: string;
-  mediaCount?: number;
-  /** Latest measured engagement across member posts. */
+  score: TrendScore;
+  discussionPosts: number;
+  newsPosts: number;
+  publishers: number;
+  mediaCount: number;
   likes?: number;
   shares?: number;
-  firstSeenAt?: string;
-  lastSeenAt?: string;
-  /** A few member posts, so the inspector can show provenance without a list route. */
-  examples?: ClusterExample[];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  examples: TopicExample[];
 }
-
-export type TrendMapRelation = "observed-in" | "similarity";
 
 export interface TrendMapEdge {
   id: string;
   source: string;
   target: string;
-  /** `observed-in` is a collected observation; `similarity` is centroid cosine in one space. */
-  relation: TrendMapRelation;
+  /** A measured semantic relationship between distinct specific topics. */
+  relation: "related";
   weight: number;
-  /** Cosine similarity for `similarity` edges; absent on observations. */
-  similarity?: number;
+  similarity: number;
 }
 
 export interface TrendMap {
@@ -197,10 +200,20 @@ export interface TrendMap {
   nodes: TrendMapNode[];
   edges: TrendMapEdge[];
   coverage: SegmentCoverage[];
+  stats: {
+    posts: number;
+    topics: number;
+    discussionPosts: number;
+    newsPosts: number;
+    pendingEmbeddings: number;
+    limited: boolean;
+  };
   method: {
     version: number;
     velocityWindowHours: number;
     weights: Record<string, number>;
+    topicModel: string;
+    groupingThreshold: number;
     /** False while history is too short for two comparable velocity windows. */
     velocityComparable: boolean;
   };

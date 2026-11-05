@@ -1,7 +1,7 @@
 # Trendifest
 
-A Vietnamese-first discussion graph: collect bounded public thread excerpts
-from VOZ and Otofun, embed content locally, and compare related activity.
+A Vietnamese-first topic graph: collect bounded community excerpts and labelled
+news, embed locally, and group evidence about specific events and model versions.
 The graph is the entire application. There is no Google Trends dashboard,
 forecasting workspace, watchlist, alerts system, or separate Signals page.
 
@@ -39,7 +39,7 @@ TRENDIFEST_SOCIAL=1
 
 Models download lazily into `.cache/transformers` on first use. Inference stays
 local; post content is not sent to an external inference API. Feed/media fetching
-still reaches the configured forums and source-hosted attachment URLs. Initial
+still reaches configured public sources and source-hosted attachment URLs. Initial
 collection can take longer while weights load and media is decoded.
 
 For production, configure `TRENDIFEST_PASSWORD`, run `bun run build`, then
@@ -77,24 +77,24 @@ not production latency guarantees; the collector continued receiving new input.
 
 ## Graph workspace
 
-- **Source sidebar:** emphasize patterns actually observed in VOZ or Otofun.
-  Filtering does not restart the layout. Counts are collected thread excerpts,
-  not audience sizes or downloaded reply counts. Source accounts are not
-  verified distinct people across networks.
-- **Observation window:** 24 hours, 3 days, or 7 days, with a sliding active
-  indicator that respects reduced motion.
-- **Graph:** three independent encodings: **colour** is the connection count
-  (pale for a single link, saturated purple as links accumulate), **size** is
-  the trend potential, and **shape** is the pattern's content type — circle for
-  text, rounded square for image, triangle for video, diamond for audio, and
-  pentagon for links. Source hubs are neutral greys. Selecting a node frames
-  only that node and its direct neighbours.
+- **Source sidebar:** filter topics with evidence from VOZ, Otofun, Google News
+  VN, or Người Việt. Counts are collected records, not audience or reply counts.
+  News publishers are not counted as community accounts; accounts across
+  networks are not verified distinct people.
+- **Observation window:** 24 hours, 3 days, or 7 days (default), with a sliding
+  active indicator that respects reduced motion.
+- **Graph:** every node is a specific topic, never a source hub or an individual
+  media attachment. **Size** tracks heuristic potential; **colour** tracks the
+  number of measured related-topic links. Titles fade out when zoomed out and
+  fade in when zooming closer; selected/hovered topics keep contextual labels.
+  Full titles and evidence remain in the inspector. Selecting a topic frames
+  it and its direct neighbours.
   Pan and zoom cover a wide range; wheel zoom is eased rather than stepped.
   Background mouse, pen, and single-touch pans glide to a stop after release.
   A new press, zoom, or camera control interrupts the glide. Holding still
   before release, multi-touch gestures, and reduced-motion mode do not fling.
-- **Pattern inspector:** keyboard-accessible ranking, score breakdown, bounded
-  source excerpts with original-thread links and explicit source identity.
+- **Topic inspector:** keyboard-accessible ranking, score breakdown, separate
+  community/news evidence counts, source excerpts, and original-source links.
   The desktop inspector floats above the graph without resizing its canvas;
   close it from the panel or toggle it beside the observation-window selector.
   Expansion and collapse slide and fade, respecting reduced motion.
@@ -116,11 +116,19 @@ requests return HTTP 409.
 
 ### Vietnamese input policy
 
-The source catalog is `shared/segments.ts`: VOZ's public discussion RSS and
-Otofun's public community RSS. Each cycle makes one conditional request per
-source, with a default budget of 20 records and a hard cap of 25 per source.
-There is no global stream, multi-page historical crawl, or catch-all Discover
-pool. Feed responses are capped at 1 MB before parsing.
+The source catalog is `shared/segments.ts`: VOZ/Otofun community RSS, Google
+News's Vietnamese edition RSS, and Người Việt's public WordPress Vietnam-category
+endpoint. News is explicitly labelled publisher evidence, never community
+reactions. Each cycle accepts at most 25 records per source (default 20).
+Requests have a 15-second deadline and 1 MB response cap; there is no historical
+crawl or global stream. Conditional responses are supported where available.
+
+Google News supplies headlines, publisher labels and aggregator links, not
+article bodies or counts of reactions. Người Việt supplies real headlines,
+bounded excerpts and original links from one page of at most 50 records in the
+past seven days. A rotating bounded sample covers that page over cycles, not
+the publisher's full archive. Category lookup is cached. These discovery
+windows can miss an incident; collected evidence is not complete coverage.
 
 `server/social/input.ts` is the common gate for every adapter: normalize
 Vietnamese Unicode and whitespace, cap text at 2,000 characters and attachments
@@ -140,10 +148,11 @@ arbitrary third-party media is not fetched from RSS.
 
 Post IDs and account identities are namespaced by source. Repeated delivery
 does not re-embed unchanged content; edits invalidate old derived evidence.
-Identical content on independent sources remains separate evidence. Only the
-latest measured counters are retained; missing likes/shares remain unknown,
-not zero. Successful collection cycles expire input beyond the 30-day maximum
-map window, removing its derived vectors and repairing affected centroids.
+Source records remain distinct in storage. Topic scoring collapses identical
+community content and syndicated news headlines so collector paths do not
+manufacture independent support. Only latest measured counters are retained;
+missing likes/shares remain unknown. Collection expires input after 30 days,
+removing derived vectors and repairing affected near-copy centroids.
 Disappearance from a rolling feed does **not** prove a source deletion.
 
 Research, exact endpoints, live probe evidence, access/permission limitations,
@@ -176,39 +185,65 @@ the development-only `jsxDEV` function and the graph fails to render.
 
 ### Relationships
 
-Solid edges mean **a configured source context observed the pattern**. They do
-not establish a person's demographics, exposure, or causal cross-platform adoption.
+Edges connect **related topics**, never sources to posts. Relatedness is
+separate from identity: GPT-5 and GPT-4.1 remain different nodes but can link
+through their shared product family. Links require E5 semantic similarity plus
+shared subject, headline terms or phrase evidence. Body boilerplate, a city,
+or a quantity alone cannot establish a connection. Acronym-only and reordered
+headline matches use a stronger semantic floor.
 
-Dashed edges mean **two displayed patterns have similar embedding centroids**.
-Only clusters with the same modality space, model, and native dimension are
-compared. Minimum cosine affinity is 0.75 for text and 0.78 for image/audio,
-using the same thresholds as clustering. Pairs are considered strongest-first,
-with stable ID tie-breaking and at most three similarity edges per pattern.
-Weak or incompatible pairs remain unlinked. These thresholds are heuristics,
-not calibrated probabilities or proof of identical meaning.
+Pairs are considered strongest-first with a maximum degree of three. Isolates
+are legitimate; links are not forced to make the graph look connected. A link
+is heuristic context, not a claim that two reports describe the same event.
 
-The map shows up to 90 patterns, with stratified source coverage before the
-remaining slots go to the strongest scores. It does not render every reply
-as a node. Each pattern carries at most three 600-character source excerpts.
-An unused duplicate `top` array is no longer sent. Missing engagement metrics
-are displayed as unknown; a measured reply count is never relabeled as likes.
+Topic identity uses `Xenova/multilingual-e5-small` plus conservative lexical,
+entity, model/version and historical-context guards. Complete-linkage admission
+requires a new record to match every member, avoiding single-link chaining.
+GPT-5 paraphrases can strengthen one node while GPT-4.1, Claude 4, and different
+incidents at the same show remain separate. Labels come from source titles,
+not generated general categories. This is a heuristic, not verified event
+extraction; paraphrases can remain split or false matches can occur.
+
+GET `/api/trend-map` reads matching stored topic vectors without inference.
+It considers at most 600 recent records, displays at most 90 topics with a
+per-source selection floor, and sends at most three 600-character examples per
+topic. Vectors never leave this endpoint. `pendingEmbeddings` exposes missing or
+stale model/hash rows; `limited` exposes candidate/display truncation.
 
 ### Emergence score
 
-| Component   | Weight | Evidence                                          |
-| ----------- | ------ | ------------------------------------------------- |
-| Reach       | 34%    | Source-qualified accounts, log-scaled             |
-| Velocity    | 26%    | Latest source activity versus the prior six hours |
-| Spread      | 18%    | Distinct observed collection contexts             |
-| Persistence | 12%    | Activity span, not verified publication span      |
-| Diversity   | 10%    | Source accounts per collected excerpt             |
+| Component   | Weight | Evidence                                                |
+| ----------- | ------ | ------------------------------------------------------- |
+| Reach       | 34%    | Independent community accounts + publishers, log-scaled |
+| Velocity    | 26%    | First collections in consecutive six-hour windows       |
+| Spread      | 18%    | Distinct observed collection contexts                   |
+| Persistence | 12%    | Local collection/observation span                       |
+| Diversity   | 10%    | Independent accounts + publishers per evidence record   |
 
-An evidence multiplier reduces small-sample scores: `0.3 + 0.7 × min(1, authors / 5)`.
-Velocity stays neutral until twelve hours of observation history exist.
-Connections do not increase scores. This ranks collected evidence for human
-inspection; it does not predict or guarantee future popularity.
+The evidence multiplier is `0.3 + 0.7 × min(1, (accounts + publishers) / 5)`.
+News and community counts remain separate in the inspector. Identical copied
+content and syndicated headlines cannot multiply support. Node radius grows
+monotonically with potential; multiple independent posts about one release
+strengthen one larger node, rather than creating more disconnected dots.
+
+Velocity stays neutral until twelve hours of known first-collection history
+exist. Schema upgrades assign older records their cutover time rather than
+inventing historical collection dates. Collection growth is not measured social
+reach, and a forum bump is not a newly published post. Connections do not boost
+scores. This ranks collected evidence for inspection, not predicted popularity.
 
 ## Local multimodal embeddings
+
+Topic grouping has a separate native 384-dimensional `topic_embeddings` table,
+using `Xenova/multilingual-e5-small` (q8), normalized mean pooling and the
+documented `query: ` prefix for symmetric clustering. Titles and bounded body
+text share a 1,200-character document budget. Ingest/backfill computes vectors;
+unchanged model/hash rows are reused. Edits, takedowns and expiry invalidate
+derived topic evidence. Model failures remain pending and report an error,
+never a fake fallback vector.
+
+The older spaces below remain for multimodal search and near-copy operations,
+not public graph identity:
 
 | Content                         | Model                                          | Native dimensions |
 | ------------------------------- | ---------------------------------------------- | ----------------- |
@@ -229,11 +264,9 @@ ranked by their nearest member rather than by the running centroid, because a
 centroid drifts toward the average of everything a cluster absorbed and can hide
 a genuinely compatible neighbour; up to three candidates are tried per vector.
 
-Retiring a cluster at the per-space cap **archives** it instead of deleting it.
-Deleting cascaded the cluster's memberships away, and because a busy space hits
-the cap constantly, vectorised posts kept losing their only cluster — the live
-corpus reached 18k embedded posts with no membership. Archived clusters keep
-every member, stay out of new joins, and are excluded from the map and counts.
+Retiring a near-copy cluster at the per-space cap archives it instead of
+deleting its memberships. Archived clusters retain evidence but stay out of
+new joins. The public topic graph does not use their archival state.
 
 `recluster()` repairs membership rather than rebuilding it: it walks vectors that
 have no membership, re-runs the same assignment, and is resumable, so an
@@ -245,12 +278,11 @@ deletes remove derived vectors and memberships.
 
 ### Source and language limitations
 
-Forum activity is a biased sample of Vietnamese-language discussion, not all
-Vietnamese social media, a verified Gen-Z audience, or a firehose of replies.
-The existing similarity thresholds were investigated on the former corpus,
-not calibrated on Vietnamese RSS excerpts. Language detection and emergence
-scores remain explicit heuristics. The selected feeds offer no deletion stream;
-an upstream takedown cannot be inferred from a feed page no longer listing it.
+Community feeds and publisher discovery are biased samples, not all Vietnamese
+social media, a verified Gen-Z audience, or a firehose of replies. Language,
+topic grouping and emergence scores are explicit heuristics, not measured
+accuracy or representativeness. No source offers a deletion stream; an upstream
+takedown cannot be inferred from a rolling feed no longer listing a record.
 
 ## OpenDesk UI library
 

@@ -518,6 +518,7 @@ describe("fetchPublicFeed over HTTP", () => {
     label: "Test feed",
     description: "Local feed",
     source: "voz",
+    evidenceType: "discussion",
     feedUrl: `${origin}${pathname}`,
   });
 

@@ -46,6 +46,9 @@ const BODY =
 function sourcePost(overrides: Partial<SourcePost> = {}): SourcePost {
   return {
     source: "voz",
+    title: "",
+    evidenceType: "discussion",
+    publisher: null,
     uri: "t/topic-88#post-4",
     authorId: "user-42",
     authorHandle: "nguoidung",

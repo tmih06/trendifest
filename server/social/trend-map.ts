@@ -1,440 +1,376 @@
 import { VIEWER_SEGMENTS } from "../../shared/segments.ts";
 import type {
-  ClusterExample,
+  EvidenceType,
   PostKind,
-  SocialSignals,
+  SegmentCoverage,
   SocialSource,
   SourceTimeKind,
+  TopicExample,
   TrendMap,
   TrendMapEdge,
   TrendMapNode,
   TrendScore,
 } from "../../shared/types.ts";
 import { getDb } from "../db.ts";
-import { CLUSTER_THRESHOLDS, segmentCoverage } from "./pipeline.ts";
-import type { Space } from "../db.ts";
+import { segmentCoverage } from "./pipeline.ts";
+import { TOPIC_DIM, TOPIC_MODEL } from "./topic-embedding.ts";
+import {
+  GROUPING_THRESHOLD,
+  VELOCITY_WINDOW_HOURS,
+  groupSpecificTopics,
+  radiusForPotential,
+  relatedTopicEdges,
+  scoreTopic,
+  type TopicEvidence,
+  type TopicGroup,
+  type TopicScoreOptions,
+} from "./topics.ts";
 
 /**
- * Trend map: the collection graph rendered for a non-specialist audience.
+ * The map payload: specific topics built from stored records.
  *
- * Nodes are audience hubs and pattern clusters. Observation edges describe
- * collected delivery; similarity edges describe same-model centroid affinity.
- * Node size is the pattern's emergence score, not its number of connections.
+ * Read path rules that shape this module:
  *
- * The score is a transparent heuristic, not a probability. It deliberately
- * weights *distinct authors* over post count: the first cluster measured here
- * had 64 posts from a single account, which is one person's counter bot, not an
- * emerging trend. Any score that ranked it first would be lying to the viewer.
+ * - A record participates only when it has a topic vector that matches its
+ *   current text hash. Vectors are never computed here: no GET pays inference
+ *   cost, and a stale vector is reported as pending instead of being used.
+ * - The public graph is *not* the near-copy cluster graph. Clusters answer
+ *   "same text"; the map answers "same event/product", which is what
+ *   `topics.ts` measures.
+ * - Nothing here needs the near-copy cluster tables, so a map renders from posts
+ *   and their topic vectors alone.
+ * - Counts are distinct underlying records: one post observed twice is one post,
+ *   and a news report republished by the same publisher is one report.
  */
 
-const HOURS_DEFAULT = 72;
+const HOURS_DEFAULT = 168;
 /**
- * Patterns drawn on the map. The repaired clustering now yields far more
- * multi-member patterns than the original 40 slots exposed, so the ceiling is
- * raised while collision handling keeps them readable. Payload stays bounded:
- * each pattern costs one node, its edges and at most three source examples.
+ * Candidate ceiling. A bounded window keeps the payload and the O(n²) pair
+ * comparisons predictable; `stats.limited` says so rather than silently
+ * truncating a busy window.
  */
-const MAX_PATTERN_NODES = 90;
-/**
- * Per-segment share of the map. Taking the global top N let the discovery pool,
- * which sees the whole network, take 30 of 40 slots and left seven niches with
- * no patterns at all — the map then read as "nothing happens in Science", which
- * was false: 3 of its 33 posts were clustered. A floor per segment guarantees
- * every audience is represented before remaining slots go to the strongest.
- */
-const MIN_PATTERNS_PER_SEGMENT = 3;
-/** Keep measured affinity readable without turning the graph into a hairball. */
-const MAX_SIMILARITY_LINKS = 3;
-/** Window used for the recent-versus-prior velocity comparison. */
-const VELOCITY_WINDOW_HOURS = 6;
+const MAX_CANDIDATE_POSTS = 600;
+/** Drawn topics. Beyond this the canvas stops being readable, not more truthful. */
+const MAX_TOPIC_NODES = 90;
+/** Per-segment share, so one prolific feed cannot decide the map's shape alone. */
+const MIN_TOPICS_PER_SEGMENT = 3;
+/** Supporting records per node; each stays well inside the payload budget. */
+const MAX_EXAMPLES = 3;
 
-interface ClusterStatsRow {
-  cluster_id: string;
-  space: Space;
-  posts: number;
-  authors: number;
-  recent: number;
-  prior: number;
-  recent_authors: number;
-  prior_authors: number;
-  segments: string[] | null;
-  first_seen: Date;
-  last_seen: Date;
-  label: string | null;
-  kind: string;
+/** One stored record with its vector and metadata, as the query returns it. */
+interface CandidateRow {
+  id: string;
+  title: string;
+  body: string;
+  source: SocialSource;
+  evidence_type: EvidenceType;
+  publisher: string | null;
+  author_id: string;
+  author_handle: string | null;
+  permalink: string;
+  kind: PostKind;
+  time_kind: SourceTimeKind;
   media_count: number;
-  observed_span_hours: number;
-  likes: string | number | null;
-  shares: string | number | null;
+  content_hash: string;
+  published_at: Date;
+  first_collected_at: Date;
+  observed_at: Date;
+  segments: string[] | null;
+  vec: string;
+  likes: string | null;
+  shares: string | null;
 }
 
 /**
- * Components, each normalized to 0..1 before weighting so a single long-running
- * cluster cannot dominate through raw volume.
- *
- * - reach: distinct source-qualified accounts, log-scaled. Account names are
- *   not verified people and are never merged across sites.
- * - velocity: source activity in consecutive windows; RSS activity is not
- *   verified original publication.
- * - spread: distinct observed source contexts, normalized by the catalog size.
- * - persistence: the activity span represented by current members.
- * - diversity: source accounts per excerpt; one account repeating itself
- *   must not outrank evidence from multiple source accounts.
- *
- * A support factor then scales the weighted sum by evidence volume. Without it a
- * brand-new two-post cluster scored 65/100: velocity is 1.0 whenever there is no
- * prior window to compare against, persistence is 1.0 for any pattern older than
- * 12 hours, and diversity is 1.0 when two authors wrote two posts. Those are all
- * technically true and jointly misleading. Two independent creators is a
- * hypothesis, not a trend, so the score says so.
+ * Parse a pgvector literal. The vector arrives as text because the client
+ * library has no vector type; anything unparseable is treated as absent rather
+ * than as a zero vector, which would silently match everything.
  */
-function scoreCluster(row: ClusterStatsRow): TrendScore {
-  const authors = Number(row.authors);
-  const posts = Number(row.posts);
-  const recentAuthors = Number(row.recent_authors);
-  const priorAuthors = Number(row.prior_authors);
+function parseVector(literal: string): number[] | null {
+  if (typeof literal !== "string") return null;
+  const body = literal.startsWith("[") ? literal.slice(1, -1) : literal;
+  if (!body) return null;
+  const values = body.split(",").map(Number);
+  if (values.length === 0) return null;
+  for (const value of values) if (!Number.isFinite(value)) return null;
+  return values;
+}
 
-  const reach = Math.min(1, Math.log10(authors + 1) / Math.log10(11));
-  // Velocity needs two comparable windows. Until the collector has 12 hours of
-  // history, "no prior authors" means *unmeasured*, not "infinite growth" — the
-  // same unknown-is-not-zero rule coverage follows. A neutral 0.5 keeps a young
-  // deployment from ranking every cluster as accelerating.
-  const velocityComparable = Number(row.observed_span_hours) >= VELOCITY_WINDOW_HOURS * 2;
-  const velocity = !velocityComparable
-    ? 0.5
-    : priorAuthors === 0
-      ? recentAuthors > 0
-        ? 1
-        : 0
-      : Math.min(1, recentAuthors / (priorAuthors * 2));
-  const spread = Math.min(1, (row.segments?.length ?? 0) / Math.max(1, VIEWER_SEGMENTS.length));
-  const ageHours = Math.max(0, (row.last_seen.getTime() - row.first_seen.getTime()) / 3_600_000);
-  const persistence = Math.min(1, ageHours / 12);
-  const diversity = posts === 0 ? 0 : authors / posts;
+function finiteNumber(value: string | number | null): number | undefined {
+  if (value === null) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
 
-  const raw = 0.34 * reach + 0.26 * velocity + 0.18 * spread + 0.12 * persistence + 0.1 * diversity;
-
-  // Evidence volume gates the score: one author keeps 30% of it, five or more
-  // keep all of it. The curve is linear in between so the ranking stays stable.
-  const support = Math.min(1, authors / 5);
-  const confidence = 0.3 + 0.7 * support;
-
+function toEvidence(row: CandidateRow, vector: number[]): TopicEvidence {
   return {
-    potential: Math.round(raw * confidence * 100),
-    reach,
-    velocity,
-    spread,
-    persistence,
-    diversity,
-    confidence,
-    authors,
-    posts,
+    id: row.id,
+    title: row.title,
+    text: row.body,
+    source: row.source,
+    evidenceType: row.evidence_type,
+    publisher: row.publisher,
+    authorId: row.author_id,
+    authorHandle: row.author_handle,
+    permalink: row.permalink,
+    kind: row.kind,
+    timeKind: row.time_kind,
+    mediaCount: Number(row.media_count ?? 0),
+    contentHash: row.content_hash,
+    publishedAt: new Date(row.published_at),
+    firstCollectedAt: new Date(row.first_collected_at),
+    observedAt: new Date(row.observed_at),
+    segments: row.segments ?? [],
+    vector,
+    likes: finiteNumber(row.likes),
+    shares: finiteNumber(row.shares),
   };
 }
 
-/** Radius grows with the square root of potential so area tracks the score. */
-function radiusFor(potential: number) {
-  return 4 + Math.sqrt(potential / 100) * 14;
+/** A node label must name the event, so a body paragraph never becomes one. */
+function exampleFor(evidence: TopicEvidence): TopicExample {
+  return {
+    uri: evidence.id,
+    permalink: evidence.permalink,
+    source: evidence.source,
+    timeKind: evidence.timeKind,
+    text: evidence.text.slice(0, 600),
+    authorHandle: evidence.authorHandle,
+    kind: evidence.kind,
+    mediaCount: evidence.mediaCount,
+    segments: evidence.segments,
+    observedAt: evidence.observedAt.toISOString(),
+    title: evidence.title,
+    evidenceType: evidence.evidenceType,
+    publisher: evidence.publisher,
+    publishedAt: evidence.publishedAt.toISOString(),
+  };
+}
+
+/**
+ * Supporting records for the inspector: newest first, at most three, and never
+ * the representative twice. Titles carry attribution, so the reader can open
+ * the original rather than trusting a summary.
+ */
+function examplesFor(group: TopicGroup): TopicExample[] {
+  return [...group.members]
+    .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime() || a.id.localeCompare(b.id))
+    .slice(0, MAX_EXAMPLES)
+    .map(exampleFor);
+}
+
+function nodeFor(group: TopicGroup, score: TrendScore): TrendMapNode {
+  const posts = group.discussionPosts + group.newsPosts;
+  const evidence = [
+    `${posts} ${posts === 1 ? "record" : "records"}`,
+    group.discussionPosts > 0
+      ? `${group.discussionPosts} community post${group.discussionPosts === 1 ? "" : "s"} from ${group.authors} account${group.authors === 1 ? "" : "s"}`
+      : null,
+    group.newsPosts > 0
+      ? `${group.newsPosts} news report${group.newsPosts === 1 ? "" : "s"} from ${group.publishers} publisher${group.publishers === 1 ? "" : "s"}`
+      : null,
+    group.segments.length > 0
+      ? `observed in ${group.segments.length} collection context${group.segments.length === 1 ? "" : "s"}`
+      : null,
+  ].filter(Boolean);
+
+  const likes = group.members.reduce<number | undefined>(
+    (total, member) => (member.likes === undefined ? total : (total ?? 0) + member.likes),
+    undefined,
+  );
+  const shares = group.members.reduce<number | undefined>(
+    (total, member) => (member.shares === undefined ? total : (total ?? 0) + member.shares),
+    undefined,
+  );
+
+  return {
+    id: group.id,
+    kind: "topic",
+    label: group.label,
+    description: `${evidence.join("; ")}. Heuristic grouping of records that describe one specific event, not a calibrated probability.`,
+    radius: radiusForPotential(score.potential),
+    potential: score.potential,
+    posts,
+    authors: group.authors,
+    segments: group.segments.filter((id) => VIEWER_SEGMENTS.some((segment) => segment.id === id)),
+    score,
+    discussionPosts: group.discussionPosts,
+    newsPosts: group.newsPosts,
+    publishers: group.publishers,
+    mediaCount: group.members.reduce((total, member) => total + member.mediaCount, 0),
+    likes,
+    shares,
+    firstSeenAt: group.firstSeenAt.toISOString(),
+    lastSeenAt: group.lastSeenAt.toISOString(),
+    examples: examplesFor(group),
+  };
+}
+
+/** The wire edge shape, built from the measured related-topic pairs. */
+function edgesFor(groups: readonly TopicGroup[], ids: Set<string>): TrendMapEdge[] {
+  return relatedTopicEdges(groups)
+    .filter((edge) => ids.has(edge.source) && ids.has(edge.target) && edge.source !== edge.target)
+    .map((edge) => ({
+      // Deterministic and unique for the undirected pair, so a client can key on it.
+      id: `related:${edge.source}:${edge.target}`,
+      source: edge.source,
+      target: edge.target,
+      relation: "related" as const,
+      weight: edge.weight,
+      similarity: edge.similarity,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * Stratified selection: each collection context contributes its strongest
+ * topics first, then remaining slots go by potential. Without the floor the
+ * map's shape is decided by whichever feed emits the most posts.
+ */
+function selectGroups(
+  groups: readonly TopicGroup[],
+  limit: number,
+  scoreOptions: TopicScoreOptions,
+) {
+  const scored = groups
+    .map((group) => ({ group, score: scoreTopic(group, scoreOptions) }))
+    .sort((a, b) => b.score.potential - a.score.potential || a.group.id.localeCompare(b.group.id));
+
+  const chosen: typeof scored = [];
+  const taken = new Set<string>();
+  for (const segment of VIEWER_SEGMENTS) {
+    const owned = scored.filter(
+      (item) => !taken.has(item.group.id) && item.group.segments.includes(segment.id),
+    );
+    for (const item of owned.slice(0, MIN_TOPICS_PER_SEGMENT)) {
+      chosen.push(item);
+      taken.add(item.group.id);
+    }
+  }
+  for (const item of scored) {
+    if (chosen.length >= limit) break;
+    if (taken.has(item.group.id)) continue;
+    chosen.push(item);
+    taken.add(item.group.id);
+  }
+  return chosen.slice(0, limit);
+}
+
+/**
+ * How much collection history exists. Velocity compares two collection windows,
+ * so the collector needs at least twice the window before growth is a
+ * measurement rather than a guess.
+ *
+ * Use immutable first-collection timestamps, including rows outside this map's
+ * window. Older observation logs cannot reconstruct first collection for rows
+ * migrated at cutover; treating them as history would invent a growth baseline.
+ */
+async function observedSpanHours() {
+  const db = await getDb();
+  const [row] = (await db`
+    SELECT extract(epoch FROM (now() - coalesce(min(first_collected_at), now()))) / 3600 AS span
+    FROM posts
+  `) as unknown as Array<{ span: number | null }>;
+  return Number(row?.span ?? 0);
 }
 
 export async function buildTrendMap(hours = HOURS_DEFAULT): Promise<TrendMap> {
   const db = await getDb();
   const adoptionIds = VIEWER_SEGMENTS.map((segment) => segment.id);
 
-  const rows = (await db`
-    WITH members AS (
-      SELECT c.id AS cluster_id, c.space::text AS space,
-             p.id AS post_id, p.author_id, p.source, p.published_at, p.media, p.kind
-      FROM clusters c
-      JOIN cluster_members cm ON cm.cluster_id = c.id
-      JOIN posts p ON p.id = cm.post_id
-      WHERE c.archived_at IS NULL
-        AND p.deleted_at IS NULL
-        AND p.published_at > now() - ${`${hours} hours`}::interval
-        AND EXISTS (
-          SELECT 1 FROM observations o WHERE o.post_id = p.id
-            AND o.segment_id = ANY(${adoptionIds}::text[])
-        )
-    ),
-    agg AS (
-      SELECT cluster_id,
-             count(DISTINCT post_id)::int AS posts,
-             count(DISTINCT NULLIF(author_id, source || ':unknown'))::int AS authors,
-             count(DISTINCT post_id) FILTER (
-               WHERE published_at > now() - ${`${VELOCITY_WINDOW_HOURS} hours`}::interval
-             )::int AS recent,
-             count(DISTINCT post_id) FILTER (
-               WHERE published_at <= now() - ${`${VELOCITY_WINDOW_HOURS} hours`}::interval
-                 AND published_at > now() - ${`${VELOCITY_WINDOW_HOURS * 2} hours`}::interval
-             )::int AS prior,
-             count(DISTINCT NULLIF(author_id, source || ':unknown')) FILTER (
-               WHERE published_at > now() - ${`${VELOCITY_WINDOW_HOURS} hours`}::interval
-             )::int AS recent_authors,
-             count(DISTINCT NULLIF(author_id, source || ':unknown')) FILTER (
-               WHERE published_at <= now() - ${`${VELOCITY_WINDOW_HOURS} hours`}::interval
-                 AND published_at > now() - ${`${VELOCITY_WINDOW_HOURS * 2} hours`}::interval
-             )::int AS prior_authors,
-             min(published_at) AS first_seen,
-             max(published_at) AS last_seen
-      FROM members GROUP BY cluster_id
-    )
-    SELECT a.*, c.space::text AS space,
-           (SELECT extract(epoch FROM (now() - min(o.observed_at))) / 3600
-              FROM observations o)::float8 AS observed_span_hours,
-           (SELECT string_agg(DISTINCT o.segment_id, ',')
-              FROM members m JOIN observations o ON o.post_id = m.post_id
-             WHERE m.cluster_id = a.cluster_id) AS segments,
-           (SELECT p.body FROM members m JOIN posts p ON p.id = m.post_id
-             WHERE m.cluster_id = a.cluster_id AND length(p.body) >= 25
-             ORDER BY length(p.body) DESC LIMIT 1) AS label,
-           (SELECT p.kind FROM members m JOIN posts p ON p.id = m.post_id
-             WHERE m.cluster_id = a.cluster_id
-             ORDER BY (jsonb_array_length(p.media) > 0) DESC, p.published_at DESC
-             LIMIT 1) AS kind,
-           (SELECT count(*)::int FROM members m WHERE m.cluster_id = a.cluster_id
-              AND jsonb_array_length(m.media) > 0) AS media_count,
-           -- The latest snapshot per member, so a pattern's reach is measured
-           -- engagement rather than assumed from post count.
-           (SELECT sum(latest.likes)::bigint
-              FROM members m
-              CROSS JOIN LATERAL (
-                SELECT ms.likes FROM metric_snapshots ms
-                WHERE ms.post_id = m.post_id
-                ORDER BY ms.captured_at DESC LIMIT 1
-              ) latest
-             WHERE m.cluster_id = a.cluster_id) AS likes,
-           (SELECT sum(coalesce(latest.reposts, 0) + coalesce(latest.quotes, 0))
-                   FILTER (WHERE latest.reposts IS NOT NULL OR latest.quotes IS NOT NULL)::bigint
-              FROM members m
-              CROSS JOIN LATERAL (
-                SELECT ms.reposts, ms.quotes FROM metric_snapshots ms
-                WHERE ms.post_id = m.post_id
-                ORDER BY ms.captured_at DESC LIMIT 1
-              ) latest
-             WHERE m.cluster_id = a.cluster_id) AS shares
-    FROM agg a
-    JOIN clusters c ON c.id = a.cluster_id
-    WHERE a.authors >= 1
-    ORDER BY a.authors DESC, a.posts DESC
-    LIMIT ${MAX_PATTERN_NODES * 6}
-  `) as unknown as Array<
-    Omit<ClusterStatsRow, "segments" | "label" | "kind" | "media_count"> & {
-      segments: string | null;
-      label: string | null;
-      kind: string;
-      media_count: number;
-      observed_span_hours: number;
-      likes: string | number | null;
-      shares: string | number | null;
-    }
-  >;
-
-  const all = rows.map((row) => ({
-    ...row,
-    // The aggregate query returns `cluster_id`; node and edge ids are built
-    // from it, so normalizing here keeps undefined out of every React key.
-    id: row.cluster_id,
-    segments: row.segments ? row.segments.split(",") : [],
-    observed_span_hours: Number(row.observed_span_hours ?? 0),
-  }));
-
   /**
-   * Stratified selection: every collection segment gets its strongest patterns
-   * first, then the remaining slots go by score. Without this the map's shape
-   * is decided by whichever feed emits the most posts, not by where the evidence
-   * actually is.
+   * One row per stored post with a *valid* topic vector, plus any post that has
+   * no valid vector at all. A post whose vector belongs to older text is not
+   * silently mapped with stale meaning: it is counted as pending.
    */
-  const scored = all
-    .map((row) => ({ row, score: scoreCluster(row) }))
-    .sort((a, b) => b.score.potential - a.score.potential);
+  const rows = (await db`
+    SELECT p.id, p.title, p.body, p.source, p.evidence_type, p.publisher,
+           p.author_id, p.author_handle, p.permalink, p.kind, p.time_kind,
+           p.content_hash, p.published_at, p.first_collected_at,
+           jsonb_array_length(p.media) AS media_count,
+           t.vec::text AS vec,
+           max(o.observed_at) AS observed_at,
+           array_agg(DISTINCT o.segment_id) FILTER (WHERE o.segment_id IS NOT NULL) AS segments,
+           (SELECT ms.likes FROM metric_snapshots ms WHERE ms.post_id = p.id) AS likes,
+           (SELECT CASE WHEN ms.reposts IS NULL AND ms.quotes IS NULL THEN NULL
+                        ELSE coalesce(ms.reposts, 0) + coalesce(ms.quotes, 0) END
+              FROM metric_snapshots ms WHERE ms.post_id = p.id) AS shares
+    FROM posts p
+    JOIN topic_embeddings t ON t.post_id = p.id
+      AND t.model = ${TOPIC_MODEL} AND t.content_hash = p.content_hash
+    JOIN observations o ON o.post_id = p.id
+    WHERE p.deleted_at IS NULL
+      AND p.published_at > now() - ${`${hours} hours`}::interval
+      AND o.observed_at > now() - ${`${hours} hours`}::interval
+      AND o.segment_id = ANY(${adoptionIds}::text[])
+    GROUP BY p.id, t.vec
+    ORDER BY p.published_at DESC, p.id
+    LIMIT ${MAX_CANDIDATE_POSTS}
+  `) as unknown as CandidateRow[];
 
-  const chosen: typeof scored = [];
-  const taken = new Set<string>();
-  for (const segment of VIEWER_SEGMENTS) {
-    const owned = scored.filter(
-      (item) => !taken.has(item.row.cluster_id) && (item.row.segments ?? []).includes(segment.id),
-    );
-    for (const item of owned.slice(0, MIN_PATTERNS_PER_SEGMENT)) {
-      chosen.push(item);
-      taken.add(item.row.cluster_id);
-    }
-  }
-  for (const item of scored) {
-    if (chosen.length >= MAX_PATTERN_NODES) break;
-    if (taken.has(item.row.cluster_id)) continue;
-    chosen.push(item);
-    taken.add(item.row.cluster_id);
-  }
+  const [pendingRow] = (await db`
+    SELECT count(*)::int AS pending
+    FROM posts p
+    WHERE p.deleted_at IS NULL
+      AND p.published_at > now() - ${`${hours} hours`}::interval
+      AND EXISTS (SELECT 1 FROM observations o
+                   WHERE o.post_id = p.id
+                     AND o.observed_at > now() - ${`${hours} hours`}::interval
+                     AND o.segment_id = ANY(${adoptionIds}::text[]))
+      AND NOT EXISTS (
+        SELECT 1 FROM topic_embeddings t
+        WHERE t.post_id = p.id AND t.model = ${TOPIC_MODEL}
+          AND t.content_hash = p.content_hash
+      )
+  `) as unknown as Array<{ pending: number }>;
 
-  const clusters = chosen
-    .slice(0, MAX_PATTERN_NODES)
-    .map((item) => ({ ...item.row, preselected: item.score }));
-
-  const coverage = await segmentCoverage(hours);
-  const nodes: TrendMapNode[] = [];
-  const edges: TrendMapEdge[] = [];
-
-  const segmentNodes = VIEWER_SEGMENTS;
-  segmentNodes.forEach((segment) => {
-    nodes.push({
-      id: `segment:${segment.id}`,
-      kind: "segment",
-      label: segment.label,
-      description: segment.description,
-      radius: 13,
-      potential: null,
-      posts: coverage.find((row) => row.segmentId === segment.id)?.posts ?? 0,
-      authors: 0,
-      segments: [segment.id],
-    });
-  });
-
-  const clusterNodes: TrendMapNode[] = [];
-  for (const row of clusters) {
-    const score = row.preselected;
-    const observed = (row.segments ?? []).filter((id) => adoptionIds.includes(id));
-    const label = (row.label ?? "").replace(/\s+/g, " ").trim() || "(media-only pattern)";
-    clusterNodes.push({
-      id: `cluster:${row.cluster_id}`,
-      kind: "pattern",
-      label: label.slice(0, 90),
-      description:
-        `${score.posts} post${score.posts === 1 ? "" : "s"} from ${score.authors} ` +
-        `source account${score.authors === 1 ? "" : "s"} across ${observed.length} ` +
-        `collection context${observed.length === 1 ? "" : "s"}.`,
-      radius: radiusFor(score.potential),
-      potential: score.potential,
-      posts: score.posts,
-      authors: score.authors,
-      segments: observed,
-      score,
-      clusterId: row.cluster_id,
-      kind_: row.kind,
-      mediaCount: Number(row.media_count),
-      likes: row.likes === null ? undefined : Number(row.likes),
-      shares: row.shares === null ? undefined : Number(row.shares),
-      firstSeenAt: row.first_seen.toISOString(),
-      lastSeenAt: row.last_seen.toISOString(),
-    });
-
-    // Only directly observed collection contexts create edges; there is no
-    // synthetic Discover attachment or whole-network pool in this corpus.
-    for (const segmentId of new Set(observed)) {
-      edges.push({
-        id: `segment:${segmentId}>cluster:${row.cluster_id}`,
-        source: `segment:${segmentId}`,
-        target: `cluster:${row.cluster_id}`,
-        relation: "observed-in",
-        weight: 1,
-      });
-    }
+  const records: TopicEvidence[] = [];
+  for (const row of rows) {
+    const vector = parseVector(row.vec);
+    // An unparseable or wrong-width vector is unknown evidence, not a record to
+    // group on: only the topic model's own width is comparable.
+    if (!vector || vector.length !== TOPIC_DIM) continue;
+    records.push(toEvidence(row, vector));
   }
 
-  // Compare only displayed patterns. Padding gives storage
-  // one width, not one semantic space: model, space and native dimension must
-  // all match. Thresholds are affinity heuristics, never calibrated confidence.
-  const clusterIds = clusterNodes.map((node) => node.clusterId!);
-  // Keep source evidence in the graph inspector after removing the separate
-  // Signals page. Lateral LIMIT bounds the payload to three distinct posts per
-  // pattern, excluding deleted and out-of-window posts.
-  const examples =
-    clusterIds.length === 0
-      ? []
-      : ((await db`
-    SELECT c.id AS cluster_id, p.*,
-      (SELECT array_agg(o.segment_id) FROM observations o WHERE o.post_id = p.id) AS segments,
-      (SELECT min(o.observed_at) FROM observations o WHERE o.post_id = p.id) AS observed_at
-    FROM clusters c
-    CROSS JOIN LATERAL (
-      SELECT DISTINCT p.id, p.permalink, p.source, p.time_kind, p.body, p.author_handle, p.kind,
-        p.published_at, jsonb_array_length(p.media) AS media_count
-      FROM cluster_members cm JOIN posts p ON p.id = cm.post_id
-      WHERE cm.cluster_id = c.id AND p.deleted_at IS NULL
-        AND p.published_at > now() - ${`${hours} hours`}::interval
-      ORDER BY p.published_at DESC, p.id LIMIT 3
-    ) p
-    WHERE c.id = ANY(${clusterIds}::text[])
-  `) as unknown as Array<{
-          cluster_id: string;
-          id: string;
-          permalink: string;
-          source: SocialSource;
-          time_kind: SourceTimeKind;
-          body: string;
-          author_handle: string | null;
-          kind: PostKind;
-          published_at: Date;
-          media_count: number;
-          segments: string[] | null;
-          observed_at: Date | null;
-        }>);
-  const examplesByCluster = new Map<string, ClusterExample[]>();
-  for (const example of examples) {
-    const items = examplesByCluster.get(example.cluster_id) ?? [];
-    items.push({
-      uri: example.id,
-      permalink: example.permalink,
-      source: example.source,
-      timeKind: example.time_kind,
-      text: example.body.slice(0, 600),
-      authorHandle: example.author_handle,
-      kind: example.kind,
-      mediaCount: Number(example.media_count),
-      segments: example.segments ?? [],
-      observedAt: (example.observed_at ?? example.published_at).toISOString(),
-    });
-    examplesByCluster.set(example.cluster_id, items);
-  }
-  for (const node of clusterNodes) node.examples = examplesByCluster.get(node.clusterId!) ?? [];
-  const similarities =
-    clusterIds.length < 2
-      ? []
-      : ((await db`
-    SELECT a.id AS source, b.id AS target, a.space,
-           (1 - (a.centroid <=> b.centroid))::float8 AS similarity
-    FROM clusters a
-    JOIN clusters b ON a.id < b.id AND a.space = b.space
-      AND a.model = b.model AND a.dim = b.dim
-    WHERE a.archived_at IS NULL AND b.archived_at IS NULL
-      AND a.id = ANY(${clusterIds}::text[]) AND b.id = ANY(${clusterIds}::text[])
-    ORDER BY similarity DESC, a.id, b.id
-  `) as unknown as Array<{ source: string; target: string; space: Space; similarity: number }>);
-  const similarityDegree = new Map<string, number>();
-  for (const pair of similarities) {
-    const similarity = Number(pair.similarity);
-    if (!Number.isFinite(similarity) || similarity < CLUSTER_THRESHOLDS[pair.space]) continue;
-    const sourceDegree = similarityDegree.get(pair.source) ?? 0;
-    const targetDegree = similarityDegree.get(pair.target) ?? 0;
-    if (sourceDegree >= MAX_SIMILARITY_LINKS || targetDegree >= MAX_SIMILARITY_LINKS) continue;
-    edges.push({
-      id: `similarity:${pair.source}:${pair.target}`,
-      source: `cluster:${pair.source}`,
-      target: `cluster:${pair.target}`,
-      relation: "similarity",
-      similarity,
-      weight: similarity,
-    });
-    similarityDegree.set(pair.source, sourceDegree + 1);
-    similarityDegree.set(pair.target, targetDegree + 1);
-  }
+  const coverage: SegmentCoverage[] = await segmentCoverage(hours);
+  const spanHours = await observedSpanHours();
+  const velocityComparable = spanHours >= VELOCITY_WINDOW_HOURS * 2;
+  // Ranking and the payload must use one set of scoring inputs, or the strongest
+  // topic could be selected on one velocity reading and drawn with another.
+  const scoreOptions: TopicScoreOptions = { observedSpanHours: spanHours };
+
+  const allGroups = groupSpecificTopics(records);
+  const selected = selectGroups(allGroups, MAX_TOPIC_NODES, scoreOptions);
+  const selectedGroups = selected.map((item) => item.group);
+  const nodes = selected.map((item) => nodeFor(item.group, item.score));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edges = edgesFor(selectedGroups, nodeIds);
+
+  const discussionPosts = nodes.reduce((total, node) => total + node.discussionPosts, 0);
+  const newsPosts = nodes.reduce((total, node) => total + node.newsPosts, 0);
 
   return {
     hours,
     generatedAt: new Date().toISOString(),
-    nodes: [...nodes, ...clusterNodes],
+    nodes,
     edges,
     coverage,
+    stats: {
+      posts: records.length,
+      topics: nodes.length,
+      discussionPosts,
+      newsPosts,
+      pendingEmbeddings: Number(pendingRow?.pending ?? 0),
+      limited: rows.length >= MAX_CANDIDATE_POSTS || allGroups.length > nodes.length,
+    },
     method: {
-      version: 2,
+      version: 3,
       velocityWindowHours: VELOCITY_WINDOW_HOURS,
       weights: { reach: 0.34, velocity: 0.26, spread: 0.18, persistence: 0.12, diversity: 0.1 },
-      // False until the collector has two comparable windows; the panel says so
-      // instead of presenting a neutral default as measured acceleration.
-      velocityComparable: clusters.some(
-        (row) => Number(row.observed_span_hours) >= VELOCITY_WINDOW_HOURS * 2,
-      ),
+      topicModel: TOPIC_MODEL,
+      groupingThreshold: GROUPING_THRESHOLD,
+      velocityComparable,
     },
   };
 }
-
-export type { SocialSignals };

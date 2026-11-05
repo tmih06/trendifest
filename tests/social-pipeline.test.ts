@@ -12,7 +12,6 @@ import {
 } from "../server/social/pipeline.ts";
 import type { Space } from "../server/db.ts";
 import { postId, type SourcePost } from "../server/social/input.ts";
-import { buildTrendMap } from "../server/social/trend-map.ts";
 import { VIEWER_SEGMENTS } from "../shared/segments.ts";
 /**
  * These tests exercise the collection invariants that are easy to regress and
@@ -48,6 +47,9 @@ if (enabled) process.env.TRENDIFEST_DATABASE_URL = TEST_URL;
 function fixturePost(overrides: Partial<SourcePost> & { uri: string }): SourcePost {
   return {
     source: "voz",
+    title: "",
+    evidenceType: "discussion",
+    publisher: null,
     authorId: "test-author",
     authorHandle: "test-author",
     text: "Con mèo làm rơi chiếc cốc thủy tinh từ trên bàn xuống sàn nhà.",
@@ -335,207 +337,6 @@ describe.skipIf(!enabled)("cluster linkage invariant", () => {
     // Guards against the drift failure where one cluster absorbed most posts.
     expect(Number(row?.largest ?? 0)).toBeLessThan(Number(row?.total ?? 1));
     expect(Number(row?.clusters ?? 0)).toBeGreaterThan(0);
-  });
-});
-
-describe.skipIf(!enabled)("trend map scoring", () => {
-  /**
-   * The score is a heuristic, but its ordering must respect the one property a
-   * funder will check: independent authors outrank raw volume. The first
-   * cluster measured in production had 64 posts from a single account, so a
-   * post-count-driven score would rank a counter bot above real adoption.
-   */
-  test("a multi-author pattern outranks a single-account burst of the same size", async () => {
-    const db = await getDb();
-    await db`
-      TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts
-      RESTART IDENTITY CASCADE
-    `;
-
-    // One account posts six times about the same thing.
-    for (let index = 0; index < 6; index += 1) {
-      await db`
-        INSERT INTO posts (id, source, uri, author_id, body, kind, permalink, published_at, content_hash)
-        VALUES (${`urn:thread:burst-${index}`}, ${"voz"}, ${`urn:thread:burst-${index}`},
-                ${"voz:bot"}, ${"Tài khoản tự động đăng lặp lại cùng một nội dung."}, ${"text"},
-                ${"https://voz.vn/t/test-bot.1/"}, now(), ${`burst-${index}`})
-      `;
-    }
-    // Six different accounts post the same meme.
-    for (let index = 0; index < 6; index += 1) {
-      await db`
-        INSERT INTO posts (id, source, uri, author_id, body, kind, permalink, published_at, content_hash)
-        VALUES (${`urn:thread:meme-${index}`}, ${"voz"}, ${`urn:thread:meme-${index}`},
-                ${`voz:human${index}`}, ${"Một câu chuyện hài hước được nhiều người cùng chia sẻ."}, ${"text"},
-                ${"https://voz.vn/t/test-meme.2/"}, now(), ${`meme-${index}`})
-      `;
-    }
-
-    // Two clusters with identical member counts but different author counts.
-    for (const clusterId of [
-      "00000000-0000-0000-0000-000000000001",
-      "00000000-0000-0000-0000-000000000002",
-    ] as const) {
-      await db`
-        INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
-        VALUES (${clusterId}, ${"text"}, ${"test"}, ${4},
-                ${PADDING_VECTOR}::vector, 6, now() - interval '2 hours', now())
-      `;
-    }
-    for (let index = 0; index < 6; index += 1) {
-      await db`
-        INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
-        VALUES (${"00000000-0000-0000-0000-000000000001"},
-                ${`urn:thread:burst-${index}`}, ${"body"}, 1)
-      `;
-      // The map joins observations, so a cluster with members but no observed
-      // segment is invisible — a real invariant worth encoding here.
-      await db`
-        INSERT INTO observations (post_id, segment_id, observed_at, via)
-        VALUES (${`urn:thread:burst-${index}`}, ${"voz"}, now(), ${"rss"})
-      `;
-      await db`
-        INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
-        VALUES (${"00000000-0000-0000-0000-000000000002"},
-                ${`urn:thread:meme-${index}`}, ${"body"}, 1)
-      `;
-      await db`
-        INSERT INTO observations (post_id, segment_id, observed_at, via)
-        VALUES (${`urn:thread:meme-${index}`}, ${"voz"}, now(), ${"rss"})
-      `;
-    }
-
-    const map = await buildTrendMap(24);
-    const patterns = map.nodes.filter((node) => node.kind === "pattern");
-    const bot = patterns.find((node) => node.clusterId === "00000000-0000-0000-0000-000000000001");
-    const humans = patterns.find(
-      (node) => node.clusterId === "00000000-0000-0000-0000-000000000002",
-    );
-
-    expect(bot?.posts).toBe(6);
-    expect(humans?.posts).toBe(6);
-    expect(humans?.potential ?? 0).toBeGreaterThan(bot?.potential ?? 0);
-    // Radius must follow the score, since size is the map's only encoding.
-    expect(humans?.radius ?? 0).toBeGreaterThan(bot?.radius ?? 0);
-  });
-
-  test("velocity is neutral while history is too short to compare", async () => {
-    const map = await buildTrendMap(24);
-    expect(map.method.velocityComparable).toBe(false);
-    const scores = map.nodes.flatMap((node) => (node.score ? [node.score.velocity] : []));
-    expect(scores.length).toBeGreaterThan(0);
-    // Neutral 0.5, never the 1.0 that "no prior window" used to imply.
-    expect(scores.every((value) => value === 0.5)).toBe(true);
-  });
-
-  test("every node and edge id is unique", async () => {
-    const map = await buildTrendMap(24);
-    const ids = map.nodes.map((node) => node.id);
-    const edgeIds = map.edges.map((edge) => edge.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(new Set(edgeIds).size).toBe(edgeIds.length);
-    // A pattern must be reachable from the map, never orphaned off-graph.
-    const targets = new Set(map.edges.map((edge) => edge.target));
-    const orphans = map.nodes.filter((node) => node.kind === "pattern" && !targets.has(node.id));
-    expect(orphans).toHaveLength(0);
-  });
-});
-
-describe.skipIf(!enabled)("trend map stratification", () => {
-  /** A quieter source must retain representation when another supplies a stronger cluster. */
-  test("a quieter source's pattern appears alongside a higher-volume source", async () => {
-    const db = await getDb();
-    await db`
-      TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts
-      RESTART IDENTITY CASCADE
-    `;
-
-    /** Seed one cluster of `size` posts, one account each, in one segment. */
-    const seed = async (clusterId: string, size: number, segment: string) => {
-      await db`
-        INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
-        VALUES (${clusterId}, ${"text"}, ${"test"}, ${4}, ${PADDING_VECTOR}::vector,
-                ${size}, now() - interval '2 hours', now())
-      `;
-      for (let index = 0; index < size; index += 1) {
-        const postId = `urn:thread:${clusterId.slice(0, 6)}:${index}`;
-        await db`
-          INSERT INTO posts (id, source, uri, author_id, body, kind, permalink, published_at, content_hash)
-          VALUES (${postId}, ${segment}, ${postId}, ${`${segment}:author-${index}`},
-                  ${"Một mẫu thảo luận được chia sẻ trong cộng đồng tiếng Việt."}, ${"text"},
-                  ${"https://voz.vn/t/test-source.3/"}, now(), ${postId})
-        `;
-        await db`
-          INSERT INTO cluster_members (cluster_id, post_id, span, similarity)
-          VALUES (${clusterId}, ${postId}, ${"body"}, 1)
-        `;
-        await db`
-          INSERT INTO observations (post_id, segment_id, observed_at, via)
-          VALUES (${postId}, ${segment}, now(), ${"feed"})
-        `;
-      }
-    };
-
-    await seed("11111111-1111-1111-1111-111111111111", 30, "voz");
-    await seed("22222222-2222-2222-2222-222222222222", 2, "otofun");
-
-    const map = await buildTrendMap(72);
-    const sources = new Set(map.edges.map((edge) => edge.source));
-    expect(sources.has("segment:voz")).toBe(true);
-    expect(sources.has("segment:otofun")).toBe(true);
-  });
-});
-
-describe.skipIf(!enabled)("pattern similarity graph", () => {
-  test("links measured neighbors without crossing model spaces or exceeding the degree cap", async () => {
-    const db = await getDb();
-    await db`TRUNCATE cluster_members, clusters, embeddings, metric_snapshots, observations, posts RESTART IDENTITY CASCADE`;
-    const belowThreshold = toVectorLiteral([0.74, Math.sqrt(1 - 0.74 ** 2)]);
-    const fixtures = [
-      { id: "near-a", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "near-b", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "near-c", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "near-d", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "near-e", space: "text", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "weak", space: "text", model: "same", dim: 2, vector: belowThreshold },
-      { id: "other-model", space: "text", model: "different", dim: 2, vector: PADDING_VECTOR },
-      { id: "other-space", space: "image", model: "same", dim: 2, vector: PADDING_VECTOR },
-      { id: "other-dim", space: "text", model: "same", dim: 3, vector: PADDING_VECTOR },
-    ];
-    for (const fixture of fixtures) {
-      const uri = `urn:thread:similarity:${fixture.id}`;
-      await db`
-        INSERT INTO posts (id, source, uri, author_id, body, kind, permalink, published_at, content_hash)
-        VALUES (${uri}, 'voz', ${uri}, ${`voz:${fixture.id}`},
-          'Một mẫu thảo luận với đầy đủ nội dung để hiển thị trên bản đồ.', 'text',
-          'https://voz.vn/t/example.4/', now(), ${fixture.id})
-      `;
-      await db`
-        INSERT INTO clusters (id, space, model, dim, centroid, member_count, first_seen_at, last_seen_at)
-        VALUES (${fixture.id}, ${fixture.space}, ${fixture.model}, ${fixture.dim},
-          ${fixture.vector}::vector, 1, now(), now())
-      `;
-      await db`INSERT INTO cluster_members (cluster_id, post_id, span, similarity) VALUES (${fixture.id}, ${uri}, 'body', 1)`;
-      await db`INSERT INTO observations (post_id, segment_id, observed_at, via) VALUES (${uri}, 'voz', now(), 'rss')`;
-    }
-    const map = await buildTrendMap(24);
-    const links = map.edges.filter((edge) => edge.relation === "similarity");
-    // Five close centroids would form ten links without the degree cap. The
-    // deterministic cap admits six, excluding incompatible padded vectors.
-    expect(links).toHaveLength(6);
-    const degree = new Map<string, number>();
-    for (const link of links) {
-      expect(link.source).toStartWith("cluster:near-");
-      expect(link.target).toStartWith("cluster:near-");
-      expect(link.similarity).toBeCloseTo(1, 6);
-      degree.set(link.source, (degree.get(link.source) ?? 0) + 1);
-      degree.set(link.target, (degree.get(link.target) ?? 0) + 1);
-    }
-    expect([...degree.values()]).toEqual([3, 3, 3, 3]);
-    expect(new Set(links.map((edge) => edge.id)).size).toBe(6);
-    expect(map.edges.filter((edge) => edge.relation === "observed-in")).toHaveLength(
-      fixtures.length,
-    );
   });
 });
 

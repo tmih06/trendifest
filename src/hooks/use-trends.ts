@@ -25,8 +25,8 @@ export function useTrendMap(hours: number) {
 
 /**
  * Collection status changes on the server's own schedule, so it polls faster
- * than the graph. The status is the only honest source for "configured",
- * "backfilling", and "tail connected"; the client never guesses them.
+ * than the graph. The server owns configuration, cycle state and completion
+ * timestamps; the client does not invent a live stream.
  */
 export function useCollectionStatus() {
   const client = useQueryClient();

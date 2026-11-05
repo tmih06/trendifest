@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { francAll } from "franc-min";
 import type {
   EngagementSnapshot,
+  EvidenceType,
   PostKind,
   SocialSource,
   SourceTimeKind,
@@ -16,6 +17,10 @@ export interface MediaRef {
 /** The complete adapter boundary: only fields consumed by storage or rendering. */
 export interface SourcePost {
   source: SocialSource;
+  title: string;
+  evidenceType: EvidenceType;
+  /** News publisher identity; never invent a community author for a headline. */
+  publisher: string | null;
   /** Stable source-native identity, not a title or a content hash. */
   uri: string;
   authorId: string | null;
@@ -81,6 +86,7 @@ function webUrl(value: string) {
  */
 export function acceptInput(input: SourcePost, now = Date.now()): InputResult {
   const text = normalizeText(input.text).slice(0, MAX_TEXT_CHARS);
+  const title = normalizeText(input.title).slice(0, 180);
   if (!text) return { accepted: false, reason: "empty" };
   const sample = text.replace(/https?:\/\/\S+/gi, " ").replace(/@[\p{L}\p{N}_.@-]+/gu, " ");
   if ((sample.match(/\p{L}/gu)?.length ?? 0) < MIN_LANGUAGE_LETTERS) {
@@ -104,6 +110,8 @@ export function acceptInput(input: SourcePost, now = Date.now()): InputResult {
   const contentHash = createHash("sha256")
     .update(text)
     .update("\0")
+    .update(title)
+    .update("\0")
     .update(JSON.stringify(media.map(({ kind, url }) => [kind, url])))
     .digest("hex");
   return {
@@ -113,6 +121,8 @@ export function acceptInput(input: SourcePost, now = Date.now()): InputResult {
       id: postId(input.source, input.uri),
       authorId: `${input.source}:${input.authorId || "unknown"}`,
       authorHandle: input.authorHandle?.slice(0, 200) ?? null,
+      title,
+      publisher: input.publisher ? normalizeText(input.publisher).slice(0, 120) : null,
       text,
       permalink,
       publishedAt: new Date(Math.min(published, now)).toISOString(),

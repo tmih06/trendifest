@@ -51,7 +51,7 @@ function apiError(request: Request, status: number, error: string, code = "bad_r
 
 /** Both social read routes share one window contract. */
 function readWindowHours(url: URL) {
-  const hours = Number(url.searchParams.get("hours") ?? "72");
+  const hours = Number(url.searchParams.get("hours") ?? "168");
   if (!Number.isFinite(hours) || hours <= 0 || hours > 720) {
     throw new ApiFailure(400, "Window must be between 1 and 720 hours", "invalid_window");
   }
@@ -238,7 +238,7 @@ console.log(
 console.log(AUTH_ENABLED ? "Password protection: on" : "Password protection: off (development)");
 
 // Social collection is opt-in: it needs a database, downloads models on first
-// use, and polls the public Vietnamese discussion feeds.
+// use, and polls public Vietnamese discussion and explicitly labelled news.
 if (process.env.TRENDIFEST_SOCIAL === "1") {
   const social = startSocialCollection();
   console.log(

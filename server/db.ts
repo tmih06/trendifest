@@ -11,6 +11,13 @@ import { SQL } from "bun";
 const PADDED_DIM = 1024;
 
 /**
+ * Specific-topic vectors keep their native width. They live in their own table
+ * and their own model space (E5), so they must never be compared with the
+ * near-copy MiniLM or CLIP columns that share the padded `embeddings` table.
+ */
+export const TOPIC_VECTOR_DIM = 384;
+
+/**
  * Embedding spaces share one padded column. pgvector rejects HNSW on a
  * dimension-less `vector` column, and a column cannot hold mixed dimensions, so
  * every vector is L2-normalized and zero-padded to `PADDED_DIM`. Cosine
@@ -86,6 +93,13 @@ function migrationSql() {
       time_kind text NOT NULL DEFAULT 'published',
       media jsonb NOT NULL DEFAULT '[]'::jsonb,
       content_hash text NOT NULL,
+      -- Display/grouping metadata. A news headline is evidence, not a community post.
+      title text NOT NULL DEFAULT '',
+      evidence_type text NOT NULL DEFAULT 'discussion',
+      publisher text,
+      -- Collection time of the first accepted delivery. Never rewritten by a
+      -- later poll, so "when we first saw it" stays a fact.
+      first_collected_at timestamptz NOT NULL DEFAULT now(),
       deleted_at timestamptz,
       UNIQUE (source, uri)
     );
@@ -130,6 +144,18 @@ function migrationSql() {
     CREATE INDEX IF NOT EXISTS embeddings_space_idx ON embeddings (space);
     ${spaceIndexes}
 
+    -- Specific-topic vectors live in their own table at the model's native 384
+    -- dimensions. They are NOT near-copy evidence: a row is valid only while
+    -- both its model and content_hash still match the post, so an edited post
+    -- silently stops contributing rather than matching on stale text.
+    CREATE TABLE IF NOT EXISTS topic_embeddings (
+      post_id text PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,
+      model text NOT NULL,
+      content_hash text NOT NULL,
+      vec vector(${TOPIC_VECTOR_DIM}) NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS clusters (
       id text PRIMARY KEY,
       space text NOT NULL,
@@ -173,6 +199,20 @@ async function migrate(sql: SQL) {
   }
   await sql.unsafe(
     "ALTER TABLE posts ADD COLUMN IF NOT EXISTS time_kind text NOT NULL DEFAULT 'published'",
+  );
+  // Metadata cutover. Existing rows get one shared collection timestamp (the
+  // migration instant) rather than a fabricated earlier history; `now()` is
+  // stable, so Postgres fills the column without rewriting the table.
+  await sql.unsafe("ALTER TABLE posts ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT ''");
+  await sql.unsafe(
+    "ALTER TABLE posts ADD COLUMN IF NOT EXISTS evidence_type text NOT NULL DEFAULT 'discussion'",
+  );
+  await sql.unsafe("ALTER TABLE posts ADD COLUMN IF NOT EXISTS publisher text");
+  await sql.unsafe(
+    "ALTER TABLE posts ADD COLUMN IF NOT EXISTS first_collected_at timestamptz NOT NULL DEFAULT now()",
+  );
+  await sql.unsafe(
+    "CREATE INDEX IF NOT EXISTS topic_embeddings_hash_idx ON topic_embeddings (content_hash)",
   );
   await sql.unsafe("ALTER TABLE posts DROP COLUMN IF EXISTS tags");
   for (const column of ["likes", "reposts", "replies", "quotes"]) {

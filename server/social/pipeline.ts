@@ -25,6 +25,11 @@ import {
   type SourcePost,
 } from "./input.ts";
 import { extractAudio, extractVideoFrames, fetchImage } from "./media.ts";
+import {
+  backfillTopicEmbeddings,
+  deleteTopicEmbedding,
+  persistTopicEmbedding,
+} from "./topic-store.ts";
 
 /**
  * The ingest pipeline: observations -> vectors -> clusters -> crossings.
@@ -92,6 +97,8 @@ const CLUSTER_IDLE_HOURS = 24;
 const MAX_CLUSTERS_PER_SPACE = 400;
 /** Oldest clusters retired when a space hits the cap; they keep their members. */
 const RETIRED_CLUSTERS_PER_CYCLE = 20;
+/** Topic vectors embedded per collector cycle; bounded so a poll never stalls. */
+const TOPIC_BACKFILL_LIMIT = 25;
 const TEXT_SPAN = "body";
 
 interface PreparedVector {
@@ -105,7 +112,9 @@ interface PreparedVector {
 /**
  * Remove old derived evidence before a source edit, deletion, or expiry. Repair
  * affected centroids from remaining members so removed input cannot influence
- * subsequent joins or displayed affinities.
+ * subsequent joins or displayed affinities. Topic vectors are invalidated in
+ * the same transaction: a grouping read must never see a vector computed from
+ * text the post no longer has.
  */
 async function invalidateVectors(tx: SQL, ids: string[]) {
   if (ids.length === 0) return;
@@ -114,6 +123,7 @@ async function invalidateVectors(tx: SQL, ids: string[]) {
   const clusterIds = affected.map((row: { cluster_id: string }) => row.cluster_id);
   await tx`DELETE FROM cluster_members WHERE post_id = ANY(${ids}::text[])`;
   await tx`DELETE FROM embeddings WHERE post_id = ANY(${ids}::text[])`;
+  await deleteTopicEmbedding(tx, ids);
   if (clusterIds.length === 0) return;
   await tx`
     UPDATE clusters c SET centroid = remaining.centroid,
@@ -149,16 +159,20 @@ async function storePost(post: AcceptedPost, segmentId: string) {
     if (previous && changed) await invalidateVectors(tx, [post.id]);
     await tx`
       INSERT INTO posts (id, source, uri, author_id, author_handle, body, lang,
-                         kind, permalink, published_at, time_kind, media, content_hash)
+                         kind, permalink, published_at, time_kind, media, content_hash,
+                         title, evidence_type, publisher)
       VALUES (${post.id}, ${post.source}, ${post.uri}, ${post.authorId}, ${post.authorHandle},
               ${post.text}, ${["vi"]}, ${post.kind}, ${post.permalink}, ${post.publishedAt},
-              ${post.timeKind}, ${JSON.stringify(post.media)}::text::jsonb, ${post.contentHash})
+              ${post.timeKind}, ${JSON.stringify(post.media)}::text::jsonb, ${post.contentHash},
+              ${post.title}, ${post.evidenceType}, ${post.publisher})
       ON CONFLICT (id) DO UPDATE SET
         author_id = EXCLUDED.author_id, author_handle = EXCLUDED.author_handle,
         body = EXCLUDED.body, lang = EXCLUDED.lang, kind = EXCLUDED.kind,
         permalink = EXCLUDED.permalink, published_at = EXCLUDED.published_at,
         time_kind = EXCLUDED.time_kind, media = EXCLUDED.media,
-        content_hash = EXCLUDED.content_hash, deleted_at = NULL
+        content_hash = EXCLUDED.content_hash, title = EXCLUDED.title,
+        evidence_type = EXCLUDED.evidence_type, publisher = EXCLUDED.publisher,
+        deleted_at = NULL
     `;
     await tx`
       INSERT INTO observations (post_id, segment_id, observed_at, via)
@@ -450,7 +464,18 @@ export async function ingestPost(input: SourcePost, segmentId: string) {
   }
   const post = accepted.post;
   const stored = await storePost(post, segmentId);
-  if (stored.duplicate) return { duplicate: true as const };
+  const record = {
+    id: post.id,
+    contentHash: post.contentHash,
+    title: post.title,
+    body: post.text,
+  };
+  if (stored.duplicate) {
+    // Unchanged redelivery: no re-embedding of near-copy or topic vectors, but a
+    // vector that was never written (new table, interrupted cycle) is filled now.
+    const repaired = await persistTopicEmbedding(record);
+    return { duplicate: true as const, topicVector: repaired };
+  }
   const vectors = await vectorize(post);
   await saveVectors(post.id, vectors);
   let clusters = 0;
@@ -459,7 +484,16 @@ export async function ingestPost(input: SourcePost, segmentId: string) {
     const assigned = await assignCluster(post.id, vector);
     if (!assigned.joined) clusters += 1;
   }
-  return { stored: true as const, vectors: vectors.length, clusters };
+  // Topic grouping is separate from near-copy clustering: its vector is written
+  // after the post row is durable, and a model failure leaves the record pending
+  // rather than inventing a placeholder.
+  const topic = await persistTopicEmbedding(record);
+  return {
+    stored: true as const,
+    vectors: vectors.length,
+    clusters,
+    topicVector: topic,
+  };
 }
 
 /** Apply an explicit source takedown without leaving vectors or centroid contributions behind. */
@@ -559,6 +593,20 @@ export async function ingestSegments(
     }
   }
   report.expired = await expirePosts();
+  // One bounded batch per cycle keeps the map converging on a pre-existing
+  // corpus without letting inference stall a poll. Failures are reported, not
+  // retried here: the next cycle picks up whatever is still pending.
+  try {
+    const topicBatch = await backfillTopicEmbeddings(TOPIC_BACKFILL_LIMIT);
+    if (topicBatch.error) {
+      report.errors.push({ segmentId: "topic-embeddings", message: topicBatch.error });
+    }
+  } catch (error) {
+    report.errors.push({
+      segmentId: "topic-embeddings",
+      message: error instanceof Error ? error.message : "topic embedding backfill failed",
+    });
+  }
   return report;
 }
 
