@@ -493,14 +493,24 @@ const FAQS = [
 
 /**
  * @component SideScrollRuler
- * Precision vertical scroll ruler placed at the right edge of the viewport.
- * Rendered as an array of horizontal tick dashes separated by small whitespace
- * gaps. Lights up dynamically as the page scrolls, glows at the active tick,
- * provides milestone tooltips on hover, and allows smooth click-to-scroll.
+ * Minimalist vertical scroll progress indicator positioned on the right edge.
+ *
+ * Design & Constraints:
+ * - Employs a bare, frameless array of uniform horizontal hairline stripes (`h-[1px]`, `w-3.5`).
+ * - Rejected approach: Container pill with background blur/border and milestone
+ *   variations; user explicitly required zero container frames, no session title
+ *   milestone emphasis, and strictly identical stripe geometry.
+ * - Progress indicator semantics: Solid high-contrast black/white (`bg-black dark:bg-white`)
+ *   for passed scroll positions, subdued contrast (`bg-black/20 dark:bg-white/25`) for
+ *   unreached positions.
+ * - Allows interactive smooth navigation: Clicking any stripe navigates smoothly to that
+ *   scroll percentage of the page document.
+ *
+ * Concurrency & Side Effects:
+ * - Attaches a passive window scroll listener on mount and detaches on unmount.
  */
 function SideScrollRuler() {
   const [scrollProgress, setScrollProgress] = useState(0);
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const TOTAL_TICKS = 24;
 
   useEffect(() => {
@@ -525,72 +535,36 @@ function SideScrollRuler() {
     window.scrollTo({ top: targetY, behavior: "smooth" });
   };
 
-  const getSectionLabel = (idx: number) => {
-    const ratio = idx / (TOTAL_TICKS - 1);
-    if (ratio < 0.12) return "Đầu trang (Hero)";
-    if (ratio < 0.25) return "Thống kê & Nguồn dữ liệu";
-    if (ratio < 0.38) return "Vấn đề & So sánh";
-    if (ratio < 0.52) return "Quy trình trinh sát";
-    if (ratio < 0.68) return "Công nghệ cốt lõi";
-    if (ratio < 0.82) return "Giải pháp thực chứng";
-    if (ratio < 0.92) return "Pháp lý & Đạo đức";
-    return "Đón đầu xu hướng";
-  };
-
   return (
-    <aside
+    <nav
       aria-label="Thước đo tiến độ cuộn trang"
-      className="fixed right-3 sm:right-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-end py-3 px-1.5 rounded-full bg-white/60 dark:bg-[#1a1a1a]/60 backdrop-blur-md border border-neutral-200/60 dark:border-white/10 shadow-lg select-none group"
+      className="fixed right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-end gap-1.5 pointer-events-auto select-none"
     >
-      {/* Floating Section Tooltip */}
-      {hoveredIdx !== null && (
-        <div
-          role="tooltip"
-          className="absolute right-full mr-3.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-neutral-900/90 dark:bg-[#141416]/95 text-white text-[11.5px] font-mono tracking-tight whitespace-nowrap shadow-xl border border-neutral-700/60 dark:border-[#383838] pointer-events-none transition-all duration-150 animate-in fade-in"
-        >
-          <span>{getSectionLabel(hoveredIdx)}</span>
-          <span className="text-purple-400 dark:text-[#a78bfa] ml-2 font-semibold">
-            {Math.round((hoveredIdx / (TOTAL_TICKS - 1)) * 100)}%
-          </span>
-        </div>
-      )}
+      {Array.from({ length: TOTAL_TICKS }).map((_, idx) => {
+        const tickProgress = idx / (TOTAL_TICKS - 1);
+        const isPassed = scrollProgress >= tickProgress - 0.01;
 
-      {/* Horizontal Striped Ticks */}
-      <div className="flex flex-col items-end gap-1.5 py-1">
-        {Array.from({ length: TOTAL_TICKS }).map((_, idx) => {
-          const tickProgress = idx / (TOTAL_TICKS - 1);
-          const isPassed = scrollProgress >= tickProgress - 0.01;
-          const isCurrent = Math.abs(scrollProgress - tickProgress) < 0.9 / TOTAL_TICKS;
-          const isMilestone = idx % 4 === 0;
-
-          return (
-            <button
-              key={idx}
-              onClick={() => scrollToPosition(idx)}
-              onMouseEnter={() => setHoveredIdx(idx)}
-              onMouseLeave={() => setHoveredIdx(null)}
-              aria-label={`Cuộn đến ${getSectionLabel(idx)} (${Math.round(tickProgress * 100)}%)`}
-              className="group/tick py-0.5 flex items-center justify-end focus:outline-none"
-            >
-              <span
-                className={cn(
-                  "block h-[2.5px] rounded-full transition-all duration-200",
-                  isCurrent
-                    ? "w-6.5 bg-purple-600 dark:bg-[#a78bfa] shadow-[0_0_10px_rgba(167,139,250,0.8)] scale-y-125"
-                    : isPassed
-                      ? isMilestone
-                        ? "w-4 bg-purple-500 dark:bg-[#a78bfa]/85"
-                        : "w-3 bg-purple-400/80 dark:bg-[#a78bfa]/65"
-                      : isMilestone
-                        ? "w-3.5 bg-neutral-400 dark:bg-neutral-600 group-hover/tick:bg-neutral-500 dark:group-hover/tick:bg-neutral-400"
-                        : "w-2.5 bg-neutral-300 dark:bg-neutral-700/80 group-hover/tick:bg-neutral-400 dark:group-hover/tick:bg-neutral-500",
-                )}
-              />
-            </button>
-          );
-        })}
-      </div>
-    </aside>
+        return (
+          <button
+            key={idx}
+            type="button"
+            onClick={() => scrollToPosition(idx)}
+            aria-label={`Cuộn đến vị trí ${Math.round(tickProgress * 100)}%`}
+            className="py-0.5 flex items-center justify-end focus:outline-none cursor-pointer group/tick"
+          >
+            {/* Uniform thin horizontal stripe */}
+            <span
+              className={cn(
+                "block w-3.5 h-[1px] transition-colors duration-150",
+                isPassed
+                  ? "bg-black dark:bg-white"
+                  : "bg-black/20 dark:bg-white/25 group-hover/tick:bg-black/60 dark:group-hover/tick:bg-white/60",
+              )}
+            />
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
