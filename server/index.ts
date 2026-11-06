@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url";
 import { gzip } from "node:zlib";
 import type { ApiError, TrendMap } from "../shared/types.ts";
 import { ApiFailure } from "./api-error.ts";
-import { AUTH_ENABLED, authorize } from "./auth.ts";
 import { DatabaseMissingError } from "./db.ts";
 import { searchAcrossSpaces } from "./social/pipeline.ts";
 import { DEFAULT_COLLECTION_LIMIT, MAX_POSTS_PER_SOURCE } from "./social/input.ts";
@@ -38,12 +37,6 @@ const PORT = Number(process.env.PORT ?? 8787);
 const PRODUCTION = process.env.NODE_ENV === "production";
 // Managed development uses no API TCP port; production keeps its TCP listener.
 const API_SOCKET = PRODUCTION ? undefined : process.env.API_SOCKET;
-
-if (PRODUCTION && !AUTH_ENABLED) {
-  console.error("TRENDIFEST_PASSWORD is required when NODE_ENV=production.");
-  console.error("Set it in the environment or a local .env file, then start again.");
-  process.exit(1);
-}
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -363,11 +356,6 @@ async function fetch(request: Request) {
   if (API_SOCKET) server.timeout(request, 60);
   const url = new URL(request.url);
 
-  // Health is intentionally public so a supervisor can probe the process;
-  // everything else, including the client shell, sits behind the password.
-  const unauthorized = url.pathname === "/api/health" ? null : authorize(request);
-  if (unauthorized) return unauthorized;
-
   if (url.pathname.startsWith("/api/")) {
     try {
       return await handleApi(request, url);
@@ -405,7 +393,6 @@ console.log(
     ? "Trendifest API connected to the private development socket."
     : `Trendifest API listening on http://127.0.0.1:${boundPort} (${PRODUCTION ? "production" : "development"})`,
 );
-console.log(AUTH_ENABLED ? "Password protection: on" : "Password protection: off (development)");
 
 // Cached projections and measured history advance off-request, even when feeds
 // are paused. This call never delays the listener's readiness announcement.

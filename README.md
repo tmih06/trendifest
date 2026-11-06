@@ -30,8 +30,9 @@ socket support (Linux/macOS).
 The landing page is at `/`; **Vào Đồ Thị Live** opens the workspace at `/app`.
 `/map`, `#app`, and `?view=app` also open the workspace. Its **Trang chủ** action
 returns to the landing page, and browser Back/Forward follows those routes.
-Both pages share the stored `trendifest-theme` preference. Direct workspace
-loads defer the landing-page module and the optional development toolbar.
+Both pages default to light (white) and share the stored `trendifest-theme`
+preference; an explicitly saved theme takes precedence. Direct workspace loads
+defer the landing-page module and the optional development toolbar.
 
 `bun run dev:api` still starts the standalone TCP API on port 8787.
 `bun run dev:web` can proxy to that server when started separately. Production serves the
@@ -49,9 +50,10 @@ local; post content is not sent to an external inference API. Feed/media fetchin
 still reaches configured public sources and source-hosted attachment URLs. Initial
 collection can take longer while weights load and media is decoded.
 
-For production, configure `TRENDIFEST_PASSWORD`, run `bun run build`, then
-`bun start`. Basic authentication protects the application and APIs except the
-public health endpoint. Protect the deployment with HTTPS.
+For production, run `bun run build`, then `bun start`. The application has no
+login: pages and all APIs, including collection, review, and watch mutations,
+are publicly accessible. Use HTTPS and restrict access through a trusted
+network or reverse proxy when deploying beyond your machine.
 
 ### Transfer behavior
 
@@ -464,7 +466,7 @@ those tests as skipped; a successful CI command does not imply database coverage
 
 1. Start `bun dev`; wait only for its finite readiness message, then open the
    printed single-port URL and enter `/app`. For a stable production demo, run
-   `bun run build` once, configure `TRENDIFEST_PASSWORD`, and use `bun start`.
+   `bun run build` once and use `bun start`; no login configuration is needed.
 2. Open **Topic board**, keep the 7-day view, and inspect a high-support topic.
    Show its separate news/community columns, **Why**, and **Source timeline**.
    The timeline links to original source evidence, not a generated summary.

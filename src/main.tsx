@@ -113,7 +113,7 @@ createRoot(container).render(
     <QueryClientProvider client={client}>
       <ThemeProvider
         attribute="class"
-        defaultTheme="dark"
+        defaultTheme="light"
         enableSystem={false}
         storageKey="trendifest-theme"
       >

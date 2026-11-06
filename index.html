@@ -13,12 +13,12 @@
     <script>
       // Resolve the workspace preference before paint to avoid a theme flash.
       (() => {
-        let dark = matchMedia("(prefers-color-scheme: dark)").matches;
+        let dark = false;
         try {
           const stored = localStorage.getItem("trendifest-theme");
           if (stored === "dark" || stored === "light") dark = stored === "dark";
         } catch {
-          // Storage can be unavailable; still follow the device appearance.
+          // Storage can be unavailable; keep the default light appearance.
         }
         document.documentElement.classList.toggle("dark", dark);
         document
