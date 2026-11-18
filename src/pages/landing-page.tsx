@@ -1,3 +1,5 @@
+import Lenis from "lenis";
+import "lenis/dist/lenis.css";
 import ArrowRight from "lucide-react/icons/arrow-right";
 import ArrowUpRight from "lucide-react/icons/arrow-up-right";
 import Bell from "lucide-react/icons/bell";
@@ -9,7 +11,7 @@ import Menu from "lucide-react/icons/menu";
 import Network from "lucide-react/icons/network";
 import X from "lucide-react/icons/x";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@trendifest/opendesk";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { EASE_OUT, SPRING_LAYOUT, SPRING_PANEL, SPRING_SWAP } from "@/lib/ease";
@@ -907,6 +909,31 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [contactSubmitted, setContactSubmitted] = useState(false);
+  const lenisRef = useRef<Lenis | null>(null);
+
+  useEffect(() => {
+    const lenis = new Lenis({
+      autoRaf: true,
+      lerp: 0.1,
+      anchors: { offset: -64 },
+      respectReducedMotion: true,
+    });
+    lenisRef.current = lenis;
+    return () => {
+      lenis.destroy();
+      lenisRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const lenis = lenisRef.current;
+    if (!lenis) return;
+    if (contactModalOpen) {
+      lenis.stop();
+    } else {
+      lenis.start();
+    }
+  }, [contactModalOpen]);
 
   const windowSnapshot = PREVIEW_WINDOWS[previewWindow];
   const selectedTopic = useMemo(
@@ -2432,6 +2459,7 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim overscroll-contain"
             >
               <motion.div
+                data-lenis-prevent
                 initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
