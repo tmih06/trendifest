@@ -888,6 +888,131 @@ function MiniSparkline({
 }
 
 /* ------------------------------------------------------------------ *
+ * Side Scroll Ruler Component (Striped Horizontal Dash Indicator)    *
+ * ------------------------------------------------------------------ */
+
+interface SideScrollRulerProps {
+  /** Scrolls the page to the requested `[0, 1]` document ratio. */
+  onScrollToRatio: (ratio: number) => void;
+}
+
+/**
+ * Minimalist vertical viewport scroll indicator pinned to the right margin,
+ * rendering 24 horizontal ticks shaped by a raised-cosine hill profile.
+ *
+ * Behavior & Mathematical Model:
+ * - The viewport scroll ratio maps continuously to the crest of the hill
+ *   (28px width, full contrast), while neighboring ticks taper with
+ *   `0.5 * (1 + cos(pi * d / radius))` back to 10px hairlines at 20% opacity.
+ * - `hillRadius` scales with `viewportRatio` (`innerHeight / scrollHeight`,
+ *   clamped to `[2.6, 4.2]`) so the crest reflects the visible page fraction.
+ * - Clicking any tick calls `onScrollToRatio` with `idx / (TOTAL_TICKS - 1)`.
+ *
+ * Concurrency & Side Effects:
+ * - Attaches passive `scroll` and `resize` listeners on `window` plus a
+ *   `ResizeObserver` on `document.documentElement`, coalescing updates via
+ *   `requestAnimationFrame` and cleaning up all observers/frames on unmount.
+ */
+function SideScrollRuler({ onScrollToRatio }: SideScrollRulerProps) {
+  const [scrollState, setScrollState] = useState({ ratio: 0, viewportRatio: 0.15 });
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const TOTAL_TICKS = 24;
+  const MIN_WIDTH = 10;
+  const MAX_ADDITIONAL_WIDTH = 18;
+
+  useEffect(() => {
+    let rafId: number | null = null;
+
+    const updateScroll = () => {
+      const scrollY = window.scrollY;
+      const innerHeight = window.innerHeight;
+      const scrollHeight = document.documentElement.scrollHeight;
+      const maxScroll = scrollHeight - innerHeight;
+
+      if (maxScroll <= 0) {
+        setScrollState({ ratio: 0, viewportRatio: 1 });
+        return;
+      }
+
+      const ratio = Math.min(1, Math.max(0, scrollY / maxScroll));
+      const viewportRatio = Math.min(1, Math.max(0.05, innerHeight / scrollHeight));
+      setScrollState({ ratio, viewportRatio });
+    };
+
+    const handleScrollOrResize = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        updateScroll();
+        rafId = null;
+      });
+    };
+
+    window.addEventListener("scroll", handleScrollOrResize, { passive: true });
+    window.addEventListener("resize", handleScrollOrResize, { passive: true });
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(handleScrollOrResize) : null;
+    resizeObserver?.observe(document.documentElement);
+    updateScroll();
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", handleScrollOrResize);
+      window.removeEventListener("resize", handleScrollOrResize);
+      resizeObserver?.disconnect();
+    };
+  }, []);
+
+  const centerIdx = scrollState.ratio * (TOTAL_TICKS - 1);
+  const hillRadius = Math.max(2.6, Math.min(4.2, scrollState.viewportRatio * TOTAL_TICKS * 1.3));
+
+  return (
+    <nav
+      aria-label="Thước đo vị trí khung nhìn trang"
+      className="fixed right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-30 hidden md:flex flex-col items-end gap-1.5 pointer-events-auto select-none"
+    >
+      {Array.from({ length: TOTAL_TICKS }).map((_, idx) => {
+        const dist = Math.abs(idx - centerIdx);
+
+        // Raised-cosine hill curve (intensity from 0 at base to 1.0 at crest).
+        let intensity = 0;
+        if (dist < hillRadius) {
+          intensity = 0.5 * (1 + Math.cos((Math.PI * dist) / hillRadius));
+        }
+
+        const isHovered = hoveredIdx === idx;
+        const width = MIN_WIDTH + MAX_ADDITIONAL_WIDTH * intensity;
+        const effectiveWidth = isHovered ? Math.max(width, 16) : width;
+        const baseOpacity = 0.2 + 0.8 * intensity;
+        const effectiveOpacity = isHovered ? Math.max(baseOpacity, 0.85) : baseOpacity;
+
+        const tickRatio = idx / (TOTAL_TICKS - 1);
+        const tickPercentage = Math.round(tickRatio * 100);
+
+        return (
+          <button
+            key={idx}
+            type="button"
+            onClick={() => onScrollToRatio(tickRatio)}
+            onMouseEnter={() => setHoveredIdx(idx)}
+            onMouseLeave={() => setHoveredIdx(null)}
+            aria-label={`Cuộn đến vị trí ${tickPercentage}%`}
+            className="py-0.5 flex items-center justify-end rounded-xs cursor-pointer group/tick"
+          >
+            <span
+              style={{
+                width: `${effectiveWidth.toFixed(1)}px`,
+                opacity: Number(effectiveOpacity.toFixed(3)),
+              }}
+              className="block h-[1px] bg-fg transition-[width,opacity] duration-100 ease-out"
+            />
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Main Landing Page Component                                        *
  * ------------------------------------------------------------------ */
 
@@ -958,9 +1083,21 @@ export function LandingPage({ onOpenApp }: LandingPageProps) {
     [activeUseCase],
   );
 
+  const scrollToRatio = (ratio: number) => {
+    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    if (maxScroll <= 0) return;
+    const targetY = Math.min(1, Math.max(0, ratio)) * maxScroll;
+    if (lenisRef.current) {
+      lenisRef.current.scrollTo(targetY);
+      return;
+    }
+    window.scrollTo({ top: targetY, behavior: reduceMotion ? "auto" : "smooth" });
+  };
+
   return (
     <MotionConfig reducedMotion="user">
       <div className="min-h-screen bg-canvas text-fg [font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,sans-serif] antialiased text-[15px] leading-6">
+        <SideScrollRuler onScrollToRatio={scrollToRatio} />
         {/* ------------------------------------------------------------ */}
         {/* 1. Navigation Bar                                            */}
         {/* ------------------------------------------------------------ */}
