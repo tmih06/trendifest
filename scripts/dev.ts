@@ -1,19 +1,16 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { findAvailablePort, readPortEnv } from "./ports.ts";
 
 /**
- * Vite owns the only TCP listener. Its /api reverse proxy reaches Bun through
- * a private Unix socket, so forwarding the web port also forwards every API.
- * Each invocation owns its socket directory and both child process groups.
+ * Vite owns the public TCP listener. Its /api reverse proxy reaches Bun through
+ * a loopback-only development port, so forwarding the web port also forwards
+ * every API without exposing the API outside the machine.
  */
 const root = path.resolve(import.meta.dir, "..");
 const vp = path.join(root, "node_modules", ".bin", "vp");
 const requestedPort = readPortEnv(process.env.PORT, 5180);
 const webPort = await findAvailablePort(requestedPort);
-const socketDirectory = await mkdtemp(path.join(tmpdir(), "trendifest-"));
-const apiSocket = path.join(socketDirectory, "api.sock");
+const apiPort = await findAvailablePort(webPort + 1);
 
 if (webPort !== requestedPort) {
   console.log(`Port ${requestedPort} is in use; using ${webPort} for Trendifest.`);
@@ -21,7 +18,7 @@ if (webPort !== requestedPort) {
 
 const api = Bun.spawn(["bun", "--watch", "server/index.ts"], {
   cwd: root,
-  env: { ...process.env, API_SOCKET: apiSocket },
+  env: { ...process.env, PORT: String(apiPort), API_HOST: "127.0.0.1" },
   detached: true,
   stdout: "inherit",
   stderr: "inherit",
@@ -29,7 +26,7 @@ const api = Bun.spawn(["bun", "--watch", "server/index.ts"], {
 
 const web = Bun.spawn([vp, "dev"], {
   cwd: root,
-  env: { ...process.env, PORT: String(webPort), API_SOCKET: apiSocket },
+  env: { ...process.env, PORT: String(webPort), API_PORT: String(apiPort) },
   detached: true,
   stdout: "inherit",
   stderr: "inherit",
@@ -48,7 +45,6 @@ async function stop(code = 0) {
     }
   }
   await Promise.all([api.exited, web.exited]);
-  await rm(socketDirectory, { recursive: true, force: true });
   process.exit(code);
 }
 

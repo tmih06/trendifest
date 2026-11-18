@@ -27,14 +27,15 @@ export default defineConfig({
     alias: { "@": src },
   },
   server: {
+    host: "127.0.0.1",
     // `scripts/dev.ts` selects this port and passes it in; the fallback only
     // applies when Vite runs on its own (for example `vp dev` directly).
     port: Number(process.env.PORT ?? 5180),
     strictPort: true,
     proxy: {
       "/api": {
-        target: process.env.API_SOCKET
-          ? { host: "localhost", port: 80, protocol: "http:", socketPath: process.env.API_SOCKET }
+        target: process.env.API_PORT
+          ? `http://127.0.0.1:${process.env.API_PORT}`
           : "http://127.0.0.1:8787",
         changeOrigin: true,
       },

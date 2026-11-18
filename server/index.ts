@@ -34,9 +34,8 @@ import {
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
+const HOSTNAME = process.env.API_HOST ?? "127.0.0.1";
 const PRODUCTION = process.env.NODE_ENV === "production";
-// Managed development uses no API TCP port; production keeps its TCP listener.
-const API_SOCKET = PRODUCTION ? undefined : process.env.API_SOCKET;
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -313,14 +312,17 @@ async function serveStatic(request: Request, url: URL) {
 /**
  * Bind the standalone API's TCP port. Direct development starts may fall
  * forward; production fails rather than silently moving a deployment listener.
- * `bun dev` bypasses TCP entirely and binds its private Unix socket instead.
+ * Managed development supplies a loopback-only port so Vite can proxy to it.
  */
 function listen(port: number) {
   for (let offset = 0; offset < 20; offset += 1) {
     const candidate = port + offset;
     if (candidate > 65_535) break;
     try {
-      return { server: Bun.serve({ port: candidate, idleTimeout: 60, fetch }), port: candidate };
+      return {
+        server: Bun.serve({ hostname: HOSTNAME, port: candidate, idleTimeout: 60, fetch }),
+        port: candidate,
+      };
     } catch (error) {
       const code = (error as { code?: string }).code;
       if (code !== "EADDRINUSE") throw error;
@@ -335,9 +337,7 @@ function listen(port: number) {
   process.exit(1);
 }
 
-const { server, port: boundPort } = API_SOCKET
-  ? { server: Bun.serve({ unix: API_SOCKET, fetch }), port: null }
-  : listen(PORT);
+const { server, port: boundPort } = listen(PORT);
 
 /**
  * Drain in-flight requests on a supervisor's stop signal instead of dropping
@@ -352,8 +352,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 }
 
 async function fetch(request: Request) {
-  // Unix listeners use per-request timeouts; retain the TCP API's 60-second allowance.
-  if (API_SOCKET) server.timeout(request, 60);
+  server.timeout(request, 60);
   const url = new URL(request.url);
 
   if (url.pathname.startsWith("/api/")) {
@@ -389,9 +388,7 @@ async function fetch(request: Request) {
 }
 
 console.log(
-  API_SOCKET
-    ? "Trendifest API connected to the private development socket."
-    : `Trendifest API listening on http://127.0.0.1:${boundPort} (${PRODUCTION ? "production" : "development"})`,
+  `Trendifest API listening on http://${HOSTNAME}:${boundPort} (${PRODUCTION ? "production" : "development"})`,
 );
 
 // Cached projections and measured history advance off-request, even when feeds
