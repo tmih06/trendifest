@@ -1,15 +1,26 @@
 import type { TopicHistoryPoint } from "../../shared/intelligence.ts";
-import { NO_BASELINE_LABEL, SPARK_HEIGHT, SPARK_WIDTH, sparklineGeometry } from "@/lib/board";
+import {
+  NO_BASELINE_DETAIL,
+  NO_BASELINE_LABEL,
+  SPARK_HEIGHT,
+  SPARK_WIDTH,
+  sparklineGeometry,
+} from "@/lib/board";
 
 /**
  * A compact plot of stored potential observations. Fewer than two samples
- * renders the explicit "Insufficient history" state instead of a synthetic flat
- * or zero line, so a missing baseline can never read as measured stability.
+ * renders an explicit dash with screen-reader context instead of a synthetic
+ * flat or zero line, so a missing baseline can never read as measured stability.
  */
 export function TrendSparkline({ points }: { points: readonly TopicHistoryPoint[] }) {
   const geometry = sparklineGeometry(points);
   if (!geometry) {
-    return <span className="text-[11px] leading-4 text-fg-3">{NO_BASELINE_LABEL}</span>;
+    return (
+      <span className="text-xs text-fg-3" title={NO_BASELINE_DETAIL}>
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">{NO_BASELINE_LABEL}</span>
+      </span>
+    );
   }
 
   return (

@@ -324,14 +324,6 @@ a {
   min-height: 64px;
 }
 
-/* Keep the board table beside the floating evidence inspector, not under it.
-   Narrow screens use the modal inspector and need the board's full width. */
-@media (min-width: 1200px) {
-  .topic-board[data-details-open="true"] {
-    padding-inline-end: 344px;
-  }
-}
-
 @media (max-width: 1199px) {
   .graph-inspector {
     display: none;

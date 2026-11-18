@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
-import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
+import { lazy, StrictMode, Suspense, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { TrendMapPage } from "./pages/trend-map";
 import "./styles.css";
@@ -71,9 +71,29 @@ function resolveRoute(): "app" | "landing" {
 
 function App() {
   const [route, setRoute] = useState<"app" | "landing">(resolveRoute);
+  const didNavigate = useRef(false);
+
+  useEffect(() => {
+    document.documentElement.lang = "vi";
+    document.title =
+      route === "app" ? "Trendifest — Bản đồ xu hướng" : "Trendifest — Bản đồ chủ đề tiếng Việt";
+
+    if (!didNavigate.current) return;
+    didNavigate.current = false;
+
+    const frame = window.requestAnimationFrame(() => {
+      const target =
+        document.querySelector<HTMLElement>("h1") ?? document.querySelector<HTMLElement>("main");
+      if (!target) return;
+      if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+      target.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [route]);
 
   useEffect(() => {
     const handlePopState = () => {
+      didNavigate.current = true;
       setRoute(resolveRoute());
     };
     window.addEventListener("popstate", handlePopState);
@@ -85,12 +105,14 @@ function App() {
   }, []);
 
   const navigateToApp = () => {
+    didNavigate.current = true;
     window.history.pushState(null, "", "/app");
     setRoute("app");
     window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
   };
 
   const navigateToLanding = () => {
+    didNavigate.current = true;
     window.history.pushState(null, "", "/");
     setRoute("landing");
     window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
@@ -99,7 +121,7 @@ function App() {
   return route === "app" ? (
     <TrendMapPage onNavigateHome={navigateToLanding} />
   ) : (
-    <Suspense fallback={<p role="status">Loading Trendifest…</p>}>
+    <Suspense fallback={<p role="status">Đang tải Trendifest…</p>}>
       <LandingPage onOpenApp={navigateToApp} />
     </Suspense>
   );

@@ -23,14 +23,14 @@ export const MAX_HISTORY_POINTS = 24;
 export const ENTITY_OPTION_LIMIT = 25;
 /** Kind vocabulary for the board filter; shared so panels stay consistent. */
 export const ENTITY_KIND_LABELS: Record<EntityKind, string> = {
-  person: "People",
-  organization: "Organizations",
-  location: "Locations",
-  product: "Products",
+  person: "Cá nhân",
+  organization: "Tổ chức",
+  location: "Địa điểm",
+  product: "Sản phẩm",
 };
 
 export const ENTITY_KIND_FILTERS = [
-  { value: "all", label: "All kinds" },
+  { value: "all", label: "Tất cả loại" },
   { value: "person", label: ENTITY_KIND_LABELS.person },
   { value: "organization", label: ENTITY_KIND_LABELS.organization },
   { value: "location", label: ENTITY_KIND_LABELS.location },
@@ -44,14 +44,14 @@ export const ROW_ENTITY_LIMIT = 3;
 export const ROW_REASON_LIMIT = 3;
 
 export const PHASE_LABELS: Record<TopicPhase, string> = {
-  rising: "Rising",
-  sustained: "Sustained",
-  fading: "Fading",
-  insufficient_history: "Insufficient history",
+  rising: "Đang tăng",
+  sustained: "Duy trì",
+  fading: "Hạ nhiệt",
+  insufficient_history: "Chưa đủ lịch sử",
 };
 
 export const PHASE_FILTERS = [
-  { value: "all", label: "All phases" },
+  { value: "all", label: "Tất cả giai đoạn" },
   { value: "rising", label: PHASE_LABELS.rising },
   { value: "sustained", label: PHASE_LABELS.sustained },
   { value: "fading", label: PHASE_LABELS.fading },
@@ -61,11 +61,11 @@ export const PHASE_FILTERS = [
 export type PhaseFilter = (typeof PHASE_FILTERS)[number]["value"];
 
 export const SORT_OPTIONS = [
-  { value: "potential", label: "Potential" },
-  { value: "movement", label: "Rank movement" },
-  { value: "news", label: "News attention" },
-  { value: "community", label: "Community momentum" },
-  { value: "support", label: "New independent evidence" },
+  { value: "potential", label: "Tiềm năng" },
+  { value: "movement", label: "Biến động hạng" },
+  { value: "news", label: "Độ phủ báo chí" },
+  { value: "community", label: "Sức nóng cộng đồng" },
+  { value: "support", label: "Bằng chứng mới" },
 ] as const;
 
 export type SortKey = (typeof SORT_OPTIONS)[number]["value"];
@@ -203,10 +203,10 @@ export function selectEntityOptions(
 
 /** Movement copy for assistive tech; the glyph alone is not a label. */
 export function movementText(change: number | null): string {
-  if (change === null) return "No comparable rank history";
-  if (change > 0) return `Up ${change} rank${change === 1 ? "" : "s"}`;
-  if (change < 0) return `Down ${-change} rank${change === -1 ? "" : "s"}`;
-  return "Rank unchanged";
+  if (change === null) return "Chưa có lịch sử hạng để so sánh";
+  if (change > 0) return `Tăng ${change} bậc`;
+  if (change < 0) return `Giảm ${-change} bậc`;
+  return "Giữ nguyên thứ hạng";
 }
 
 export const SPARK_WIDTH = 88;
@@ -215,8 +215,8 @@ const SPARK_PAD = 3;
 
 /** Why a row cannot show measured movement or support, in one vocabulary. */
 export const NO_BASELINE_LABEL = PHASE_LABELS.insufficient_history;
-export const NO_BASELINE_DETAIL = "No comparable baseline window yet";
-export const NO_RANK_DETAIL = "No comparable rank history";
+export const NO_BASELINE_DETAIL = "Chưa có cửa sổ đối chiếu tương ứng";
+export const NO_RANK_DETAIL = "Chưa có lịch sử hạng để so sánh";
 
 export interface SparklineGeometry {
   path: string;
@@ -270,7 +270,7 @@ export function sparklineGeometry(points: readonly TopicHistoryPoint[]): Sparkli
     samples: values.length,
     label:
       span === 0
-        ? `Measured potential history: ${values.length} stored observations, steady at ${latest} out of 100.`
-        : `Measured potential history: ${values.length} stored observations from ${min} to ${max} out of 100, latest ${latest}.`,
+        ? `Lịch sử tiềm năng đo được: ${values.length} quan sát, ổn định ở mức ${latest}/100.`
+        : `Lịch sử tiềm năng đo được: ${values.length} quan sát từ ${min} đến ${max}/100, mới nhất ${latest}.`,
   };
 }

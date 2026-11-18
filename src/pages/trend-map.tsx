@@ -112,9 +112,9 @@ function TopicReviewDisclosure({
 const DEFAULT_HOURS = 168;
 
 const WINDOWS = [
-  { hours: 24, label: "24h", text: "24 hours" },
-  { hours: 72, label: "3d", text: "3 days" },
-  { hours: DEFAULT_HOURS, label: "7d", text: "7 days" },
+  { hours: 24, label: "24g", text: "24 giờ" },
+  { hours: 72, label: "3n", text: "3 ngày" },
+  { hours: DEFAULT_HOURS, label: "7n", text: "7 ngày" },
 ] as const;
 
 /** Beyond this age the rendered map no longer describes the current window. */
@@ -459,8 +459,8 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
     return labels;
   }, [data]);
   const sourceLabel =
-    data?.coverage.find((row) => row.segmentId === sourceId)?.label ?? "All sources";
-  const windowText = WINDOWS.find((window) => window.hours === hours)?.text ?? `${hours} hours`;
+    data?.coverage.find((row) => row.segmentId === sourceId)?.label ?? "Tất cả nguồn";
+  const windowText = WINDOWS.find((window) => window.hours === hours)?.text ?? `${hours} giờ`;
   const stats = data?.stats;
   const stale =
     data !== undefined && now - Date.parse(data.generatedAt) > STALE_MAP_MINUTES * 60_000;
@@ -473,26 +473,26 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
     status.lastBackfillAt !== null &&
     status.lastErrors.length === 0;
   const statusLabel = collection.isError
-    ? "Status unavailable"
+    ? "Không rõ trạng thái"
     : !status
-      ? "Connecting"
+      ? "Đang kết nối"
       : !status.configured
-        ? "Database required"
+        ? "Cần cơ sở dữ liệu"
         : busy
-          ? "Collecting"
+          ? "Đang thu thập"
           : status.lastErrors.length
-            ? "Source errors"
+            ? "Lỗi nguồn"
             : !status.enabled
-              ? "Polling paused"
+              ? "Tạm dừng thu thập"
               : healthy
-                ? "Polling active"
-                : "Waiting for first poll";
+                ? "Đang hoạt động"
+                : "Chờ lượt đầu";
   const viewLabel =
     view === "watchlists"
-      ? "Watchlists & alerts"
+      ? "Theo dõi & cảnh báo"
       : view === "board"
-        ? "Topic board"
-        : "Trend graph";
+        ? "Bảng chủ đề"
+        : "Đồ thị xu hướng";
   const inspectorVisible =
     view !== "watchlists" && desktopInspector && !narrow && (view === "graph" || selected !== null);
   const unconfigured =
@@ -587,41 +587,41 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               setNavOpen(false);
               setCollectionOpen(true);
             }}
-            title="Collection status"
+            title="Trạng thái thu thập"
           >
-            Collection status
+            Trạng thái thu thập
           </SidebarItem>
           <SidebarItem
             icon={isDark ? <Sun /> : <Moon />}
             collapsed={rail}
             onClick={toggleTheme}
-            title={isDark ? "Switch to light theme" : "Switch to dark theme"}
+            title={isDark ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối"}
           >
-            {isDark ? "Light appearance" : "Dark appearance"}
+            {isDark ? "Giao diện sáng" : "Giao diện tối"}
           </SidebarItem>
           <div className="sidebar-collapse">
             <SidebarItem
               icon={rail ? <PanelLeftOpen /> : <PanelLeftClose />}
               collapsed={rail}
               onClick={() => setCollapsed(!collapsed)}
-              title={rail ? "Expand sidebar" : "Collapse sidebar"}
+              title={rail ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
             >
-              {rail ? "Expand sidebar" : "Collapse sidebar"}
+              {rail ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
             </SidebarItem>
           </div>
         </div>
       }
     >
-      <SidebarSection label="Workspace" collapsed={rail}>
+      <SidebarSection label="Không gian làm việc" collapsed={rail}>
         <SidebarItem
           icon={<Network />}
           active={view === "graph"}
           collapsed={rail}
           onClick={() => chooseView("graph")}
           count={data?.nodes.length}
-          title="Trend graph"
+          title="Đồ thị xu hướng"
         >
-          Trend graph
+          Đồ thị xu hướng
         </SidebarItem>
         <SidebarItem
           icon={<ListOrdered />}
@@ -629,9 +629,9 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
           collapsed={rail}
           onClick={() => chooseView("board")}
           count={data?.nodes.length}
-          title="Topic board"
+          title="Bảng chủ đề"
         >
-          Topic board
+          Bảng chủ đề
         </SidebarItem>
         <SidebarItem
           icon={<Activity />}
@@ -639,20 +639,20 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
           collapsed={rail}
           onClick={() => chooseView("watchlists")}
           count={watches.unread || undefined}
-          title="Watchlists and alerts"
+          title="Theo dõi và cảnh báo"
         >
-          Watchlists &amp; alerts
+          Theo dõi &amp; cảnh báo
         </SidebarItem>
       </SidebarSection>
-      <SidebarSection label="Sources" collapsed={rail}>
+      <SidebarSection label="Nguồn dữ liệu" collapsed={rail}>
         <SidebarItem
           icon={<Circle className="size-3" />}
           active={!sourceId}
           collapsed={rail}
           onClick={() => chooseSource(null)}
-          title="All collected sources"
+          title="Tất cả nguồn đã thu thập"
         >
-          All sources
+          Tất cả nguồn
         </SidebarItem>
         {(data?.coverage ?? []).map((row) => (
           <SidebarItem
@@ -665,14 +665,14 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
             title={
               row.error
                 ? `${row.label}: ${row.error}`
-                : `${row.label} — ${NEWS_SOURCES.has(row.source) ? "news publisher feed" : "community discussion feed"}`
+                : `${row.label} — ${NEWS_SOURCES.has(row.source) ? "nguồn báo chí" : "nguồn cộng đồng"}`
             }
           >
             {row.label}
           </SidebarItem>
         ))}
         {!data && !rail && (
-          <p className="px-4 py-2 text-[12px] text-fg-3">Feeds appear after connection.</p>
+          <p className="px-4 py-2 text-[12px] text-fg-3">Nguồn sẽ hiện sau khi kết nối.</p>
         )}
       </SidebarSection>
     </Sidebar>
@@ -962,7 +962,11 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
   return (
     <>
       <a className="skip-link" href="#graph-workspace">
-        {view === "board" ? "Skip to topic board" : "Skip to graph"}
+        {view === "watchlists"
+          ? "Chuyển đến theo dõi"
+          : view === "board"
+            ? "Chuyển đến bảng chủ đề"
+            : "Chuyển đến đồ thị"}
       </a>
       <Shell
         collapsed={collapsed}
@@ -973,13 +977,15 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               className="mobile-nav-trigger"
               variant="ghost"
               square
-              aria-label="Open source sidebar"
+              aria-label="Mở thanh nguồn dữ liệu"
               onClick={() => setNavOpen(true)}
             >
               <Menu />
             </Button>
             <div className="flex min-w-0 items-center gap-2">
-              {view === "board" ? (
+              {view === "watchlists" ? (
+                <Activity className="size-4 text-fg-3" aria-hidden="true" />
+              ) : view === "board" ? (
                 <ListOrdered className="size-4 text-fg-3" aria-hidden="true" />
               ) : (
                 <Network className="size-4 text-fg-3" aria-hidden="true" />
@@ -994,19 +1000,19 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
             </div>
             <div className="ms-auto flex items-center gap-1.5">
               <ThemeToggle
-                className="size-7 rounded-md text-fg-3 hover:text-fg hover:bg-chrome-hover transition-colors"
+                className="size-7 rounded-md text-fg-3 hover:text-fg hover:bg-chrome-hover"
                 iconClassName="size-3.5"
                 start="top-down"
               />
               {onNavigateHome && (
                 <Button
                   variant="secondary"
-                  size="xs"
+                  size="sm"
                   aria-label="Về trang giới thiệu"
                   onClick={onNavigateHome}
-                  className="gap-1 text-[11px] me-1"
+                  className="gap-1.5 text-[12px] me-1"
                 >
-                  <Home className="size-3" />
+                  <Home className="size-3.5" />
                   <span className="hidden sm:inline">Trang chủ</span>
                 </Button>
               )}
@@ -1018,7 +1024,7 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               <Button
                 variant="ghost"
                 square
-                aria-label={view === "board" ? "Refresh topics" : "Refresh the map"}
+                aria-label={view === "board" ? "Làm mới chủ đề" : "Làm mới đồ thị"}
                 disabled={map.isFetching}
                 onClick={() => void map.refetch()}
               >
@@ -1027,7 +1033,7 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               <Button
                 variant="ghost"
                 square
-                aria-label="How topics and potential work"
+                aria-label="Cách tính chủ đề và điểm tiềm năng"
                 onClick={() => setAboutOpen(true)}
               >
                 <Info />
@@ -1070,26 +1076,23 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
               <div className="min-w-0">
                 <p className="text-[11px] font-medium text-fg-2">
                   {view === "watchlists"
-                    ? "All-source watches · in-app notifications"
+                    ? "Theo dõi toàn nguồn · thông báo trong ứng dụng"
                     : sourceLabel}
                 </p>
                 <p className="mt-1 max-w-[36ch] text-[11px] text-fg-3">
                   {data
                     ? sourceId
-                      ? `${topics.length} of ${data.nodes.length} topics from ${sourceLabel} · last ${windowText}`
-                      : `${topics.length} topic${topics.length === 1 ? "" : "s"} · last ${windowText}`
-                    : "Connecting to collected signals"}
+                      ? `${topics.length} / ${data.nodes.length} chủ đề từ ${sourceLabel} · ${windowText} qua`
+                      : `${topics.length} chủ đề · ${windowText} qua`
+                    : "Đang kết nối tín hiệu đã thu thập"}
                 </p>
                 {data && (stale || (stats?.pendingEmbeddings ?? 0) > 0 || stats?.limited) && (
                   <p className="mt-1 flex max-w-[42ch] flex-wrap items-center gap-1 text-[10.5px] text-fg-3">
-                    {stale && <Badge>Stale · {formatRelative(data.generatedAt)}</Badge>}
+                    {stale && <Badge>Dữ liệu cũ · {formatRelative(data.generatedAt)}</Badge>}
                     {(stats?.pendingEmbeddings ?? 0) > 0 && (
-                      <Badge>
-                        {stats?.pendingEmbeddings} post
-                        {stats?.pendingEmbeddings === 1 ? "" : "s"} awaiting embeddings
-                      </Badge>
+                      <Badge>{stats?.pendingEmbeddings} bài chờ nhúng vector</Badge>
                     )}
-                    {stats?.limited && <Badge>Bounded sample</Badge>}
+                    {stats?.limited && <Badge>Mẫu giới hạn</Badge>}
                   </p>
                 )}
               </div>
@@ -1269,7 +1272,12 @@ export function TrendMapPage({ onNavigateHome }: { onNavigateHome?: () => void }
       </Shell>
       {dialogsEnabled && (
         <Suspense fallback={null}>
-          <Dialog open={navOpen} onOpenChange={setNavOpen} title="Workspace and sources" size="sm">
+          <Dialog
+            open={navOpen}
+            onOpenChange={setNavOpen}
+            title="Không gian & nguồn dữ liệu"
+            size="sm"
+          >
             <div className="mobile-sidebar">{sidebar(false)}</div>
           </Dialog>
           <Dialog

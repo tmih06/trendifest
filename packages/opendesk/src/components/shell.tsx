@@ -21,7 +21,7 @@ export function Shell({
 }) {
   return (
     <div className="od-shell" data-collapsed={collapsed ? "" : undefined}>
-      <div className="od-shell-header">{header}</div>
+      <header className="od-shell-header">{header}</header>
       <div className="od-shell-body">
         <aside className="od-shell-nav">{sidebar}</aside>
         <main className="od-shell-panel">

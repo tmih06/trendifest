@@ -100,7 +100,7 @@ export function Dialog({
                 </D.Description>
               )}
             </div>
-            <div className="-mr-2 -mt-1 flex shrink-0 items-center gap-0.5">
+            <div className="-me-2 -mt-1 flex shrink-0 items-center gap-0.5">
               <D.Close
                 aria-label="Close"
                 className="flex size-7 shrink-0 items-center justify-center rounded-md text-fg-4 transition-colors hover:bg-hover hover:text-fg"
@@ -109,7 +109,9 @@ export function Dialog({
               </D.Close>
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">{children}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-3">
+            {children}
+          </div>
           {footer && (
             <div className="flex items-center justify-end gap-2 border-t border-line bg-sunken px-5 py-3">
               {footer}

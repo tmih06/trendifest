@@ -10,7 +10,7 @@ import { Spinner } from "./spinner.tsx";
 // so a caller's `text-fg-3` in the utilities layer still outranks it without a
 // class-merging library.
 const base =
-  "relative inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-medium transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-150 ease-out active:scale-[0.97] disabled:pointer-events-none disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:shrink-0";
+  "relative inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-medium transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-150 ease-out enabled:active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 disabled:pointer-events-none disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:shrink-0";
 
 const VARIANTS = {
   primary: "bg-inverse text-inverse-fg hover:bg-inverse-hover disabled:opacity-40",

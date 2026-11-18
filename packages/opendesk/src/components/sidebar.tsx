@@ -109,7 +109,7 @@ export function SidebarItem({
       aria-label={collapsed ? label : undefined}
       title={collapsed ? label : title}
       className={cn(
-        "group relative isolate flex items-center overflow-hidden rounded-md text-left text-[12.5px] transition-[background-color,color] duration-150 ease-out motion-reduce:transition-none",
+        "group relative isolate flex items-center overflow-hidden rounded-md text-start text-[12.5px] transition-[background-color,color] duration-150 ease-out motion-reduce:transition-none",
         "[&>svg]:size-[15px] [&>svg]:shrink-0 [&>svg]:transition-colors",
         // One geometry in both states: the icon keeps the same inset while the
         // rail clips the label, so collapsing never slides it sideways.
@@ -130,8 +130,8 @@ export function SidebarItem({
       {!collapsed && count !== undefined && (
         <span
           className={cn(
-            "mono ml-auto flex shrink-0 text-[11px] tabular-nums",
-            active ? "text-fg-2" : "text-fg-4",
+            "mono ms-auto flex shrink-0 text-[11px] tabular-nums",
+            active ? "text-fg-2" : "text-fg-3",
           )}
         >
           {count >= 1000 ? "999+" : count}

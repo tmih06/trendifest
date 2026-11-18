@@ -8,3 +8,7 @@ dist
 # Local embedding weights and model cache
 .cache
 tsconfig.tsbuildinfo
+
+# Generated video intermediates
+video/rendered/
+video/out/preview-*.png

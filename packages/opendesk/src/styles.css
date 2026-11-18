@@ -282,7 +282,11 @@
     min-width: 0;
     min-height: 0;
     width: 15rem;
-    transition: width 200ms var(--ease-out-soft);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .od-shell-nav {
+      transition: width 200ms var(--ease-out-soft);
+    }
   }
   .od-shell[data-collapsed] .od-shell-nav {
     /* 2 × (row margin 10px + row padding 8px + half a 15px icon) = 51px, so a
@@ -296,9 +300,9 @@
     min-height: 0;
     flex-direction: column;
     overflow: hidden;
-    border-top: 1px solid var(--line);
-    border-left: 1px solid var(--line);
-    border-top-left-radius: 12px;
+    border-block-start: 1px solid var(--line);
+    border-inline-start: 1px solid var(--line);
+    border-start-start-radius: 12px;
     background: var(--surface);
   }
   /* The work panel's content owns the remaining height. One stretched grid row
@@ -326,8 +330,8 @@
       display: none;
     }
     .od-shell-panel {
-      border-left: 0;
-      border-top-left-radius: 0;
+      border-inline-start: 0;
+      border-start-start-radius: 0;
     }
   }
 
@@ -344,6 +348,7 @@
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 4px 0 12px;
   }
   .od-sidebar-footer {

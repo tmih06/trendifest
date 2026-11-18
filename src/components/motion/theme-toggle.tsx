@@ -33,6 +33,10 @@ export interface ThemeToggleProps extends Omit<
   /** Retained for caller compatibility; theme switches immediately. */
   start?: RectStart;
   iconClassName?: string;
+  /** Accessible label when dark theme is active. */
+  lightLabel?: string;
+  /** Accessible label when light theme is active. */
+  darkLabel?: string;
 }
 
 /**
@@ -67,6 +71,8 @@ export function ThemeToggle({
   start: _start,
   className,
   iconClassName = "size-4",
+  lightLabel = "Chuyển sang giao diện sáng",
+  darkLabel = "Chuyển sang giao diện tối",
   ...rest
 }: ThemeToggleProps) {
   const { isDark, mounted, toggle } = useThemeToggle();
@@ -74,10 +80,10 @@ export function ThemeToggle({
   return (
     <button
       type="button"
-      aria-label={mounted && isDark ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối"}
+      aria-label={mounted && isDark ? lightLabel : darkLabel}
       onClick={toggle}
       className={cn(
-        "flex items-center justify-center rounded-lg p-2 transition-colors duration-150 enabled:active:scale-[0.96]",
+        "flex items-center justify-center rounded-lg p-2 transition-[background-color,color,transform] duration-150 ease-out enabled:active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100",
         className,
       )}
       {...rest}
