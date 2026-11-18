@@ -115,6 +115,7 @@ createRoot(container).render(
         attribute="class"
         defaultTheme="light"
         enableSystem={false}
+        disableTransitionOnChange
         storageKey="trendifest-theme"
       >
         <App />
