@@ -1,40 +1,21 @@
-import {
-  Activity,
-  ArrowRight,
-  ArrowUpRight,
-  BrainCircuit,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  Clock,
-  Compass,
-  Cpu,
-  ExternalLink,
-  Eye,
-  FileCheck2,
-  Film,
-  Flame,
-  Globe2,
-  Headphones,
-  HelpCircle,
-  History,
-  Layers,
-  Lock,
-  MessageSquare,
-  Network,
-  PlayCircle,
-  Radio,
-  Shield,
-  ShieldCheck,
-  Sparkles,
-  Star,
-  TrendingUp,
-  Users,
-  Video,
-  X,
-  Zap,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import ArrowRight from "lucide-react/icons/arrow-right";
+import ArrowUpRight from "lucide-react/icons/arrow-up-right";
+import Bell from "lucide-react/icons/bell";
+import Check from "lucide-react/icons/check";
+import ChevronDown from "lucide-react/icons/chevron-down";
+import Cpu from "lucide-react/icons/cpu";
+import Database from "lucide-react/icons/database";
+import FileText from "lucide-react/icons/file-text";
+import GitMerge from "lucide-react/icons/git-merge";
+import Layers from "lucide-react/icons/layers";
+import ListOrdered from "lucide-react/icons/list-ordered";
+import Lock from "lucide-react/icons/lock";
+import Menu from "lucide-react/icons/menu";
+import MessageSquare from "lucide-react/icons/message-square";
+import Network from "lucide-react/icons/network";
+import ShieldCheck from "lucide-react/icons/shield-check";
+import X from "lucide-react/icons/x";
+import { useMemo, useState } from "react";
 import { cn } from "@trendifest/opendesk";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 
@@ -43,575 +24,656 @@ export interface LandingPageProps {
 }
 
 /* ------------------------------------------------------------------ *
- * Static data for specs & storytelling                               *
+ * Grounded domain data (mirrors README.md & shared/segments.ts)      *
  * ------------------------------------------------------------------ */
 
-interface DataStreamNode {
-  name: string;
-  category: string;
-  icon: typeof Sparkles;
-  color: string;
-  top: string;
-  left?: string;
-  right?: string;
-  anim: string;
-  delay: string;
+interface PreviewTopic {
+  id: string;
+  title: string;
+  potential: number;
+  phase: "Đang tăng" | "Duy trì" | "Hạ nhiệt";
+  accounts: number;
+  publishers: number;
+  links: number;
+  cx: number;
+  cy: number;
+  r: number;
+  related: { id: string; label: string; similarity: string }[];
+  examples: {
+    source: string;
+    kind: "Cộng đồng" | "Báo chí";
+    byline: string;
+    time: string;
+    excerpt: string;
+  }[];
 }
 
-const DATA_STREAM_LEFT: DataStreamNode[] = [
+type WindowKey = "24h" | "3d" | "7d";
+
+const PREVIEW_WINDOWS: Record<
+  WindowKey,
   {
-    name: "Bluesky Jetstream",
-    category: "AT Protocol v2 Tail",
-    icon: Radio,
-    color: "#38bdf8",
-    top: "10%",
-    left: "2%",
-    anim: "animate-float-1",
-    delay: "0s",
+    windowLabel: string;
+    topicCount: string;
+    linkCount: string;
+    topics: PreviewTopic[];
+  }
+> = {
+  "24h": {
+    windowLabel: "24 giờ qua",
+    topicCount: "312 chủ đề",
+    linkCount: "74 liên kết đo được",
+    topics: [
+      {
+        id: "metro-ben-thanh",
+        title: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+        potential: 78,
+        phase: "Đang tăng",
+        accounts: 19,
+        publishers: 4,
+        links: 3,
+        cx: 248,
+        cy: 146,
+        r: 18,
+        related: [
+          {
+            id: "ve-lien-thong",
+            label: "Đề xuất giá vé liên thông xe buýt – đường sắt đô thị",
+            similarity: "0.824",
+          },
+          {
+            id: "bai-gui-xe",
+            label: "Bố trí bãi gửi xe cá nhân dọc nhà ga trên cao",
+            similarity: "0.781",
+          },
+        ],
+        examples: [
+          {
+            source: "VOZ",
+            kind: "Cộng đồng",
+            byline: "voz_member_418",
+            time: "Hoạt động 2 giờ trước",
+            excerpt:
+              "Từ Thủ Đức đi vào trung tâm sáng nay có thêm tuyến gom mới, đỡ kẹt đoạn ngã tư Thủ Đức hơn hẳn.",
+          },
+          {
+            source: "Tuổi Trẻ",
+            kind: "Báo chí",
+            byline: "Tuổi Trẻ",
+            time: "Xuất bản 4 giờ trước",
+            excerpt:
+              "Trung tâm Quản lý Giao thông công cộng TP.HCM điều chỉnh lộ trình 17 tuyến buýt gom hành khách qua các ga.",
+          },
+        ],
+      },
+      {
+        id: "ve-lien-thong",
+        title: "Đề xuất giá vé liên thông xe buýt – đường sắt đô thị",
+        potential: 64,
+        phase: "Duy trì",
+        accounts: 12,
+        publishers: 3,
+        links: 2,
+        cx: 386,
+        cy: 112,
+        r: 14,
+        related: [
+          {
+            id: "metro-ben-thanh",
+            label: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+            similarity: "0.824",
+          },
+        ],
+        examples: [
+          {
+            source: "VnExpress",
+            kind: "Báo chí",
+            byline: "VnExpress",
+            time: "Xuất bản 5 giờ trước",
+            excerpt:
+              "Phương án vé tích hợp theo ngày và theo tháng giúp giảm chi phí chuyển tuyến cho người đi làm.",
+          },
+        ],
+      },
+      {
+        id: "bai-gui-xe",
+        title: "Bố trí bãi gửi xe cá nhân dọc nhà ga trên cao",
+        potential: 57,
+        phase: "Đang tăng",
+        accounts: 9,
+        publishers: 2,
+        links: 1,
+        cx: 344,
+        cy: 236,
+        r: 12,
+        related: [
+          {
+            id: "metro-ben-thanh",
+            label: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+            similarity: "0.781",
+          },
+        ],
+        examples: [
+          {
+            source: "Otofun",
+            kind: "Cộng đồng",
+            byline: "of_driver_92",
+            time: "Hoạt động 6 giờ trước",
+            excerpt:
+              "Nếu bãi gửi xe máy ở các ga vành đai đủ rộng thì người ở xa mới bỏ xe đi tàu vào nội đô được.",
+          },
+        ],
+      },
+    ],
+  },
+  "3d": {
+    windowLabel: "3 ngày qua",
+    topicCount: "684 chủ đề",
+    linkCount: "168 liên kết đo được",
+    topics: [
+      {
+        id: "metro-ben-thanh",
+        title: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+        potential: 82,
+        phase: "Đang tăng",
+        accounts: 34,
+        publishers: 5,
+        links: 3,
+        cx: 248,
+        cy: 146,
+        r: 19,
+        related: [
+          {
+            id: "ve-lien-thong",
+            label: "Đề xuất giá vé liên thông xe buýt – đường sắt đô thị",
+            similarity: "0.831",
+          },
+          {
+            id: "bai-gui-xe",
+            label: "Bố trí bãi gửi xe cá nhân dọc nhà ga trên cao",
+            similarity: "0.795",
+          },
+        ],
+        examples: [
+          {
+            source: "Thanh Niên",
+            kind: "Báo chí",
+            byline: "Thanh Niên",
+            time: "Xuất bản 1 ngày trước",
+            excerpt:
+              "Ghi nhận lượng hành khách chuyển tiếp tại ga Bến Thành và Suối Tiên tăng đều trong khung giờ cao điểm.",
+          },
+          {
+            source: "VOZ",
+            kind: "Cộng đồng",
+            byline: "voz_member_104",
+            time: "Hoạt động 1 ngày trước",
+            excerpt:
+              "Ai đi tuyến buýt điện 155 rồi cho xin nhận xét giờ chạy thực tế buổi chiều có đúng lịch không.",
+          },
+        ],
+      },
+      {
+        id: "ve-lien-thong",
+        title: "Đề xuất giá vé liên thông xe buýt – đường sắt đô thị",
+        potential: 68,
+        phase: "Duy trì",
+        accounts: 16,
+        publishers: 4,
+        links: 2,
+        cx: 386,
+        cy: 112,
+        r: 15,
+        related: [
+          {
+            id: "metro-ben-thanh",
+            label: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+            similarity: "0.831",
+          },
+        ],
+        examples: [
+          {
+            source: "Dân trí",
+            kind: "Báo chí",
+            byline: "Dân trí",
+            time: "Xuất bản 2 ngày trước",
+            excerpt:
+              "Đơn vị vận hành thử nghiệm thanh toán không tiền mặt liên thông giữa các phương thức công cộng.",
+          },
+        ],
+      },
+      {
+        id: "bai-gui-xe",
+        title: "Bố trí bãi gửi xe cá nhân dọc nhà ga trên cao",
+        potential: 59,
+        phase: "Duy trì",
+        accounts: 14,
+        publishers: 3,
+        links: 1,
+        cx: 344,
+        cy: 236,
+        r: 13,
+        related: [
+          {
+            id: "metro-ben-thanh",
+            label: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+            similarity: "0.795",
+          },
+        ],
+        examples: [
+          {
+            source: "Otofun",
+            kind: "Cộng đồng",
+            byline: "of_driver_92",
+            time: "Hoạt động 2 ngày trước",
+            excerpt:
+              "Các bãi giữ xe quanh ga cần công khai sức chứa theo giờ để người đi làm chủ động sắp xếp.",
+          },
+        ],
+      },
+    ],
+  },
+  "7d": {
+    windowLabel: "7 ngày qua",
+    topicCount: "1.420 chủ đề",
+    linkCount: "377 liên kết đo được",
+    topics: [
+      {
+        id: "metro-ben-thanh",
+        title: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+        potential: 84,
+        phase: "Duy trì",
+        accounts: 48,
+        publishers: 6,
+        links: 3,
+        cx: 248,
+        cy: 146,
+        r: 20,
+        related: [
+          {
+            id: "ve-lien-thong",
+            label: "Đề xuất giá vé liên thông xe buýt – đường sắt đô thị",
+            similarity: "0.842",
+          },
+          {
+            id: "bai-gui-xe",
+            label: "Bố trí bãi gửi xe cá nhân dọc nhà ga trên cao",
+            similarity: "0.804",
+          },
+        ],
+        examples: [
+          {
+            source: "VnExpress",
+            kind: "Báo chí",
+            byline: "VnExpress",
+            time: "Xuất bản 3 ngày trước",
+            excerpt:
+              "Mạng lưới tuyến gom giúp mở rộng bán kính tiếp cận nhà ga cho sinh viên và nhân viên văn phòng.",
+          },
+          {
+            source: "VOZ",
+            kind: "Cộng đồng",
+            byline: "voz_member_418",
+            time: "Hoạt động 4 ngày trước",
+            excerpt:
+              "Tổng hợp các tuyến buýt đi ngang qua ga Thảo Điền và An Phú kèm thời gian giãn cách chuyến.",
+          },
+        ],
+      },
+      {
+        id: "ve-lien-thong",
+        title: "Đề xuất giá vé liên thông xe buýt – đường sắt đô thị",
+        potential: 71,
+        phase: "Duy trì",
+        accounts: 21,
+        publishers: 4,
+        links: 2,
+        cx: 386,
+        cy: 112,
+        r: 15,
+        related: [
+          {
+            id: "metro-ben-thanh",
+            label: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+            similarity: "0.842",
+          },
+        ],
+        examples: [
+          {
+            source: "Người Việt",
+            kind: "Báo chí",
+            byline: "Người Việt",
+            time: "Xuất bản 5 ngày trước",
+            excerpt:
+              "Chuyên gia giao thông đề xuất chính sách trợ giá vé tháng để khuyến khích chuyển đổi thói quen đi lại.",
+          },
+        ],
+      },
+      {
+        id: "bai-gui-xe",
+        title: "Bố trí bãi gửi xe cá nhân dọc nhà ga trên cao",
+        potential: 55,
+        phase: "Hạ nhiệt",
+        accounts: 15,
+        publishers: 3,
+        links: 1,
+        cx: 344,
+        cy: 236,
+        r: 12,
+        related: [
+          {
+            id: "metro-ben-thanh",
+            label: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+            similarity: "0.804",
+          },
+        ],
+        examples: [
+          {
+            source: "Otofun",
+            kind: "Cộng đồng",
+            byline: "of_driver_92",
+            time: "Hoạt động 6 ngày trước",
+            excerpt:
+              "Nhiều khu vực quanh nhà ga vẫn thiếu điểm trung chuyển an toàn cho xe máy gửi qua ngày.",
+          },
+        ],
+      },
+    ],
+  },
+};
+
+const COMMUNITY_SOURCES = [
+  {
+    name: "VOZ",
+    endpoint: "voz.vn/f/17/index.rss",
+    note: "Trích đoạn bài mở đầu và thời gian hoạt động diễn đàn",
   },
   {
-    name: "Threads Graph API",
-    category: "Meta Multi-post Stream",
-    icon: MessageSquare,
-    color: "#f43f5e",
-    top: "28%",
-    left: "5%",
-    anim: "animate-float-2",
-    delay: "1.2s",
-  },
-  {
-    name: "TikTok Research API",
-    category: "Viral Audio Signals",
-    icon: Video,
-    color: "#22d3ee",
-    top: "48%",
-    left: "3%",
-    anim: "animate-float-1",
-    delay: "2.4s",
-  },
-  {
-    name: "CapCut Templates",
-    category: "Video Remix Clusters",
-    icon: Film,
-    color: "#e879f9",
-    top: "68%",
-    left: "6%",
-    anim: "animate-float-2",
-    delay: "0.8s",
+    name: "Otofun",
+    endpoint: "otofun.net.vn/forums/77/index.rss",
+    note: "Thảo luận cộng đồng công khai kèm định danh nguồn",
   },
 ];
 
-const DATA_STREAM_RIGHT: DataStreamNode[] = [
-  {
-    name: "Hawkes Point Process",
-    category: "Diffusion Forecasting",
-    icon: TrendingUp,
-    color: "#34d399",
-    top: "10%",
-    right: "2%",
-    anim: "animate-float-2",
-    delay: "0.5s",
-  },
-  {
-    name: "CLIP ViT-B/32",
-    category: "Multimodal Embeddings",
-    icon: Eye,
-    color: "#fbbf24",
-    top: "28%",
-    right: "5%",
-    anim: "animate-float-1",
-    delay: "1.8s",
-  },
-  {
-    name: "Temporal GNN",
-    category: "Dynamic Link Prediction",
-    icon: Network,
-    color: "#a78bfa",
-    top: "48%",
-    right: "3%",
-    anim: "animate-float-2",
-    delay: "0.3s",
-  },
-  {
-    name: "Demucs Audio Stems",
-    category: "PeakNetFP Fingerprint",
-    icon: Headphones,
-    color: "#818cf8",
-    top: "68%",
-    right: "6%",
-    anim: "animate-float-1",
-    delay: "2.1s",
-  },
-];
-
-interface MarketStat {
-  value: string;
-  label: string;
-  description: string;
-}
-
-const MARKET_STATS: MarketStat[] = [
-  {
-    value: "79+ Triệu",
-    label: "Tài khoản MXH tại Việt Nam",
-    description:
-      "Chiếm 77,6% dân số (DataReportal 2026), tạo ra hàng chục triệu tương tác mỗi ngày.",
-  },
-  {
-    value: "6 – 24 Giờ",
-    label: "Cảnh báo sớm trước đỉnh sóng",
-    description:
-      "Nhận diện đốm lửa bộc phát ngay từ cộng đồng ngách trước khi xuất hiện trên Google Trends.",
-  },
-  {
-    value: "100%",
-    label: "Phân tích Đa phương thức",
-    description: "Bóc tách đồng thời văn bản, meme hình ảnh, dấu vân tay âm thanh và video CapCut.",
-  },
-  {
-    value: "0 Cloud Leak",
-    label: "An toàn dữ liệu tuyệt đối",
-    description:
-      "Toàn bộ vector nhúng AI chạy cục bộ (Local Inference), không chia sẻ ra bên thứ ba.",
-  },
-];
-
-const DATA_SOURCES = [
-  {
-    name: "Bluesky AT Protocol",
-    category: "Mạng xã hội mở",
-    icon: Radio,
-  },
-  {
-    name: "Meta Threads API",
-    category: "Đồ thị đối thoại",
-    icon: MessageSquare,
-  },
-  {
-    name: "TikTok Research API",
-    category: "Âm thanh & Video",
-    icon: Video,
-  },
-  {
-    name: "HuggingFace Local AI",
-    category: "Vector Embedding",
-    icon: Sparkles,
-  },
-  {
-    name: "Hawkes Point Process",
-    category: "Mô hình gia tốc",
-    icon: Activity,
-  },
-  {
-    name: "PyTorch Vector Space",
-    category: "Phân cụm đa chiều",
-    icon: Cpu,
-  },
-  {
-    name: "CLIP ViT-B/32",
-    category: "Nhúng đa phương thức",
-    icon: Eye,
-  },
-  {
-    name: "Demucs Audio Stems",
-    category: "Vân tay âm thanh",
-    icon: Headphones,
-  },
-];
-
-const AUDIENCE_SEGMENTS = [
-  {
-    id: "shitpost",
-    name: "Shitposting & Meme",
-    icon: Sparkles,
-    desc: "Cộng đồng meme, joke formats & parody",
-    color: "#a78bfa",
-  },
-  {
-    id: "music",
-    name: "Music Discovery",
-    icon: Headphones,
-    desc: "Âm thanh remix, soundtrack & sample mới",
-    color: "#60a5fa",
-  },
-  {
-    id: "gaming",
-    name: "VTuber & Gaming",
-    icon: Flame,
-    desc: "Fandom gaming, livestream & reaction",
-    color: "#f472b6",
-  },
-  {
-    id: "overheard",
-    name: "Overheard Quotes",
-    icon: MessageSquare,
-    desc: "Ảnh chụp màn hình, câu nói viral & đối thoại",
-    color: "#34d399",
-  },
-  {
-    id: "art",
-    name: "Artists & Fandom",
-    icon: Eye,
-    desc: "Tranh vẽ OC, xu hướng thẩm mỹ thị giác",
-    color: "#fbbf24",
-  },
-  {
-    id: "film",
-    name: "Film & Pop Culture",
-    icon: Film,
-    desc: "Thảo luận điện ảnh, show thực tế & thần tượng",
-    color: "#a3e635",
-  },
-  {
-    id: "campus",
-    name: "Đời sống Gen Z",
-    icon: Clock,
-    desc: "Học đường, sinh viên & nhịp điệu thường nhật",
-    color: "#38bdf8",
-  },
-  {
-    id: "creator",
-    name: "Creator & AI Tech",
-    icon: Zap,
-    desc: "Xu hướng CapCut, prompt AI & mẹo sáng tạo",
-    color: "#f59e0b",
-  },
+const NEWS_SOURCES = [
+  { name: "VnExpress", detail: "13 chuyên mục RSS chính thức" },
+  { name: "Tuổi Trẻ", detail: "14 chuyên mục RSS (múi giờ UTC+7)" },
+  { name: "Thanh Niên", detail: "14 chuyên mục RSS chính thức" },
+  { name: "Dân trí", detail: "12 chuyên mục RSS, tái xác thực ETag" },
+  { name: "Người Việt", detail: "Mục Việt Nam qua WordPress REST" },
+  { name: "Google News VN", detail: "Trang nhất tin tức tổng hợp tiếng Việt" },
 ];
 
 const COMPARISON_ROWS = [
   {
-    criteria: "Cách tiếp cận",
+    criteria: "Phân biệt nguồn chứng cứ",
     traditional:
-      "Đợi người dùng gõ từ khóa trên Google hoặc đếm lượt xem (Views/Likes) bề nổi sau khi bài đã viral.",
+      "Gộp chung tin báo chí, bài đăng cộng đồng và lượt chia sẻ thành một tổng lượt nhắc chung.",
     trendifest:
-      "Quét trực tiếp tín hiệu bất thường từ bài viết, âm thanh và mẫu dựng video rải rác ngay từ lúc mới đăng.",
+      "Tách riêng số tài khoản cộng đồng độc lập với số đầu báo; tin tức không bao giờ bị tính thành người dùng.",
   },
   {
-    criteria: "Thời điểm phát hiện",
+    criteria: "Cách gom nhóm chủ đề",
     traditional:
-      "Sau 3 – 5 ngày: Khi trend đã phủ sóng triệu view, thương hiệu nhảy vào thì chi phí quảng cáo đã tăng vọt.",
+      "Phụ thuộc từ khóa hoặc hashtag định sẵn, dễ bỏ sót các tiêu đề viết khác nhau về cùng một sự việc.",
     trendifest:
-      "Trước 6 – 24 giờ: Ngay từ khi trend chỉ là mẩu chuyện cười hoặc đoạn nhạc ngách trong một tiểu nhóm.",
+      "Nhúng cục bộ bằng multilingual-e5-small và gom cụm liên kết hoàn chỉnh, tách riêng từng phiên bản hoặc sự kiện.",
   },
   {
-    criteria: "Bản chất trào lưu",
+    criteria: "Chống thổi phồng số liệu",
     traditional:
-      "Chỉ theo dõi được chữ (Text) và hashtag đã có tên gọi cụ thể; hoàn toàn mù tịt trước meme hình và âm thanh.",
+      "Một tin phát hành lại trên nhiều chuyên mục hoặc bài chép nguyên văn dễ làm tăng giả tạo mức độ quan tâm.",
     trendifest:
-      "Nhận diện cả Meme ảnh biến thể, Điệu nhảy, Dấu vân tay âm thanh (Audio Fingerprint) và Cấu trúc câu đùa.",
+      "Khử trùng lặp bài đăng giống hệt và tiêu đề báo đồng phát hành; chỉ tính mỗi tác giả hoặc đầu báo độc lập một lần.",
   },
   {
-    criteria: "Độ tin cậy & Chống gian lận",
+    criteria: "Khả năng kiểm chứng",
     traditional:
-      "Dễ bị thao túng bởi bot ảo cày view, spam hàng nghìn bài viết từ một vài tài khoản mạng lưới.",
+      "Hiển thị điểm số hộp đen hoặc nhận định sinh tự động mà không gắn liền với bằng chứng gốc.",
     trendifest:
-      "Đo lường bằng số lượng Tác Giả Độc Lập Thực Tế (Independent Authors) và hiện tượng di tản xuyên cộng đồng.",
+      "Mỗi điểm số đều kèm thành phần cấu thành, mốc quan sát theo giờ và liên kết trực tiếp về bài viết nguồn.",
   },
 ];
 
-const TIMELINE_STEPS = [
+const PIPELINE_STEPS = [
   {
-    time: "T0",
-    badge: "Phát hiện tín hiệu yếu",
-    title: "Thu thập tín hiệu mới chớm",
-    description:
-      "Hệ thống ghi nhận các bài đăng chứa từ lóng mới hoặc đoạn nhạc remix vừa xuất hiện rải rác trên Threads và Bluesky với lượng like ban đầu chỉ dưới 50.",
-    signal: "5 bài đăng • 4 tác giả • Tần suất tăng 320% trong 20 phút",
+    step: "01",
+    title: "Thu thập có giới hạn & kiểm lọc tiếng Việt",
+    summary:
+      "Đọc các nguồn RSS/REST công khai theo chu kỳ (tối đa 500–1.000 bản ghi/nguồn), chuẩn hóa Unicode, cắt ở 2.000 ký tự và lọc ngôn ngữ bằng franc-min.",
+    detail:
+      "Loại bỏ bản ghi quá 30 ngày, văn bản dưới 25 chữ cái hoặc bài tiếng Anh nhắc đến Việt Nam. Giữ nguyên phân loại nguồn báo chí và diễn đàn ngay từ đầu vào.",
   },
   {
-    time: "T + 1h",
-    badge: "Phân tích đa phương thức & Gom cụm",
-    title: "Trích xuất đặc trưng & Gom cụm Sự kiện",
-    description:
-      "AI giải mã chữ trong ảnh (OCR), tách âm thanh (Demucs) và đối chiếu dấu vân tay âm thanh. Tất cả các biến thể được gom vào một cụm sự kiện (Complete-linkage Event Graph).",
-    signal: "18 biến thể video CapCut • Khớp dấu vân tay nhạc mẫu • Độ gắn kết centroid 0.81",
+    step: "02",
+    title: "Suy luận vector hoàn toàn cục bộ",
+    summary:
+      "Tính vector 384 chiều bằng Xenova/multilingual-e5-small ngay trên máy chủ nội bộ; không gửi nội dung bài viết ra API bên ngoài.",
+    detail:
+      "Ngoài E5 cho định danh chủ đề, hệ thống lưu trữ thêm không gian MiniLM, CLIP và CLAP phục vụ truy vấn tìm kiếm đa phương thức và khử trùng lặp gần giống.",
   },
   {
-    time: "T + 2h",
-    badge: "Dự báo lan truyền (Diffusion Forecasting)",
-    title: "Mô hình Hawkes Process kích hoạt",
-    description:
-      "Thuật toán phát hiện sự kiện 'vượt biên' từ cộng đồng Gaming sang cộng đồng Shitposting & Hài hước. Mô hình Hawkes tính toán gia tốc lan truyền tự kích hoạt.",
-    signal: "Xác suất bùng nổ thành Trend trong 12h tới: 74% (Khoảng tin cậy: 68% - 81%)",
+    step: "03",
+    title: "Gom cụm hoàn chỉnh & nối liên kết đo được",
+    summary:
+      "Bản ghi mới phải đạt ngưỡng tương đồng với mọi thành viên trong cụm (complete-linkage) và vượt qua kiểm tra thực thể, phiên bản, địa danh.",
+    detail:
+      "Nhờ vậy, GPT-5 và GPT-4.1 đứng thành hai nốt riêng nhưng vẫn nối với nhau qua ngữ nghĩa chung, tối đa 3 liên kết mỗi chủ đề và giữ nguyên các nốt độc lập.",
   },
   {
-    time: "T + 2.5h",
-    badge: "Thẻ cảnh báo & Minh chứng",
-    title: "Bắn Alert Card kèm bằng chứng kiểm chứng",
-    description:
-      "Hệ thống phát tín hiệu cảnh báo tới giao diện Analyst Console của doanh nghiệp, đính kèm link bài gốc, mức độ bất định và đề xuất kịch bản truyền thông đón đầu.",
-    signal: "Đội ngũ Marketing lên kế hoạch trước 18 giờ trước khi trào lưu chạm đỉnh!",
+    step: "04",
+    title: "Kiểm duyệt gộp/tách & theo dõi ngưỡng cảnh báo",
+    summary:
+      "Người phân tích có thể gộp chủ đề bị tách nhầm hoặc tách riêng một tập bản ghi kèm ghi chú kiểm toán và lịch sử hoàn tác an toàn.",
+    detail:
+      "Tính năng Watchlist theo dõi chủ đề hoặc thực thể với mốc tham chiếu mới (baseline), đánh giá định kỳ và phát thông báo ngay trong ứng dụng.",
   },
 ];
 
-const TECH_PILLARS = [
+const SCORE_WEIGHTS = [
   {
-    number: "01",
-    icon: Zap,
-    title: "Lớp Phát Hiện Tín Hiệu Yếu (Weak Signal & Burst Detection)",
-    description:
-      "Ứng dụng thuật toán phát hiện đột biến chuỗi thời gian của Kleinberg kết hợp Detector Ensemble. Tự động nhận diện các từ lóng mới, biến thể ngôn ngữ vừa xuất hiện dù tần suất ban đầu còn rất thấp nhưng có gia tốc đột ngột.",
-    tags: ["Kleinberg Burst", "Detector Ensemble", "Slang Normalization"],
+    name: "Reach (Độ phủ nguồn)",
+    weight: 34,
+    description: "Số tài khoản cộng đồng độc lập và đầu báo đưa tin, quy đổi theo thang logarit.",
+    accent: true,
   },
   {
-    number: "02",
-    icon: BrainCircuit,
-    title: "Lớp Ngữ Cảnh Đa Phương Thức (Multimodal Intelligence)",
+    name: "Velocity (Gia tốc)",
+    weight: 26,
     description:
-      "Âm thanh: Tách dải âm Demucs, tạo vân tay âm thanh PeakNetFP & chuyển thoại WhisperX. Hình ảnh/Video: CLIP Vision trích xuất khung hình và đối sánh mẫu dựng CapCut. Văn bản: Chuẩn hóa tiếng lóng Gen Z Việt Nam và gán nhãn lập trường.",
-    tags: ["CLIP ViT-B/32", "CLAP Audio", "MiniLM Multilingual", "FFmpeg Engine"],
+      "Tốc độ bổ sung nguồn mới độc lập trong hai cửa sổ 6 giờ liên tiếp có quan sát thực.",
+    accent: false,
   },
   {
-    number: "03",
-    icon: TrendingUp,
-    title: "Lớp Dự Báo Lan Truyền (Diffusion Forecasting)",
-    description:
-      "Áp dụng quá trình điểm theo thời gian (Hawkes Process) kết hợp Gradient Boosting và Mạng thần kinh đồ thị thời gian (Temporal GNN). Đầu ra là phân bố xác suất cụ thể (6h, 12h, 24h) kèm khoảng tin cậy minh bạch, tuyệt đối không đoán mò.",
-    tags: ["Hawkes Process", "Temporal GNN", "Velocity Curves", "Confidence Interval"],
+    name: "Spread (Độ lan ngữ cảnh)",
+    weight: 18,
+    description: "Số lượng nguồn thu thập khác nhau cùng ghi nhận chủ đề trong khung thời gian.",
+    accent: false,
   },
   {
-    number: "04",
-    icon: ShieldCheck,
-    title: "Lớp Minh Chứng & Kiểm Chứng (Analyst Console & HITL)",
-    description:
-      "Cung cấp giao diện trực quan với đầy đủ bằng chứng kiểm chứng: đồ thị di chuyển giữa các cộng đồng, nguồn gốc truyền thông và đường dẫn bài viết gốc. Tích hợp cơ chế Con người kiểm duyệt (Human-in-the-loop) ngăn chặn báo động giả.",
-    tags: ["Evidence Grounding", "Human-in-the-loop", "Luật 91/2025/QH15", "Tôn trọng Deletion"],
+    name: "Persistence (Độ bền)",
+    weight: 12,
+    description: "Khoảng thời gian duy trì quan sát liên tục tại hệ thống thu thập.",
+    accent: false,
+  },
+  {
+    name: "Diversity (Độ đa dạng)",
+    weight: 10,
+    description: "Tỷ lệ nguồn độc lập trên tổng số bản ghi chứng cứ thu được của chủ đề.",
+    accent: false,
   },
 ];
 
 const USE_CASES = [
   {
-    id: "brands",
-    tab: "Doanh nghiệp & Thương hiệu",
-    headline: "Đón đầu làn sóng thảo luận trước khi giá thầu quảng cáo leo thang",
+    id: "editorial",
+    tab: "Ban biên tập & Truyền thông",
+    headline: "Đối chiếu nhanh chủ đề nào đang được cả báo chí lẫn diễn đàn bàn luận",
     description:
-      "Rút ngắn thời gian chuẩn bị chiến dịch truyền thông từ 3 ngày xuống còn vài giờ. Nắm bắt xu hướng khi chi phí sáng tạo nội dung và hợp tác với KOCs còn ở mức tối ưu nhất.",
+      "Thay vì dò thủ công từng chuyên mục báo và trang diễn đàn, đội ngũ nội dung mở Bảng chủ đề (Topic Board) để xem thứ hạng toàn bản đồ, giai đoạn tăng/giảm và đường dẫn gốc.",
     points: [
-      "Bắt trend đúng lúc: Tung nội dung khi cộng đồng bắt đầu tò mò, không phải khi mọi người đã bội thực.",
-      "Cảnh báo khủng hoảng sớm: Phát hiện các đợt biến động thảo luận tiêu cực hoặc tranh cãi ngầm trước khi bùng nổ thành khủng hoảng truyền thông.",
-      "Tối ưu ngân sách Ads: Giảm chi phí CPM/CPC nhờ tận dụng lượng thảo luận tự nhiên (organic momentum).",
+      "Tách bạch số liệu: biết rõ một chủ đề đến từ nhiều đầu báo hay từ thảo luận cộng đồng.",
+      "Lọc theo thực thể: tra cứu không dấu tên người, tổ chức, địa danh hoặc phiên bản sản phẩm.",
+      "Đọc trích đoạn nguyên bản và mở thẳng bài báo hoặc chủ đề diễn đàn để xác minh.",
     ],
-    metric: "Tiết kiệm 45% ngân sách marketing đón đầu",
-    previewTitle: "Bảng phân tích thương hiệu (Brand Radar)",
-    previewBadge: "Cảnh báo cơ hội thương hiệu",
-    previewEvent: "Âm thanh 'Nhạc chế Gen Z đi làm' • 78% cơ hội tăng trưởng",
-    previewCommunity: "Gaming → Văn phòng trẻ",
+    artifactTitle: "Bảng chủ đề (Topic Board)",
+    artifactRows: [
+      {
+        rank: "01",
+        label: "Điều chỉnh lộ trình xe buýt kết nối tuyến Metro số 1",
+        score: "84/100",
+        meta: "48 tài khoản · 6 đầu báo · Đang duy trì",
+      },
+      {
+        rank: "02",
+        label: "Đề xuất giá vé liên thông xe buýt – đường sắt đô thị",
+        score: "71/100",
+        meta: "21 tài khoản · 4 đầu báo · Đang tăng",
+      },
+      {
+        rank: "03",
+        label: "Bố trí bãi gửi xe cá nhân dọc nhà ga trên cao",
+        score: "55/100",
+        meta: "15 tài khoản · 3 đầu báo · Hạ nhiệt",
+      },
+    ],
   },
   {
-    id: "agencies",
-    tab: "Marketing & Creative Agencies",
-    headline: "Thuyết phục khách hàng bằng số liệu dự báo xác suất khoa học",
+    id: "research",
+    tab: "Nghiên cứu xã hội số",
+    headline: "Ghi nhận chuỗi quan sát thực tế và kiểm soát chất lượng gom cụm",
     description:
-      "Tạm biệt các bản pitch ý tưởng dựa trên cảm tính. Giờ đây Agency có thể trình bày với Brand bằng đồ thị lan truyền thực tế và xác suất bùng nổ được mô hình hóa bằng thuật toán.",
+      "Mỗi bảng ghi lưu riêng thời điểm xuất bản, hoạt động diễn đàn và thời điểm thu thập theo giờ ICT (UTC+7), cho phép rà soát lịch sử không suy đoán.",
     points: [
-      "Pitching ý tưởng bất bại: Trình chiếu đồ thị trinh sát chứng minh trào lưu đang dịch chuyển sang nhóm khách hàng mục tiêu.",
-      "Báo cáo Insight đa chiều: Cung cấp insight văn hóa mạng kết hợp âm thanh, hình ảnh chế và từ lóng thực tế.",
-      "Sản xuất nội dung siêu tốc: Nắm bắt chính xác mẫu video CapCut hoặc âm thanh đang thịnh hành để dựng clip ngay trong ngày.",
+      "Không bịa đường cong quá khứ: biểu đồ sparkline chỉ vẽ từ các mẫu thực sự đã quan sát.",
+      "Kiểm duyệt con người (HITL): gộp hoặc tách chủ đề có khóa phiên bản và hoàn tác được.",
+      "Minh bạch giới hạn mẫu: hiển thị rõ phần nào chưa đo lường thay vì điền số 0.",
     ],
-    metric: "Tăng 3.2x tỷ lệ chốt deal pitching chiến dịch",
-    previewTitle: "Hồ sơ đề xuất ý tưởng (Pitch Deck Evidence)",
-    previewBadge: "Bằng chứng nghiên cứu số",
-    previewEvent: "Cụm trào lưu #FlexGiaDinh • Đang lan sang nhóm 18-24 tuổi",
-    previewCommunity: "Shitposting → Đời sống học đường",
+    artifactTitle: "Nhật ký kiểm duyệt chủ đề",
+    artifactRows: [
+      {
+        rank: "Tách",
+        label: "Tách 4 bản ghi về bãi gửi xe khỏi cụm lộ trình xe buýt",
+        score: "Đã khóa",
+        meta: "Ghi chú: khác nhóm hạ tầng · Có thể hoàn tác",
+      },
+      {
+        rank: "Gộp",
+        label: "Gộp 2 bản tin cùng về phương án vé liên thông",
+        score: "Đã lưu",
+        meta: "Kiểm tra tương thích thực thể và năm: hợp lệ",
+      },
+    ],
   },
   {
-    id: "creators",
-    tab: "Nhà sáng tạo (Creators & KOCs)",
-    headline: "Bắt đúng soundtrack và mẫu dựng CapCut để đẩy video lên xu hướng",
+    id: "brand",
+    tab: "Thương hiệu & Agency",
+    headline: "Theo dõi chủ đề hoặc thực thể cụ thể bằng ngưỡng tùy chỉnh",
     description:
-      "Thuật toán của TikTok và Reels luôn ưu tiên những video sử dụng âm thanh hoặc mẫu dựng đang có gia tốc sử dụng tăng nhanh. Trendifest cho bạn biết âm thanh nào sắp bùng nổ trước 12 giờ.",
+      "Tạo quy tắc theo dõi cho tên sản phẩm, địa bàn hoặc chủ đề đang quan tâm mà không bị nhiễu bởi dữ liệu cũ trước thời điểm bật cảnh báo.",
     points: [
-      "Đón đầu thuật toán đề xuất: Dùng soundtrack từ khi nó chỉ có vài trăm video sử dụng, hưởng trọn đợt sóng viral đầu tiên.",
-      "Tránh bão hòa: Biết rõ thời điểm một trào lưu bắt đầu bước vào giai đoạn thoái trào để dừng làm clip đúng lúc.",
-      "Không bao giờ cạn ý tưởng: Khám phá hàng chục biến thể đùa giỡn, meme template đang manh nha mỗi sáng.",
+      "Đặt mốc baseline tức thì: chỉ thông báo khi có bằng chứng mới sau khi lưu quy tắc.",
+      "Kết hợp ngưỡng đầu báo mới, tài khoản mới và sàn điểm nổi lên tối thiểu.",
+      "Quản lý tối đa 100 quy tắc theo dõi: tạm dừng, sửa ngưỡng hoặc xóa có xác nhận.",
     ],
-    metric: "Tăng 250% tỷ lệ video cắn đề xuất For You Page",
-    previewTitle: "Kênh trinh sát KOC (Creator Pulse)",
-    previewBadge: "Soundtrack tiềm năng cao",
-    previewEvent: "Đoạn beat remix 'SaiGon Sunset' • 88 điểm bộc phát",
-    previewCommunity: "Music Discovery → Đời sống Gen Z",
+    artifactTitle: "Quy tắc theo dõi (Watchlist)",
+    artifactRows: [
+      {
+        rank: "Bật",
+        label: "Thực thể: Tuyến Metro số 1 (TP.HCM)",
+        score: "Sàn 60",
+        meta: "Cảnh báo khi có ≥ 2 đầu báo mới trong 12 giờ",
+      },
+      {
+        rank: "Tạm dừng",
+        label: "Chủ đề: Giá vé liên thông giao thông công cộng",
+        score: "Sàn 50",
+        meta: "Baseline lưu lúc 09:15 ICT · Chờ tiếp tục",
+      },
+    ],
   },
   {
-    id: "researchers",
-    tab: "Nghiên cứu Thị trường & Xã hội",
-    headline: "Quan sát sự chuyển dịch văn hóa số của thế hệ trẻ một cách trung thực",
+    id: "analyst",
+    tab: "Phân tích dữ liệu độc lập",
+    headline: "Vận hành hoàn toàn nội bộ với Postgres/pgvector và mô hình mở",
     description:
-      "Công cụ lý tưởng cho các viện nghiên cứu, trường đại học và cơ quan xã hội theo dõi diễn biến tâm lý, ngôn ngữ mạng và biến động thảo luận của Gen Z trên môi trường số an toàn, bảo mật.",
+      "Kiến trúc tách biệt luồng thu thập nền với API truy vấn bản đồ. Worker tính toán phân cụm và liên kết nằm ngoài vòng lặp sự kiện HTTP để giao diện luôn phản hồi nhanh.",
     points: [
-      "Bảo tồn dữ liệu nghiên cứu: Lưu giữ vết di chuyển của văn hóa mạng qua biểu đồ thời gian có thể tua lại quá khứ.",
-      "Tuân thủ đạo đức dữ liệu: Tôn trọng hoàn toàn quyền riêng tư cá nhân và các quy định pháp luật hiện hành.",
-      "Minh bạch học thuật: Toàn bộ trọng số mô hình, ngưỡng tương đồng và độ đo đều được công khai minh bạch.",
+      "Cửa sổ 24h, 3d, 7d giữ bộ nhớ đệm riêng cho từng lát cắt, không cắt giả từ một tập chung.",
+      "Cảnh báo rõ nếu dữ liệu bị cắt ngưỡng (tối đa 8.000 bản ghi gần nhất / 1.500 nốt).",
+      "Hỗ trợ tìm kiếm vector đa phương thức qua MiniLM, CLIP và CLAP trên cùng cơ sở dữ liệu.",
     ],
-    metric: "100% Khả năng kiểm chứng học thuật & tái lập",
-    previewTitle: "Trắc diện văn hóa số (Cultural Observability)",
-    previewBadge: "Dữ liệu nghiên cứu định lượng",
-    previewEvent: "Nghiên cứu biến đổi tiếng lóng Gen Z tại đô thị VN",
-    previewCommunity: "Viện Nghiên cứu Xã hội số • Mạng lưới Ngôn ngữ học",
+    artifactTitle: "Trạng thái thu thập & chỉ mục",
+    artifactRows: [
+      {
+        rank: "8/8",
+        label: "Nguồn công khai đã hoàn tất chu kỳ thu thập gần nhất",
+        score: "0 lỗi",
+        meta: "Chuẩn hóa Unicode · Kiểm tra franc-min đạt chuẩn",
+      },
+      {
+        rank: "E5",
+        label: "Xenova/multilingual-e5-small (q8, 384 chiều)",
+        score: "Cục bộ",
+        meta: "Không còn bản ghi chờ tính vector",
+      },
+    ],
   },
 ];
 
 const FAQS = [
   {
-    question:
-      "Trendifest khác biệt gì so với Google Trends hoặc các công cụ Social Listening truyền thống?",
+    question: "Trendifest khác gì với Google Trends hay các công cụ Social Listening thông thường?",
     answer:
-      "Google Trends chỉ ghi nhận khi người dùng chủ động gõ tìm kiếm một từ khóa cụ thể — tức là trào lưu đã quá phổ biến và đã qua giai đoạn sớm. Các công cụ Social Listening truyền thống thì chủ yếu đếm lượt xem (Views/Likes) bề nổi và phụ thuộc vào Text/Hashtag. Ngược lại, Trendifest phân tích đa phương thức (hình ảnh, meme, âm thanh, video CapCut) và phát hiện các đốm lửa bộc phát từ các cộng đồng ngách trước từ 6 đến 24 giờ dựa trên số lượng tác giả độc lập và mô hình điểm Hawkes.",
+      "Google Trends đo lượng người chủ động tìm kiếm một từ khóa sau khi chủ đề đã phổ biến. Các công cụ lắng nghe mạng xã hội truyền thống thường gộp lượt xem, hashtag và tin báo chí vào chung một chỉ số. Trendifest gom nhóm các bài viết công khai theo ngữ nghĩa cục bộ, tách riêng số tài khoản diễn đàn với số đầu báo và gắn mọi nhận định vào danh sách bài gốc kiểm chứng được.",
   },
   {
-    question:
-      "Xác suất dự báo (ví dụ: '74% trong 12h') được tính toán như thế nào? Có đáng tin cậy không?",
+    question: "Điểm nổi lên (Emergence Score 0–100) có phải là dự báo xu hướng tương lai không?",
     answer:
-      "Xác suất không phải là một con số ngẫu nhiên do AI tự bịa. Hệ thống kết hợp quá trình điểm theo thời gian (Hawkes Process) và mô hình học máy Gradient Boosting được huấn luyện trên chuỗi thời gian lan truyền. Mô hình tính toán gia tốc gia tăng số lượng tác giả độc lập mới, tỷ lệ lan truyền xuyên cộng đồng (community crossing) và khoảng thời gian tồn tại để đưa ra phân bố xác suất kèm khoảng tin cậy minh bạch.",
+      "Không. Đây là điểm heuristic mô tả mức độ xuất hiện và lan tỏa đã quan sát được dựa trên năm thành phần: Reach (34%), Velocity (26%), Spread (18%), Persistence (12%) và Diversity (10%), nhân với hệ số tin cậy theo số nguồn độc lập. Hệ thống không đưa ra dự đoán tương lai hay bịa số liệu cho khoảng thời gian chưa quan sát.",
   },
   {
-    question:
-      "Trendifest có vi phạm bản quyền hay sử dụng kỹ thuật cào dữ liệu lậu (scraping) không?",
+    question: "Vì sao số lượng tài khoản cộng đồng và số đầu báo được tách riêng?",
     answer:
-      "Tuyệt đối không. Trendifest được thiết kế với phương châm 'Access-First', chỉ tích hợp thông qua các cổng API chính thức và luồng cấp phép (như Bluesky Jetstream v2, Meta Threads API, TikTok Research API). Hệ thống tiên phong tuân thủ Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15 và Nghị định 356/2025/NĐ-CP của Việt Nam.",
+      "Một bài viết từ đầu báo đại diện cho một đơn vị xuất bản, không phải hàng trăm phản ứng của công chúng; ngược lại, nhiều tờ báo cùng đăng lại một bản tin đồng phát hành (syndicated) cũng được khử trùng lặp khi chấm điểm để tránh tạo cảm giác ủng hộ độc lập giả tạo.",
   },
   {
-    question: "Quyền lãng quên (Deletion Compliance) và bảo mật cục bộ được thực hiện ra sao?",
+    question: "Dữ liệu thu thập có tuân thủ pháp luật và quyền riêng tư không?",
     answer:
-      "Khi một tác giả xóa bài viết hoặc xóa video trên mạng xã hội gốc, hệ thống Trendifest lập tức nhận diện sự kiện tombstone/deletion và tự động xóa bỏ hoàn toàn bài đăng, vector nhúng cũng như liên kết đồ thị liên quan. Ngoài ra, 100% mô hình AI trích xuất vector (Text, CLIP, CLAP) chạy cục bộ trên máy chủ nội bộ, không bao giờ gửi dữ liệu cộng đồng sang bên thứ ba.",
+      "Hệ thống chỉ đọc các nguồn RSS và REST công khai trong danh mục cấu hình (VOZ, Otofun và 6 đầu báo tiếng Việt), không vượt tường xác thực hay cào dữ liệu cá nhân ẩn danh. Toàn bộ mô hình AI nhúng vector chạy cục bộ, dữ liệu tự động hết hạn sau 30 ngày và kiến trúc được đối chiếu theo Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15 cùng Nghị định 356/2025/NĐ-CP.",
   },
   {
-    question:
-      "Người dùng có thể kiểm chứng nguồn gốc của cảnh báo trước khi đưa ra quyết định không?",
+    question: "Nếu thuật toán gom nhầm hai sự kiện khác nhau thì xử lý thế nào?",
     answer:
-      "Có. Triết lý của Trendifest là Human-in-the-loop (con người kiểm chứng). Mỗi cảnh báo bộc phát đều đính kèm danh sách bài viết nguồn, tác giả, dấu vân tay âm thanh và đường link trực tiếp mở thẳng bài đăng trên mạng xã hội. Người dùng luôn có đầy đủ minh chứng thực tế trước khi phê duyệt chiến dịch truyền thông.",
-  },
-  {
-    question: "Hiện tại Trendifest đang theo dõi những phân đoạn cộng đồng nào?",
-    answer:
-      "Hệ thống hiện phân tầng 9 phân đoạn khán giả đại diện cho văn hóa Gen Z: Shitposting & Meme, Music discovery, VTuber & Gaming fandom, Overheard quotes, Himbo community, New users, Artists & Fandom, Film & TV và kho dữ liệu Discover chung.",
+      "Trong ngăn chi tiết của mỗi chủ đề luôn có mục Review topic grouping. Người dùng có thể tách các bản ghi được chọn sang một chủ đề bền vững mới hoặc gộp hai chủ đề tương thích, kèm ghi chú lý do bắt buộc, lịch sử kiểm toán và nút hoàn tác an toàn.",
   },
 ];
 
 /* ------------------------------------------------------------------ *
- * Side Scroll Ruler Component (Striped Horizontal Dash Indicator)    *
+ * Brand Mark (matches public/favicon.svg)                            *
  * ------------------------------------------------------------------ */
 
-/**
- * @component SideScrollRuler
- * Minimalist vertical viewport scroll indicator featuring an organic hill curve profile.
- *
- * Behavior & Mathematical Model:
- * - Emulates an organic hill / bell curve ("ngọn đồi") rather than a discrete multi-tick block:
- *   The center of the current viewport represents the crest of the hill (maximum protrusion,
- *   28px width, full contrast). Adjacent stripes taper down smoothly according to a raised
- *   cosine falloff curve (0.5 * (1 + cos(pi * d / radius))), blending seamlessly into the base
- *   hairlines (10px width, 20% opacity).
- * - Responsive viewport radius: The base width of the hill adapts dynamically to the visible
- *   proportion of the page (viewportHeight / scrollHeight), ensuring physical coherence.
- * - Frame-budgeted animation: Throttles scroll recalculations via `requestAnimationFrame` for
- *   buttery smooth 60fps/120fps glide without dropped frames.
- * - Interactive navigation: Clicking any stripe triggers smooth scrolling to that exact document ratio.
- *
- * Concurrency & Side Effects:
- * - Attaches passive window `scroll` and `resize` listeners on mount and cleans them up on unmount.
- */
-function SideScrollRuler() {
-  const [scrollState, setScrollState] = useState({ ratio: 0, viewportRatio: 0.15 });
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const TOTAL_TICKS = 24;
-  const MIN_WIDTH = 10; // Hairline base width in px
-  const MAX_ADDITIONAL_WIDTH = 18; // Peak protrusion adds 18px (total 28px)
-
-  useEffect(() => {
-    let rafId: number | null = null;
-
-    const updateScroll = () => {
-      const scrollY = window.scrollY;
-      const innerHeight = window.innerHeight;
-      const scrollHeight = document.documentElement.scrollHeight;
-      const maxScroll = scrollHeight - innerHeight;
-
-      if (maxScroll <= 0) {
-        setScrollState({ ratio: 0, viewportRatio: 1 });
-        return;
-      }
-
-      const ratio = Math.min(1, Math.max(0, scrollY / maxScroll));
-      const viewportRatio = Math.min(1, Math.max(0.05, innerHeight / scrollHeight));
-      setScrollState({ ratio, viewportRatio });
-    };
-
-    const handleScrollOrResize = () => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(() => {
-        updateScroll();
-        rafId = null;
-      });
-    };
-
-    window.addEventListener("scroll", handleScrollOrResize, { passive: true });
-    window.addEventListener("resize", handleScrollOrResize, { passive: true });
-    updateScroll();
-
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      window.removeEventListener("scroll", handleScrollOrResize);
-      window.removeEventListener("resize", handleScrollOrResize);
-    };
-  }, []);
-
-  const scrollToPosition = (idx: number) => {
-    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    if (maxScroll <= 0) return;
-    const targetY = (idx / (TOTAL_TICKS - 1)) * maxScroll;
-    window.scrollTo({ top: targetY, behavior: "smooth" });
-  };
-
-  // Continuous index location corresponding to the crest of the hill
-  const centerIdx = scrollState.ratio * (TOTAL_TICKS - 1);
-
-  // Dynamic radius of the hill based on the visible viewport proportion of the page
-  const hillRadius = Math.max(2.6, Math.min(4.2, scrollState.viewportRatio * TOTAL_TICKS * 1.3));
-
+function BrandMark() {
   return (
-    <nav
-      aria-label="Thước đo vị trí khung nhìn trang"
-      className="fixed right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-end gap-1.5 pointer-events-auto select-none"
-    >
-      {Array.from({ length: TOTAL_TICKS }).map((_, idx) => {
-        const dist = Math.abs(idx - centerIdx);
-
-        // Raised-cosine hill curve (intensity from 0 at base to 1.0 at crest)
-        let intensity = 0;
-        if (dist < hillRadius) {
-          intensity = 0.5 * (1 + Math.cos((Math.PI * dist) / hillRadius));
-        }
-
-        const isHovered = hoveredIdx === idx;
-        const width = MIN_WIDTH + MAX_ADDITIONAL_WIDTH * intensity;
-        const effectiveWidth = isHovered ? Math.max(width, 16) : width;
-        const baseOpacity = 0.2 + 0.8 * intensity;
-        const effectiveOpacity = isHovered ? Math.max(baseOpacity, 0.85) : baseOpacity;
-
-        const tickPercentage = Math.round((idx / (TOTAL_TICKS - 1)) * 100);
-
-        return (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => scrollToPosition(idx)}
-            onMouseEnter={() => setHoveredIdx(idx)}
-            onMouseLeave={() => setHoveredIdx(null)}
-            aria-label={`Cuộn đến vị trí ${tickPercentage}%`}
-            className="py-0.5 flex items-center justify-end focus:outline-none cursor-pointer group/tick"
-          >
-            {/* Smooth organic hill stripe with continuous width & opacity falloff */}
-            <span
-              style={{
-                width: `${effectiveWidth.toFixed(1)}px`,
-                opacity: Number(effectiveOpacity.toFixed(3)),
-              }}
-              className="block h-[1px] bg-black dark:bg-white transition-[width,opacity] duration-100 ease-out"
-            />
-          </button>
-        );
-      })}
-    </nav>
+    <svg viewBox="0 0 32 32" className="size-7 shrink-0" aria-hidden="true">
+      <rect width="32" height="32" rx="8" className="fill-fg" />
+      <path
+        d="M7 21.5 12.5 15l4.5 4 8-9"
+        fill="none"
+        className="stroke-inverse-fg"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M19.5 10H25v5.5"
+        fill="none"
+        className="stroke-inverse-fg"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -619,1913 +681,1223 @@ function SideScrollRuler() {
  * Main Landing Page Component                                        *
  * ------------------------------------------------------------------ */
 
+/**
+ * Public landing page for Trendifest (`/`). Presents the product's real
+ * Vietnamese-first topic graph, local embedding pipeline, emergence score
+ * methodology, and legal disclosures without decorative motion or fabricated claims.
+ */
 export function LandingPage({ onOpenApp }: LandingPageProps) {
-  const [activeUseCase, setActiveUseCase] = useState("brands");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [previewWindow, setPreviewWindow] = useState<WindowKey>("7d");
+  const [selectedTopicId, setSelectedTopicId] = useState<string>("metro-ben-thanh");
+  const [activePipelineStep, setActivePipelineStep] = useState<number>(0);
+  const [activeUseCase, setActiveUseCase] = useState<string>("editorial");
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [demoModalOpen, setDemoModalOpen] = useState(false);
-  const [videoModalOpen, setVideoModalOpen] = useState(false);
-  const [demoSubmitted, setDemoSubmitted] = useState(false);
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [contactSubmitted, setContactSubmitted] = useState(false);
 
-  // Simulated live graph window
-  const [graphWindow, setGraphWindow] = useState<string>("24h");
-
-  // Interactive timeline step (0 to 3)
-  const [activeTimelineStep, setActiveTimelineStep] = useState<number>(2);
-
+  const windowSnapshot = PREVIEW_WINDOWS[previewWindow];
+  const selectedTopic = useMemo(
+    () =>
+      windowSnapshot.topics.find((topic) => topic.id === selectedTopicId) ??
+      windowSnapshot.topics[0],
+    [windowSnapshot, selectedTopicId],
+  );
   const currentUseCase = useMemo(
-    () => USE_CASES.find((u) => u.id === activeUseCase) ?? USE_CASES[0],
+    () => USE_CASES.find((item) => item.id === activeUseCase) ?? USE_CASES[0],
     [activeUseCase],
   );
 
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-[#1e1e1e] text-[#171717] dark:text-[#dadada] font-sans antialiased text-[16px] leading-relaxed selection:bg-[#7f6df2]/30 selection:text-[#ffffff] transition-colors duration-200">
-      {/* Floating Side Scroll Ruler */}
-      <SideScrollRuler />
+    <div className="min-h-screen bg-canvas text-fg [font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,sans-serif] antialiased text-[15px] leading-6">
       {/* ------------------------------------------------------------ */}
-      {/* 1. Header / Floating Pill Navbar (Inspired by Lindy Tile 1)  */}
+      {/* 1. Quiet Top Navigation                                      */}
       {/* ------------------------------------------------------------ */}
-      <header className="fixed top-0 inset-x-0 z-50 flex justify-center px-4 py-3 pointer-events-none">
-        <nav
-          className="pointer-events-auto flex items-center justify-between gap-2 sm:gap-4 px-4 sm:px-6 py-2.5 rounded-full bg-white/90 dark:bg-[#262626]/95 backdrop-blur-md border border-neutral-200 dark:border-[#363636] shadow-xl max-w-6xl w-full"
-          aria-label="Thanh điều hướng chính"
-        >
-          {/* Brand Logo */}
+      <header className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur-sm">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <a
             href="#"
-            className="flex items-center gap-2 sm:gap-2.5 text-[16px] sm:text-[17px] font-bold text-neutral-900 dark:text-white tracking-tight hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
+            className="flex items-center gap-2.5 text-[16px] font-semibold tracking-tight text-fg shrink-0"
           >
-            <span className="flex size-7.5 sm:size-8 items-center justify-center rounded-lg bg-[#a78bfa]/20 border border-[#a78bfa]/40 text-[#a78bfa] shrink-0">
-              <Network className="size-4 sm:size-4.5 animate-pulse" />
-            </span>
+            <BrandMark />
             <span>Trendifest</span>
-            <span className="hidden sm:inline-flex text-[10.5px] uppercase font-mono px-2 py-0.5 rounded bg-neutral-100 dark:bg-[#333333] text-[#7c3aed] dark:text-[#a78bfa] whitespace-nowrap border border-neutral-300 dark:border-[#444444]">
-              v1.4 LIVE
-            </span>
           </a>
 
-          {/* Desktop Nav Links */}
-          <div className="hidden lg:flex items-center gap-1 xl:gap-2 text-[14px] text-neutral-600 dark:text-[#aaaaaa]">
-            <a
-              href="#how-it-works"
-              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
-            >
+          <nav
+            aria-label="Điều hướng chính"
+            className="hidden md:flex items-center gap-6 text-[14px] text-fg-2"
+          >
+            <a href="#sources" className="hover:text-fg transition-colors duration-150">
+              Nguồn dữ liệu
+            </a>
+            <a href="#pipeline" className="hover:text-fg transition-colors duration-150">
               Quy trình
             </a>
-            <a
-              href="#tech"
-              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
-            >
-              Công nghệ
+            <a href="#scoring" className="hover:text-fg transition-colors duration-150">
+              Cách tính điểm
             </a>
-            <a
-              href="#solutions"
-              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
-            >
-              Giải pháp
-            </a>
-            <a
-              href="#compliance"
-              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
-            >
+            <a href="#compliance" className="hover:text-fg transition-colors duration-150">
               Pháp lý
             </a>
-            <a
-              href="#faq"
-              className="px-3 py-1.5 rounded-full hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap font-medium"
-            >
-              FAQ
+            <a href="#faq" className="hover:text-fg transition-colors duration-150">
+              Hỏi đáp
             </a>
-          </div>
+          </nav>
 
-          {/* Actions */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <ThemeToggle
-              className="text-neutral-600 hover:text-neutral-900 hover:bg-black/5 dark:text-[#aaaaaa] dark:hover:text-white dark:hover:bg-white/10 size-8 sm:size-9"
-              iconClassName="size-4 sm:size-4.5"
+              className="size-9 rounded-lg text-fg-2 hover:text-fg hover:bg-hover transition-colors duration-150"
+              iconClassName="size-4"
               start="top-down"
             />
             <button
-              onClick={() => setDemoModalOpen(true)}
-              className="hidden xl:inline-flex items-center text-[13.5px] font-medium text-neutral-700 dark:text-[#dadada] hover:text-neutral-900 dark:hover:text-white px-3.5 py-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors whitespace-nowrap shrink-0"
+              type="button"
+              onClick={() => setContactModalOpen(true)}
+              className="hidden sm:inline-flex items-center h-9 px-3 text-[14px] font-medium text-fg-2 hover:text-fg transition-colors duration-150"
             >
-              Đặt lịch Demo
+              Liên hệ
             </button>
             <button
+              type="button"
               onClick={onOpenApp}
-              className="inline-flex items-center gap-1.5 text-[13.5px] sm:text-[14px] font-semibold bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] px-4 sm:px-5 py-2 rounded-full shadow-md transition-all active:scale-95 whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-inverse hover:bg-inverse-hover text-inverse-fg text-[14px] font-medium transition-[background-color,transform] duration-150 active:scale-[0.98]"
             >
-              <span>Vào Đồ Thị Live</span>
-              <ArrowRight className="size-3.5 sm:size-4 shrink-0" />
+              <span>Mở đồ thị</span>
+              <ArrowRight className="size-4" strokeWidth={1.5} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              aria-label="Mở menu điều hướng"
+              aria-expanded={mobileMenuOpen}
+              className="md:hidden inline-flex items-center justify-center size-9 rounded-lg border border-line bg-surface text-fg-2 hover:text-fg transition-colors duration-150"
+            >
+              {mobileMenuOpen ? (
+                <X className="size-4" strokeWidth={1.5} />
+              ) : (
+                <Menu className="size-4" strokeWidth={1.5} />
+              )}
             </button>
           </div>
-        </nav>
+        </div>
+
+        {/* Mobile menu disclosure */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-line bg-surface px-4 py-4 space-y-2">
+            {[
+              { href: "#sources", label: "Nguồn dữ liệu" },
+              { href: "#pipeline", label: "Quy trình" },
+              { href: "#scoring", label: "Cách tính điểm" },
+              { href: "#compliance", label: "Pháp lý" },
+              { href: "#faq", label: "Hỏi đáp" },
+            ].map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="block rounded-lg px-3 py-2 text-[14px] text-fg-2 hover:bg-hover hover:text-fg transition-colors duration-150"
+              >
+                {item.label}
+              </a>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setContactModalOpen(true);
+              }}
+              className="block w-full text-left rounded-lg px-3 py-2 text-[14px] text-fg-2 hover:bg-hover hover:text-fg transition-colors duration-150"
+            >
+              Liên hệ trao đổi
+            </button>
+          </div>
+        )}
       </header>
 
-      {/* ------------------------------------------------------------ */}
-      {/* 2. Hero Section (Inspired by Lindy Tile 1 & 2 + Obsidian)    */}
-      {/* ------------------------------------------------------------ */}
-      <section className="relative pt-36 pb-24 px-4 sm:px-6 overflow-hidden flex flex-col items-center text-center">
-        {/* Subtle background atmospheric glow */}
-        <div
-          aria-hidden="true"
-          className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[720px] h-[400px] bg-gradient-to-b from-[#a78bfa]/20 via-[#60a5fa]/10 to-transparent blur-[140px] pointer-events-none rounded-full"
-        />
-
-        {/* Left Data Stream Wing (Directly inspired by Lindy Hero Integration Stream) */}
-        <div
-          aria-hidden="true"
-          className="hidden xl:block absolute left-0 top-24 bottom-48 w-80 pointer-events-none z-10"
-        >
-          {DATA_STREAM_LEFT.map((node) => {
-            const Icon = node.icon;
-            return (
-              <div
-                key={node.name}
-                style={{ top: node.top, left: node.left, animationDelay: node.delay }}
-                className={cn(
-                  "absolute pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-full",
-                  "bg-white/90 dark:bg-[#242424]/85 backdrop-blur-md border border-neutral-200 dark:border-[#383838] shadow-md dark:shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
-                  "hover:scale-105 hover:border-purple-400 dark:hover:border-[#a78bfa]/70 hover:shadow-[0_0_24px_rgba(167,139,250,0.3)] transition-all duration-300",
-                  node.anim,
-                )}
-              >
-                <span
-                  className="flex size-7 items-center justify-center rounded-full bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 shrink-0"
-                  style={{ color: node.color }}
-                >
-                  <Icon className="size-3.5" />
-                </span>
-                <div className="text-left leading-none pr-1">
-                  <div className="text-[13px] font-bold text-neutral-900 dark:text-white tracking-tight">
-                    {node.name}
-                  </div>
-                  <div className="text-[10.5px] font-mono text-neutral-500 dark:text-[#888888] mt-0.5">
-                    {node.category}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Right Data Stream Wing (Directly inspired by Lindy Hero Integration Stream) */}
-        <div
-          aria-hidden="true"
-          className="hidden xl:block absolute right-0 top-24 bottom-48 w-80 pointer-events-none z-10"
-        >
-          {DATA_STREAM_RIGHT.map((node) => {
-            const Icon = node.icon;
-            return (
-              <div
-                key={node.name}
-                style={{ top: node.top, right: node.right, animationDelay: node.delay }}
-                className={cn(
-                  "absolute pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-full",
-                  "bg-white/90 dark:bg-[#242424]/85 backdrop-blur-md border border-neutral-200 dark:border-[#383838] shadow-md dark:shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
-                  "hover:scale-105 hover:border-purple-400 dark:hover:border-[#a78bfa]/70 hover:shadow-[0_0_24px_rgba(167,139,250,0.3)] transition-all duration-300",
-                  node.anim,
-                )}
-              >
-                <span
-                  className="flex size-7 items-center justify-center rounded-full bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 shrink-0"
-                  style={{ color: node.color }}
-                >
-                  <Icon className="size-3.5" />
-                </span>
-                <div className="text-left leading-none pr-1">
-                  <div className="text-[13px] font-bold text-neutral-900 dark:text-white tracking-tight">
-                    {node.name}
-                  </div>
-                  <div className="text-[10.5px] font-mono text-neutral-500 dark:text-[#888888] mt-0.5">
-                    {node.category}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Eyebrow Badge */}
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-50 dark:bg-[#a78bfa]/10 border border-purple-200 dark:border-[#a78bfa]/30 text-purple-700 dark:text-[#a78bfa] text-[13.5px] font-medium mb-6">
-          <span className="size-2 rounded-full bg-[#a78bfa] animate-ping" />
-          <span>Hệ thống Trinh sát Đa phương thức & Dự báo Lan truyền thời gian thực</span>
-        </div>
-
-        {/* Display Headline with Shimmering Gradient */}
-        <h1 className="max-w-5xl text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-neutral-900 dark:text-[#f7f7f7] leading-[1.12] mb-6">
-          Trinh sát và dự báo sớm xu hướng mạng xã hội{" "}
-          <span className="bg-gradient-to-r from-[#c084fc] via-[#a78bfa] to-[#60a5fa] bg-clip-text text-transparent animate-shimmer-gradient underline decoration-[#a78bfa]/30 underline-offset-8">
-            trước khi trở thành hiện tượng đại chúng.
-          </span>
-        </h1>
-
-        {/* Sub-headline */}
-        <p className="max-w-3xl text-[18px] sm:text-[20px] text-neutral-600 dark:text-[#b8b8b8] leading-relaxed mb-10">
-          Trendifest phân tích đa phương thức (văn bản, âm thanh, khung hình video và meme) trên
-          thời gian thực, giúp thương hiệu và nhà sáng tạo nắm bắt làn sóng văn hóa Gen Z{" "}
-          <strong className="text-neutral-900 dark:text-white font-medium">
-            trước từ 6 đến 24 giờ
-          </strong>{" "}
-          — không cần chờ đến khi từ khóa đạt đỉnh tìm kiếm.
-        </p>
-
-        {/* Dual CTA Buttons */}
-        <div className="flex flex-col sm:flex-row items-center gap-4 mb-5 w-full sm:w-auto">
-          <button
-            onClick={onOpenApp}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-semibold bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] px-8 py-3.5 rounded-full shadow-[0_10px_30px_rgba(167,139,250,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap shrink-0"
-          >
-            <Compass className="size-5 shrink-0" />
-            <span>Trải nghiệm Đồ Thị Trực Tiếp</span>
-          </button>
-          <button
-            onClick={() => setVideoModalOpen(true)}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-medium text-neutral-700 dark:text-[#dadada] hover:text-black dark:hover:text-white bg-white dark:bg-[#262626] hover:bg-neutral-100 dark:hover:bg-[#303030] border border-neutral-200 dark:border-[#363636] px-6 py-3.5 rounded-full transition-colors whitespace-nowrap shrink-0 shadow-sm"
-          >
-            <PlayCircle className="size-5 text-[#a78bfa] shrink-0" />
-            <span>Xem Video Cách Hoạt Động (2 phút)</span>
-          </button>
-        </div>
-
-        {/* Microcopy & Rating Badge (Lindy Hero Social Proof) */}
-        <div className="flex flex-col items-center gap-2.5 mb-10">
-          <div className="text-[13.5px] text-neutral-500 dark:text-[#aaaaaa]">
-            Miễn phí trải nghiệm Open Source • Thiết lập trinh sát dưới 2 phút
-          </div>
-          <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-white/80 dark:bg-[#262626]/80 border border-neutral-200 dark:border-[#383838] shadow-md backdrop-blur text-[13px] text-neutral-800 dark:text-[#dadada]">
-            <span className="flex items-center gap-0.5 text-amber-400">
-              <Star className="size-3.5 fill-amber-400 text-amber-400" />
-              <Star className="size-3.5 fill-amber-400 text-amber-400" />
-              <Star className="size-3.5 fill-amber-400 text-amber-400" />
-              <Star className="size-3.5 fill-amber-400 text-amber-400" />
-              <Star className="size-3.5 fill-amber-400 text-amber-400" />
-            </span>
-            <span className="font-bold text-neutral-900 dark:text-white">4.9 / 5.0</span>
-            <span className="text-neutral-400 dark:text-[#666]">•</span>
-            <span className="text-neutral-600 dark:text-[#aaaaaa]">
-              Kiểm chứng thực nghiệm trên luồng dữ liệu mở
-            </span>
-          </div>
-        </div>
-
-        {/* Micro-trust Proof Badges */}
-        <div className="flex flex-wrap items-center justify-center gap-3 text-[14px] text-neutral-600 dark:text-[#888888] mb-12">
-          <span>✓ 100% Local Vector Inference</span>
-          <span>•</span>
-          <span>✓ Không gửi dữ liệu cộng đồng ra ngoài</span>
-          <span>•</span>
-          <span>✓ Tuân thủ Luật 91/2025/QH15</span>
-        </div>
-
+      <main>
         {/* ------------------------------------------------------------ */}
-        {/* Visual Anchor: Interactive Trend Graph Workspace Mockup       */}
+        {/* 2. Hero: Headline on calm space + real workspace rising      */}
         {/* ------------------------------------------------------------ */}
-        <div className="w-full max-w-5xl rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] shadow-xl dark:shadow-2xl overflow-hidden text-left relative">
-          {/* Window Chrome Titlebar */}
-          <div className="flex items-center justify-between px-4 py-3 bg-neutral-100 dark:bg-[#202020] border-b border-neutral-200 dark:border-[#363636] text-[13px] text-neutral-600 dark:text-[#999999]">
-            <div className="flex items-center gap-2">
-              <span className="size-3 rounded-full bg-[#ff5f56]/80" />
-              <span className="size-3 rounded-full bg-[#ffbd2e]/80" />
-              <span className="size-3 rounded-full bg-[#27c93f]/80" />
-              <span className="ms-2 font-mono text-[12.5px] text-neutral-500 dark:text-[#888888]">
-                trendifest-workspace — v1.4.2 [LIVE TAIL]
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-[12px] font-mono text-purple-700 dark:text-[#a78bfa]">
-                <span className="size-2 rounded-full bg-[#a78bfa] animate-ping" />
-                <span>9 viewer segments active</span>
-              </div>
-              <div className="flex bg-neutral-200 dark:bg-[#1a1a1a] rounded p-0.5 border border-neutral-300 dark:border-[#333333] text-[12px]">
-                {["24h", "3d", "7d"].map((w) => (
-                  <button
-                    key={w}
-                    onClick={() => setGraphWindow(w)}
-                    className={cn(
-                      "px-2.5 py-0.5 rounded transition-colors",
-                      graphWindow === w
-                        ? "bg-[#a78bfa] text-black font-semibold"
-                        : "text-neutral-600 dark:text-[#777777] hover:text-black dark:hover:text-white",
-                    )}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Dedicated Top Alert Banner: Never covers graph nodes */}
-          <div className="bg-purple-50/80 dark:bg-[#1f1929] border-b border-purple-100 dark:border-[#3d2f52] px-4 py-3 flex items-center justify-between flex-wrap gap-2 text-[13.5px]">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-300 font-mono text-[11.5px] font-bold uppercase tracking-wider">
-                <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
-                <span>T - 18h Early Alert</span>
-              </span>
-              <span className="text-neutral-800 dark:text-[#dadada] text-[14.5px]">
-                Mẫu âm thanh{" "}
-                <strong className="text-purple-700 dark:text-[#a78bfa] font-mono">
-                  capcut_remix_09
-                </strong>{" "}
-                có{" "}
-                <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                  74% xác suất bùng nổ
-                </strong>{" "}
-                trong 12 giờ tới.
-              </span>
-            </div>
-            <div className="flex items-center gap-3 text-[12.5px] font-mono text-neutral-600 dark:text-[#999999]">
-              <span className="text-neutral-500 dark:text-[#888888]">
-                Dịch chuyển:{" "}
-                <span className="text-neutral-900 dark:text-white font-medium">
-                  Gaming ➔ Shitposting
-                </span>
-              </span>
-              <span className="text-neutral-400 dark:text-[#555]">•</span>
-              <span className="text-emerald-600 dark:text-emerald-400">+42 tác giả độc lập</span>
-            </div>
-          </div>
-
-          {/* Main Workspace Body: Canvas + Dedicated Inspector Pane */}
-          <div className="flex flex-col md:flex-row bg-neutral-100 dark:bg-[#1a1a1a]">
-            {/* Center Canvas Area: Completely Unobstructed Graph */}
-            <div className="flex-1 relative min-h-[380px] sm:min-h-[440px] bg-neutral-50 dark:bg-[#1e1e1e] p-4 flex flex-col justify-between overflow-hidden">
-              {/* Subtle background grid pattern */}
-              <div
-                aria-hidden="true"
-                className="absolute inset-0 opacity-[0.05] pointer-events-none"
-                style={{
-                  backgroundImage: "radial-gradient(currentColor 1px, transparent 1px)",
-                  backgroundSize: "20px 20px",
-                }}
-              />
-
-              {/* Unobstructed SVG Graph Network */}
-              <svg
-                className="absolute inset-0 w-full h-full pointer-events-none"
-                viewBox="0 0 650 420"
-                preserveAspectRatio="xMidYMid meet"
-              >
-                <defs>
-                  <linearGradient id="linkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.8" />
-                    <stop offset="100%" stopColor="#60a5fa" stopOpacity="0.4" />
-                  </linearGradient>
-                  <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.4" />
-                    <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
-                  </radialGradient>
-                </defs>
-
-                {/* Satellite minor connections */}
-                <line
-                  x1="80"
-                  y1="120"
-                  x2="140"
-                  y2="190"
-                  className="stroke-neutral-300 dark:stroke-white/10"
-                  strokeWidth="1"
-                />
-                <line
-                  x1="90"
-                  y1="260"
-                  x2="140"
-                  y2="190"
-                  className="stroke-neutral-300 dark:stroke-white/10"
-                  strokeWidth="1"
-                />
-                <line
-                  x1="430"
-                  y1="70"
-                  x2="460"
-                  y2="130"
-                  className="stroke-neutral-300 dark:stroke-white/10"
-                  strokeWidth="1"
-                />
-                <line
-                  x1="550"
-                  y1="110"
-                  x2="460"
-                  y2="130"
-                  className="stroke-neutral-300 dark:stroke-white/10"
-                  strokeWidth="1"
-                />
-                <line
-                  x1="260"
-                  y1="360"
-                  x2="280"
-                  y2="300"
-                  className="stroke-neutral-300 dark:stroke-white/10"
-                  strokeWidth="1"
-                />
-                <line
-                  x1="330"
-                  y1="350"
-                  x2="280"
-                  y2="300"
-                  className="stroke-neutral-300 dark:stroke-white/10"
-                  strokeWidth="1"
-                />
-                <line
-                  x1="570"
-                  y1="270"
-                  x2="520"
-                  y2="230"
-                  className="stroke-neutral-300 dark:stroke-white/10"
-                  strokeWidth="1"
-                />
-
-                {/* Inter-hub connections */}
-                <line
-                  x1="140"
-                  y1="190"
-                  x2="280"
-                  y2="300"
-                  className="stroke-neutral-300 dark:stroke-white/15"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="280"
-                  y1="300"
-                  x2="520"
-                  y2="230"
-                  className="stroke-neutral-300 dark:stroke-white/15"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="520"
-                  y1="230"
-                  x2="460"
-                  y2="130"
-                  className="stroke-neutral-300 dark:stroke-white/15"
-                  strokeWidth="1.5"
-                />
-
-                {/* Primary Diffusion Bridge: Gaming -> capcut_remix_09 -> Shitposting */}
-                <line
-                  x1="140"
-                  y1="190"
-                  x2="280"
-                  y2="150"
-                  stroke="#8b5cf6"
-                  strokeWidth="2.5"
-                  strokeDasharray="8 4"
-                  className="animate-dash-stream"
-                />
-                <line
-                  x1="280"
-                  y1="150"
-                  x2="460"
-                  y2="130"
-                  stroke="url(#linkGrad)"
-                  strokeWidth="2.5"
-                  strokeDasharray="8 4"
-                  className="animate-dash-stream"
-                />
-                <line
-                  x1="280"
-                  y1="150"
-                  x2="280"
-                  y2="300"
-                  stroke="#a78bfa"
-                  strokeOpacity="0.5"
-                  strokeWidth="1.5"
-                  strokeDasharray="6 3"
-                  className="animate-dash-stream"
-                />
-
-                {/* Community Hub Nodes (All 4 hubs animated with gentle aura rings) */}
-                {/* 1. Gaming Community */}
-                <g>
-                  <circle
-                    cx="140"
-                    cy="190"
-                    r="22"
-                    className="fill-white dark:fill-[#242424] stroke-neutral-300 dark:stroke-[#4a4a4a]"
-                    strokeWidth="2"
-                  />
-                  <circle
-                    cx="140"
-                    cy="190"
-                    r="12"
-                    fill="#60a5fa"
-                    fillOpacity="0.2"
-                    className="animate-ping"
-                    style={{ animationDuration: "3.2s" }}
-                  />
-                  <circle cx="140" cy="190" r="6" fill="#60a5fa" />
-                  <text
-                    x="140"
-                    y="226"
-                    textAnchor="middle"
-                    className="fill-neutral-900 dark:fill-[#cccccc] text-[13px] font-semibold"
-                  >
-                    Gaming Hub
-                  </text>
-                  <text
-                    x="140"
-                    y="242"
-                    textAnchor="middle"
-                    className="fill-neutral-500 dark:fill-[#888888] text-[11px]"
-                  >
-                    128 node
-                  </text>
-                </g>
-
-                {/* 2. Shitposting & Meme Community */}
-                <g>
-                  <circle
-                    cx="460"
-                    cy="130"
-                    r="24"
-                    className="fill-white dark:fill-[#242424] stroke-neutral-300 dark:stroke-[#4a4a4a]"
-                    strokeWidth="2"
-                  />
-                  <circle
-                    cx="460"
-                    cy="130"
-                    r="14"
-                    fill="#f59e0b"
-                    fillOpacity="0.2"
-                    className="animate-ping"
-                    style={{ animationDuration: "2.6s" }}
-                  />
-                  <circle cx="460" cy="130" r="7" fill="#f59e0b" />
-                  <text
-                    x="460"
-                    y="168"
-                    textAnchor="middle"
-                    className="fill-neutral-900 dark:fill-[#cccccc] text-[13px] font-semibold"
-                  >
-                    Shitposting & Meme
-                  </text>
-                  <text
-                    x="460"
-                    y="184"
-                    textAnchor="middle"
-                    className="fill-neutral-500 dark:fill-[#888888] text-[11px]"
-                  >
-                    312 node
-                  </text>
-                </g>
-
-                {/* 3. Music & Audio Community */}
-                <g>
-                  <circle
-                    cx="280"
-                    cy="300"
-                    r="20"
-                    className="fill-white dark:fill-[#242424] stroke-neutral-300 dark:stroke-[#4a4a4a]"
-                    strokeWidth="2"
-                  />
-                  <circle
-                    cx="280"
-                    cy="300"
-                    r="11"
-                    fill="#34d399"
-                    fillOpacity="0.2"
-                    className="animate-ping"
-                    style={{ animationDuration: "3.8s" }}
-                  />
-                  <circle cx="280" cy="300" r="5" fill="#34d399" />
-                  <text
-                    x="280"
-                    y="334"
-                    textAnchor="middle"
-                    className="fill-neutral-900 dark:fill-[#cccccc] text-[13px] font-semibold"
-                  >
-                    Music & Beat
-                  </text>
-                  <text
-                    x="280"
-                    y="350"
-                    textAnchor="middle"
-                    className="fill-neutral-500 dark:fill-[#888888] text-[11px]"
-                  >
-                    94 node
-                  </text>
-                </g>
-
-                {/* 4. Campus / Gen Z Community */}
-                <g>
-                  <circle
-                    cx="520"
-                    cy="230"
-                    r="18"
-                    className="fill-white dark:fill-[#242424] stroke-neutral-300 dark:stroke-[#4a4a4a]"
-                    strokeWidth="1.5"
-                  />
-                  <circle
-                    cx="520"
-                    cy="230"
-                    r="10"
-                    fill="#a78bfa"
-                    fillOpacity="0.2"
-                    className="animate-ping"
-                    style={{ animationDuration: "3s" }}
-                  />
-                  <circle cx="520" cy="230" r="5" fill="#a78bfa" />
-                  <text
-                    x="520"
-                    y="260"
-                    textAnchor="middle"
-                    className="fill-neutral-900 dark:fill-[#aaaaaa] text-[12px] font-semibold"
-                  >
-                    Đời sống Gen Z
-                  </text>
-                </g>
-
-                {/* Satellite small nodes */}
-                <circle cx="80" cy="120" r="4" className="fill-neutral-400 dark:fill-[#555]" />
-                <circle cx="90" cy="260" r="4" className="fill-neutral-400 dark:fill-[#555]" />
-                <circle cx="430" cy="70" r="4" className="fill-neutral-400 dark:fill-[#555]" />
-                <circle cx="550" cy="110" r="4" className="fill-neutral-400 dark:fill-[#555]" />
-                <circle cx="260" cy="360" r="4" className="fill-neutral-400 dark:fill-[#555]" />
-                <circle cx="330" cy="350" r="4" className="fill-neutral-400 dark:fill-[#555]" />
-                <circle cx="570" cy="270" r="4" className="fill-neutral-400 dark:fill-[#555]" />
-
-                {/* High Potential Emerging Pattern: capcut_remix_09 with Radar Rings */}
-                <circle cx="280" cy="150" r="44" fill="url(#nodeGlow)" />
-                <circle
-                  cx="280"
-                  cy="150"
-                  r="28"
-                  fill="#a78bfa"
-                  fillOpacity="0.2"
-                  className="animate-ping"
-                  style={{ animationDuration: "2.8s" }}
-                />
-                <g className="animate-pulse">
-                  <circle cx="280" cy="150" r="18" fill="#a78bfa" fillOpacity="0.35" />
-                  <circle
-                    cx="280"
-                    cy="150"
-                    r="10"
-                    fill="#a78bfa"
-                    stroke="#ffffff"
-                    strokeWidth="2.5"
-                  />
-                </g>
-                <text
-                  x="280"
-                  y="118"
-                  textAnchor="middle"
-                  className="fill-neutral-900 dark:fill-white font-mono font-bold text-[14px]"
+        <section className="pt-10 sm:pt-12 pb-16 sm:pb-20 px-4 sm:px-6 border-b border-line">
+          <div className="max-w-[1200px] mx-auto">
+            {/* Editorial left-aligned text block */}
+            <div className="max-w-3xl mb-8 sm:mb-10">
+              <h1 className="text-[34px] sm:text-[48px] font-medium tracking-[-0.02em] text-fg leading-[1.1] mb-4">
+                Bản đồ chủ đề tiếng Việt từ thảo luận cộng đồng và báo chí
+              </h1>
+              <p className="text-[16px] sm:text-[18px] text-fg-2 leading-[1.55] max-w-2xl mb-6">
+                Trendifest thu thập trích đoạn công khai từ VOZ, Otofun cùng sáu đầu báo tiếng Việt,
+                nhúng vector cục bộ để gom nhóm sự kiện và giữ nguyên liên kết kiểm chứng về bài
+                gốc.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onOpenApp}
+                  className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg bg-inverse hover:bg-inverse-hover text-inverse-fg text-[14px] font-medium transition-[background-color,transform] duration-150 active:scale-[0.98]"
                 >
-                  capcut_remix_09
-                </text>
-                <text
-                  x="280"
-                  y="134"
-                  textAnchor="middle"
-                  className="fill-purple-700 dark:fill-[#c4b5fd] text-[12px] font-medium"
+                  <span>Mở đồ thị trực tiếp</span>
+                  <ArrowRight className="size-4" strokeWidth={1.5} aria-hidden="true" />
+                </button>
+                <a
+                  href="#scoring"
+                  className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg bg-surface hover:bg-hover text-fg border border-line text-[14px] font-medium transition-colors duration-150"
                 >
-                  Hawkes: 74% • Tín hiệu mới chớm
-                </text>
-              </svg>
-
-              {/* Canvas Bottom Legend Overlay */}
-              <div className="relative z-10 mt-auto pt-4 flex flex-wrap items-center justify-between gap-3 text-[12.5px] text-neutral-600 dark:text-[#999999]">
-                <div className="flex items-center gap-3 bg-white/90 dark:bg-[#262626]/90 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-[#333333] backdrop-blur shadow-sm">
-                  <span className="flex items-center gap-1.5">
-                    <span className="size-2.5 rounded-full bg-[#a78bfa]" />
-                    <span className="text-neutral-800 dark:text-neutral-200">
-                      Tín hiệu bộc phát
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="size-2.5 rounded-full bg-neutral-400 dark:bg-[#4a4a4a]" />
-                    <span className="text-neutral-800 dark:text-neutral-200">Cụm cộng đồng</span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3.5 h-0.5 bg-[#a78bfa]" />
-                    <span className="text-neutral-800 dark:text-neutral-200">
-                      Di chuyển xuyên nhóm
-                    </span>
-                  </span>
-                </div>
-                <div className="text-[12px] font-mono text-neutral-500 dark:text-[#777777] hidden sm:block">
-                  Complete-linkage Event Graph • Cosine 0.81
-                </div>
+                  <span>Xem cách chấm điểm</span>
+                </a>
               </div>
             </div>
 
-            {/* Right Inspector Panel (Dedicated Obsidian-style inspector) */}
-            <div className="w-full md:w-80 lg:w-96 border-t md:border-t-0 md:border-l border-neutral-200 dark:border-[#363636] bg-neutral-50 dark:bg-[#222222] p-5 flex flex-col justify-between gap-4">
-              <div>
-                {/* Inspector Header */}
-                <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-[#333333] mb-3">
-                  <div className="flex items-center gap-2">
-                    <Layers className="size-4.5 text-[#a78bfa]" />
-                    <span className="text-[13.5px] font-bold uppercase tracking-wider text-neutral-700 dark:text-[#cccccc]">
-                      Trắc diện tín hiệu
-                    </span>
-                  </div>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-semibold">
-                    <span className="size-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
-                    BURSTING
-                  </span>
-                </div>
-
-                {/* Node Identity */}
-                <div className="mb-3.5">
-                  <div className="text-[17px] font-bold text-neutral-900 dark:text-white font-mono flex items-center gap-1.5">
-                    <span>capcut_remix_09</span>
-                  </div>
-                  <div className="text-[13.5px] text-neutral-600 dark:text-[#aaaaaa] mt-0.5">
-                    Âm thanh phái sinh & mẫu dựng CapCut đang bộc phát
-                  </div>
-                </div>
-
-                {/* Hawkes Forecast Gauge Card */}
-                <div className="p-3.5 rounded-lg bg-white dark:bg-[#282828] border border-neutral-200 dark:border-[#383838] mb-3.5 shadow-sm">
-                  <div className="flex items-center justify-between text-[13px] mb-2">
-                    <span className="text-neutral-700 dark:text-[#cccccc] font-medium">
-                      Xác suất bùng nổ (12h)
-                    </span>
-                    <span className="text-emerald-600 dark:text-emerald-400 font-bold font-mono text-[15px]">
-                      74%
-                    </span>
-                  </div>
-                  {/* Progress bar */}
-                  <div className="w-full h-2.5 bg-neutral-100 dark:bg-[#1a1a1a] rounded-full overflow-hidden border border-neutral-200 dark:border-[#333]">
-                    <div
-                      className="h-full bg-gradient-to-r from-[#a78bfa] to-emerald-400 rounded-full"
-                      style={{ width: "74%" }}
+            {/* ---------------------------------------------------------- */}
+            {/* Product Moment: Interactive Workspace Preview              */}
+            {/* Outer radius 16px - padding 8px = inner radius 8px         */}
+            {/* ---------------------------------------------------------- */}
+            <div
+              aria-label="Xem trước giao diện bàn làm việc Trendifest"
+              className="rounded-2xl border border-line bg-sunken p-2 shadow-xs"
+            >
+              <div className="rounded-lg border border-line bg-surface overflow-hidden">
+                {/* Workspace header bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-line bg-canvas">
+                  <div className="flex flex-wrap items-center gap-2 text-[13px] text-fg-2">
+                    <Network
+                      className="size-4 text-fg-3 shrink-0"
+                      strokeWidth={1.5}
+                      aria-hidden="true"
                     />
-                  </div>
-                  <div className="flex justify-between text-[11.5px] text-neutral-500 dark:text-[#888888] font-mono mt-1.5">
-                    <span>Mô hình Hawkes Process</span>
-                    <span>CI: 68% - 81%</span>
-                  </div>
-                </div>
-
-                {/* Metrics 2x2 Grid */}
-                <div className="grid grid-cols-2 gap-2.5 mb-3.5">
-                  <div className="p-3 rounded-lg bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#333333] shadow-sm">
-                    <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888]">
-                      Tác giả độc lập
-                    </div>
-                    <div className="text-[16px] font-bold text-neutral-900 dark:text-white font-mono mt-1">
-                      +42 tác giả
-                    </div>
-                    <div className="text-[11.5px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-                      Không phải bot spam
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#333333] shadow-sm">
-                    <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888]">
-                      Gia tốc tăng
-                    </div>
-                    <div className="text-[16px] font-bold text-neutral-900 dark:text-white font-mono mt-1">
-                      +320%
-                    </div>
-                    <div className="text-[11.5px] text-neutral-500 dark:text-[#999999] mt-0.5">
-                      trong 20 phút qua
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#333333] shadow-sm">
-                    <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888]">
-                      Vân tay âm thanh
-                    </div>
-                    <div className="text-[14.5px] font-semibold text-neutral-800 dark:text-[#dadada] font-mono mt-1">
-                      PeakNetFP
-                    </div>
-                    <div className="text-[11.5px] text-neutral-500 dark:text-[#999999] mt-0.5">
-                      Độ khớp: 0.81
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#333333] shadow-sm">
-                    <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888]">
-                      Di chuyển
-                    </div>
-                    <div className="text-[14.5px] font-semibold text-purple-700 dark:text-[#a78bfa] mt-1">
-                      Vượt biên ngách
-                    </div>
-                    <div className="text-[11.5px] text-neutral-500 dark:text-[#999999] mt-0.5">
-                      Gaming → Shitpost
-                    </div>
-                  </div>
-                </div>
-
-                {/* Grounding Evidence Quote */}
-                <div className="p-3 rounded-lg bg-white dark:bg-[#1f1f1f] border border-neutral-200 dark:border-[#333333] text-[13px] shadow-sm">
-                  <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-[#888888] mb-1.5 flex items-center justify-between">
-                    <span>Minh chứng kiểm chứng (Grounding)</span>
-                    <span className="text-emerald-600 dark:text-emerald-400 font-mono">
-                      T0 Signal
+                    <span className="font-medium text-fg whitespace-nowrap">Trend graph</span>
+                    <span className="text-fg-4 hidden sm:inline">/</span>
+                    <span className="font-mono text-[12px] text-fg-3 tabular-nums whitespace-nowrap">
+                      {windowSnapshot.topicCount} · {windowSnapshot.linkCount}
                     </span>
                   </div>
-                  <p className="text-neutral-800 dark:text-[#dadada] italic leading-snug">
-                    "Ủa rồi ai mượn remix đoạn này mượt dữ vậy..."
-                  </p>
-                  <div className="mt-1.5 text-[11.5px] text-neutral-500 dark:text-[#888888] font-mono">
-                    — @beatmaker_viet.bsky.social • Bluesky Jetstream v2
-                  </div>
-                </div>
-              </div>
 
-              {/* Action Button */}
-              <button
-                onClick={onOpenApp}
-                className="w-full inline-flex items-center justify-center gap-1.5 text-[14.5px] font-semibold bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] py-3 px-4 rounded-lg shadow transition-all active:scale-[0.98]"
-              >
-                <span>Xem trên Đồ Thị Live</span>
-                <ArrowUpRight className="size-4.5 shrink-0" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      {/* 3. Market Stats & Scale Proof (Inspired by Lindy Tile 2)     */}
-      {/* ------------------------------------------------------------ */}
-      <section className="py-20 border-y border-neutral-200 dark:border-[#363636] bg-neutral-100/70 dark:bg-[#222222]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {MARKET_STATS.map((stat) => (
-              <div
-                key={stat.label}
-                className="p-7 rounded-xl border border-neutral-200 dark:border-[#363636] bg-white dark:bg-[#262626] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-purple-300 dark:hover:border-[#a78bfa]/50"
-              >
-                <div className="text-4xl sm:text-5xl font-extrabold text-neutral-900 dark:text-[#f7f7f7] tracking-tight mb-2.5">
-                  {stat.value}
-                </div>
-                <div className="text-[17px] font-bold text-neutral-800 dark:text-[#dadada] mb-2">
-                  {stat.label}
-                </div>
-                <div className="text-[15px] text-neutral-600 dark:text-[#999999] leading-relaxed">
-                  {stat.description}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* ------------------------------------------------------------ */}
-          {/* Protocol & Data Sources Sliding Card Track                   */}
-          {/* ------------------------------------------------------------ */}
-          <div className="mt-16 pt-10 border-t border-neutral-200 dark:border-[#333333]">
-            <div className="text-center mb-6">
-              <span className="uppercase tracking-wider font-mono text-[12.5px] text-neutral-500 dark:text-[#999999] font-semibold">
-                Nguồn cấp dữ liệu & Chuẩn giao thức mở
-              </span>
-            </div>
-
-            {/* Sliding Track with Gradient Masks */}
-            <div className="relative w-full overflow-hidden py-3">
-              {/* Left & Right Gradient Fade Edges */}
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-0 w-16 sm:w-28 bg-gradient-to-r from-neutral-100/95 dark:from-[#222222] to-transparent z-10"
-              />
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 right-0 w-16 sm:w-28 bg-gradient-to-l from-neutral-100/95 dark:from-[#222222] to-transparent z-10"
-              />
-
-              <div className="flex animate-marquee-track-left gap-4 py-1">
-                {/* 2 Sets of clones for seamless infinite loop */}
-                {[...DATA_SOURCES, ...DATA_SOURCES].map((item, idx) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={`source-${item.name}-${idx}`}
-                      className="w-56 sm:w-64 p-5 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] shadow-sm hover:shadow-lg hover:border-purple-400 dark:hover:border-[#a78bfa]/60 hover:-translate-y-1.5 transition-all duration-300 flex flex-col items-center justify-center text-center shrink-0 group select-none cursor-default"
-                    >
-                      <span className="flex size-10 items-center justify-center rounded-xl bg-purple-50 dark:bg-white/5 border border-purple-200/60 dark:border-white/10 text-purple-700 dark:text-[#a78bfa] mb-3 group-hover:scale-110 group-hover:bg-purple-100 dark:group-hover:bg-white/10 transition-all shrink-0">
-                        <Icon className="size-5" />
-                      </span>
-                      <div className="text-[14.5px] sm:text-[15px] font-bold text-neutral-900 dark:text-white leading-tight mb-1 group-hover:text-purple-700 dark:group-hover:text-[#a78bfa] transition-colors">
-                        {item.name}
-                      </div>
-                      <div className="text-[12px] sm:text-[12.5px] font-mono text-neutral-500 dark:text-[#888888] leading-tight">
-                        {item.category}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* ------------------------------------------------------------ */}
-          {/* Audience Segments Sliding Card Track                         */}
-          {/* ------------------------------------------------------------ */}
-          <div className="mt-14 pt-8 border-t border-neutral-200 dark:border-[#333333]">
-            <div className="text-center mb-6">
-              <span className="uppercase tracking-wider font-mono text-[13px] text-purple-700 dark:text-[#a78bfa] font-semibold">
-                Phân tầng Khán giả Thực chứng (Viewer Segments)
-              </span>
-              <h3 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white mt-1.5">
-                Quan sát trực tiếp luồng văn hóa ngách thay vì suy đoán nhân khẩu học
-              </h3>
-            </div>
-
-            {/* Sliding Track with Gradient Masks (Opposite direction for mesmerizing parallax) */}
-            <div className="relative w-full overflow-hidden py-3">
-              {/* Left & Right Gradient Fade Edges */}
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-0 w-16 sm:w-28 bg-gradient-to-r from-neutral-100/95 dark:from-[#222222] to-transparent z-10"
-              />
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 right-0 w-16 sm:w-28 bg-gradient-to-l from-neutral-100/95 dark:from-[#222222] to-transparent z-10"
-              />
-
-              <div className="flex animate-marquee-track-right gap-4 py-1">
-                {/* 2 Sets of clones for seamless infinite loop */}
-                {[...AUDIENCE_SEGMENTS, ...AUDIENCE_SEGMENTS].map((seg, idx) => {
-                  const Icon = seg.icon;
-                  return (
-                    <div
-                      key={`segment-${seg.id}-${idx}`}
-                      className="w-56 sm:w-64 p-5 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] shadow-sm hover:shadow-lg hover:border-purple-400 dark:hover:border-[#a78bfa]/60 hover:-translate-y-1.5 transition-all duration-300 flex flex-col items-center justify-center text-center shrink-0 group select-none cursor-default"
-                    >
-                      <span
-                        className="flex size-10 items-center justify-center rounded-xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 mb-3 group-hover:scale-110 transition-all shrink-0"
-                        style={{ color: seg.color }}
-                      >
-                        <Icon className="size-5" />
-                      </span>
-                      <div className="text-[14.5px] sm:text-[15px] font-bold text-neutral-900 dark:text-white leading-tight mb-1 group-hover:text-purple-700 dark:group-hover:text-[#a78bfa] transition-colors">
-                        {seg.name}
-                      </div>
-                      <div className="text-[12px] sm:text-[12.5px] text-neutral-500 dark:text-[#888888] leading-tight line-clamp-2">
-                        {seg.desc}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      {/* 4. Problem & Comparison: Old vs. Trendifest                  */}
-      {/* ------------------------------------------------------------ */}
-      <section id="problem" className="py-24 px-4 sm:px-6 max-w-6xl mx-auto">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-[#a78bfa] mb-3 font-semibold">
-            <Clock className="size-4" />
-            <span>Bài toán thời điểm sống còn</span>
-          </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
-            Tại sao các công cụ Social Listening truyền thống đang làm bạn bỏ lỡ đỉnh sóng?
-          </h2>
-          <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-            Khi một từ khóa lọt vào bảng xếp hạng Google Trends, đối thủ đã ồ ạt đổ ngân sách quảng
-            cáo và cộng đồng đã bắt đầu bội thực. Bạn cần nhìn thấy tia lửa từ lúc mới nhen nhóm,
-            không phải lúc đám cháy đã tắt.
-          </p>
-        </div>
-
-        {/* Comparison Table / Cards */}
-        <div className="overflow-hidden rounded-2xl border border-neutral-200 dark:border-[#363636] bg-white dark:bg-[#262626] shadow-md">
-          <div className="grid grid-cols-1 md:grid-cols-12 border-b border-neutral-200 dark:border-[#363636] bg-neutral-50 dark:bg-[#222222] p-5 text-[15px] font-bold text-neutral-600 dark:text-[#888888] hidden md:grid">
-            <div className="col-span-3">Tiêu chí đánh giá</div>
-            <div className="col-span-4 text-rose-500 dark:text-rose-300">
-              Công cụ truyền thống / Google Trends
-            </div>
-            <div className="col-span-5 text-[#7c3aed] dark:text-[#a78bfa]">
-              Giải pháp Đột phá Trendifest
-            </div>
-          </div>
-
-          <div className="divide-y divide-neutral-200 dark:divide-[#363636]">
-            {COMPARISON_ROWS.map((row, idx) => (
-              <div
-                key={idx}
-                className="grid grid-cols-1 md:grid-cols-12 p-5 sm:p-6 gap-3 sm:gap-5 items-start text-[15px]"
-              >
-                <div className="md:col-span-3 font-bold text-neutral-900 dark:text-white flex items-center gap-2.5 text-[16px]">
-                  <span className="size-2 rounded-full bg-[#a78bfa]" />
-                  <span>{row.criteria}</span>
-                </div>
-                <div className="md:col-span-4 text-neutral-600 dark:text-[#aaaaaa] bg-neutral-50 dark:bg-[#1e1e1e]/60 p-3.5 rounded-lg md:bg-transparent md:p-0 leading-relaxed">
-                  <span className="md:hidden block text-[12px] uppercase font-bold text-rose-500 dark:text-rose-400 mb-1">
-                    Cách làm cũ:
-                  </span>
-                  {row.traditional}
-                </div>
-                <div className="md:col-span-5 text-neutral-900 dark:text-[#f7f7f7] bg-purple-50 dark:bg-[#2a2438]/50 border border-purple-200 dark:border-[#a78bfa]/30 p-3.5 rounded-lg md:bg-transparent md:border-0 md:p-0 leading-relaxed font-normal">
-                  <span className="md:hidden block text-[12px] uppercase font-bold text-[#a78bfa] mb-1">
-                    Trendifest:
-                  </span>
-                  {row.trendifest}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      {/* 5. How It Works: Timeline & Storytelling (Lindy Tile 3 & 4)   */}
-      {/* ------------------------------------------------------------ */}
-      <section
-        id="how-it-works"
-        className="py-24 px-4 sm:px-6 bg-neutral-100/70 dark:bg-[#222222] border-y border-neutral-200 dark:border-[#363636]"
-      >
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-purple-700 dark:text-[#a78bfa] mb-3 font-semibold">
-              <History className="size-4" />
-              <span>Quy trình trinh sát liên hoàn</span>
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
-              Từ một đốm lửa trong cộng đồng ngách đến trào lưu triệu view
-            </h2>
-            <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-              Cách Trendifest thu thập, phân tích đa phương thức và dự báo xác suất bùng nổ trong
-              từng mốc thời gian thực chiến.
-            </p>
-          </div>
-
-          {/* 4-Step Progressive Timeline Cards (Interactive Step Selection) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {TIMELINE_STEPS.map((step, idx) => {
-              const isSelected = activeTimelineStep === idx;
-              return (
-                <div
-                  key={idx}
-                  onClick={() => setActiveTimelineStep(idx)}
-                  className={cn(
-                    "flex flex-col justify-between p-6 sm:p-7 rounded-2xl border transition-all duration-300 cursor-pointer text-left relative",
-                    isSelected
-                      ? "bg-purple-50/90 dark:bg-[#2c243d] border-purple-500 dark:border-[#a78bfa] shadow-[0_0_30px_rgba(167,139,250,0.25)] -translate-y-1.5 ring-1 ring-purple-400 dark:ring-[#a78bfa]/50"
-                      : "bg-white dark:bg-[#262626] border-neutral-200 dark:border-[#363636] hover:border-purple-300 dark:hover:border-[#a78bfa]/50 hover:-translate-y-1 shadow-sm",
-                  )}
-                >
-                  {isSelected && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-[#a78bfa] text-[#141416] text-[11px] font-bold uppercase tracking-wider shadow">
-                      Đang khảo sát
-                    </span>
-                  )}
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-3xl font-black font-mono text-purple-700 dark:text-[#a78bfa]">
-                        {step.time}
-                      </span>
-                      <span
+                  {/* Real 24h / 3d / 7d window control */}
+                  <div
+                    role="group"
+                    aria-label="Khung thời gian quan sát"
+                    className="inline-flex items-center rounded-lg border border-line bg-surface p-1 gap-1"
+                  >
+                    {(["24h", "3d", "7d"] as const).map((win) => (
+                      <button
+                        key={win}
+                        type="button"
+                        onClick={() => setPreviewWindow(win)}
+                        aria-pressed={previewWindow === win}
                         className={cn(
-                          "text-[12px] font-mono px-2.5 py-0.5 rounded border",
-                          isSelected
-                            ? "bg-purple-100 text-purple-800 border-purple-300 dark:bg-[#a78bfa]/20 dark:text-[#a78bfa] dark:border-[#a78bfa]/40 font-semibold"
-                            : "bg-neutral-100 text-neutral-600 border-neutral-200 dark:bg-[#1a1a1a] dark:text-[#888888] dark:border-[#333333]",
+                          "px-2.5 py-1 rounded text-[12px] font-mono tabular-nums transition-colors duration-150",
+                          previewWindow === win
+                            ? "bg-active text-fg font-medium"
+                            : "text-fg-3 hover:text-fg",
                         )}
                       >
-                        Bước 0{idx + 1}
-                      </span>
-                    </div>
-                    <div className="inline-block text-[13px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded mb-3">
-                      {step.badge}
-                    </div>
-                    <h3 className="text-[18px] font-bold text-neutral-900 dark:text-white mb-2.5 leading-snug">
-                      {step.title}
-                    </h3>
-                    <p className="text-[15px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-5">
-                      {step.description}
-                    </p>
-                  </div>
-
-                  <div className="pt-4 border-t border-neutral-200 dark:border-[#333333] text-[13.5px] font-mono text-purple-700 dark:text-[#c4b5fd]">
-                    {step.signal}
+                        {win}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              );
-            })}
-          </div>
 
-          {/* Active Step Telemetry Deep-dive Bar */}
-          <div className="mt-8 p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#383838] flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-purple-100 dark:bg-[#a78bfa]/20 text-purple-700 dark:text-[#a78bfa] shrink-0">
-                <Sparkles className="size-5 animate-pulse" />
-              </span>
-              <div>
-                <div className="text-[12.5px] font-mono uppercase tracking-wider text-purple-700 dark:text-[#a78bfa] font-semibold">
-                  Mô phỏng dữ liệu thời gian thực: {TIMELINE_STEPS[activeTimelineStep].time}
-                </div>
-                <div className="text-[15.5px] font-semibold text-neutral-900 dark:text-white mt-0.5">
-                  {TIMELINE_STEPS[activeTimelineStep].title} —{" "}
-                  {TIMELINE_STEPS[activeTimelineStep].signal}
+                {/* Workspace 3-column body */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[420px]">
+                  {/* Left Sidebar inside app preview */}
+                  <aside className="hidden lg:flex lg:col-span-3 flex-col justify-between border-r border-line bg-canvas p-4">
+                    <div className="space-y-6">
+                      <div>
+                        <div className="text-[12px] font-medium text-fg-3 px-2 mb-2">
+                          Chế độ xem
+                        </div>
+                        <ul className="space-y-1 text-[13px]">
+                          <li className="flex items-center gap-2.5 px-2.5 h-8 rounded-lg bg-active text-fg font-medium">
+                            <Network className="size-4 text-fg-2" strokeWidth={1.5} />
+                            <span>Trend graph</span>
+                          </li>
+                          <li className="flex items-center gap-2.5 px-2.5 h-8 rounded-lg text-fg-2">
+                            <ListOrdered className="size-4 text-fg-3" strokeWidth={1.5} />
+                            <span>Topic board</span>
+                          </li>
+                          <li className="flex items-center gap-2.5 px-2.5 h-8 rounded-lg text-fg-2">
+                            <Bell className="size-4 text-fg-3" strokeWidth={1.5} />
+                            <span>Watchlists & alerts</span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div>
+                        <div className="text-[12px] font-medium text-fg-3 px-2 mb-2">
+                          Nguồn đang lọc
+                        </div>
+                        <ul className="space-y-1 text-[13px] text-fg-2">
+                          {[
+                            { name: "Tất cả nguồn", count: "2.564" },
+                            { name: "VOZ · Cộng đồng", count: "184" },
+                            { name: "Otofun · Cộng đồng", count: "112" },
+                            { name: "VnExpress · Báo chí", count: "628" },
+                            { name: "Tuổi Trẻ · Báo chí", count: "590" },
+                            { name: "Thanh Niên · Báo chí", count: "542" },
+                            { name: "Dân trí · Báo chí", count: "508" },
+                          ].map((row, idx) => (
+                            <li
+                              key={row.name}
+                              className={cn(
+                                "flex items-center justify-between px-2.5 h-8 rounded-lg",
+                                idx === 0 && "bg-hover text-fg font-medium",
+                              )}
+                            >
+                              <span className="truncate">{row.name}</span>
+                              <span className="font-mono text-[12px] text-fg-3 tabular-nums">
+                                {row.count}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-line text-[12px] text-fg-3 px-2">
+                      Suy luận cục bộ · {windowSnapshot.windowLabel}
+                    </div>
+                  </aside>
+
+                  {/* Center Graph Canvas (one bright focal moment: focused topic cluster) */}
+                  <div className="lg:col-span-5 relative bg-surface flex flex-col justify-between p-4 min-h-[280px] border-b lg:border-b-0 lg:border-r border-line">
+                    <div className="flex items-center justify-between gap-3 text-[12px] text-fg-3">
+                      <span>Nhấp một nốt chủ đề để đối chiếu bằng chứng</span>
+                      <span className="font-mono whitespace-nowrap shrink-0">E5-small</span>
+                    </div>
+
+                    <svg
+                      viewBox="0 0 480 250"
+                      className="w-full h-56 sm:h-64 select-none"
+                      role="img"
+                      aria-label="Đồ thị các cụm chủ đề và liên kết ngữ nghĩa đo được"
+                    >
+                      {/* Quiet isolate background nodes (isolates are legitimate) */}
+                      <circle cx="64" cy="48" r="5" className="fill-fg-4 opacity-40" />
+                      <circle cx="104" cy="204" r="6" className="fill-fg-4 opacity-45" />
+                      <circle cx="426" cy="188" r="5" className="fill-fg-4 opacity-40" />
+                      <circle cx="132" cy="76" r="4" className="fill-fg-4 opacity-35" />
+                      <circle cx="436" cy="48" r="4" className="fill-fg-4 opacity-35" />
+
+                      {/* Secondary neutral cluster */}
+                      <line
+                        x1="82"
+                        y1="132"
+                        x2="136"
+                        y2="164"
+                        className="stroke-line-strong"
+                        strokeWidth="1"
+                      />
+                      <circle cx="82" cy="132" r="7" className="fill-fg-3 opacity-60" />
+                      <circle cx="136" cy="164" r="8" className="fill-fg-3 opacity-65" />
+
+                      {/* Measured semantic links between the 3 inspectable topic nodes */}
+                      <line
+                        x1={248}
+                        y1={114}
+                        x2={386}
+                        y2={80}
+                        stroke="var(--graph-node-focused)"
+                        strokeOpacity="0.45"
+                        strokeWidth="1.5"
+                      />
+                      <line
+                        x1={248}
+                        y1={114}
+                        x2={344}
+                        y2={192}
+                        stroke="var(--graph-node-focused)"
+                        strokeOpacity="0.45"
+                        strokeWidth="1.5"
+                      />
+                      <line
+                        x1={386}
+                        y1={80}
+                        x2={344}
+                        y2={192}
+                        className="stroke-line-strong"
+                        strokeWidth="1"
+                      />
+
+                      {/* Similarity labels on measured edges */}
+                      <text
+                        x="316"
+                        y="88"
+                        textAnchor="middle"
+                        className="fill-fg-3 font-mono text-[10px]"
+                      >
+                        0.84
+                      </text>
+                      <text
+                        x="282"
+                        y="164"
+                        textAnchor="middle"
+                        className="fill-fg-3 font-mono text-[10px]"
+                      >
+                        0.80
+                      </text>
+
+                      {/* Clickable topic nodes */}
+                      {windowSnapshot.topics.map((topic, index) => {
+                        const isSelected = topic.id === selectedTopic.id;
+                        const shortLabel =
+                          index === 0
+                            ? "Buýt kết nối Metro số 1"
+                            : index === 1
+                              ? "Giá vé liên thông"
+                              : "Bãi gửi xe nhà ga";
+                        const cy = topic.cy - 32;
+                        return (
+                          <g
+                            key={topic.id}
+                            onClick={() => setSelectedTopicId(topic.id)}
+                            className="cursor-pointer"
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Chọn chủ đề ${topic.title}`}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setSelectedTopicId(topic.id);
+                              }
+                            }}
+                          >
+                            {isSelected && (
+                              <circle
+                                cx={topic.cx}
+                                cy={cy}
+                                r={topic.r + 6}
+                                fill="none"
+                                stroke="var(--graph-node-focused)"
+                                strokeOpacity="0.35"
+                                strokeWidth="1.5"
+                              />
+                            )}
+                            <circle
+                              cx={topic.cx}
+                              cy={cy}
+                              r={topic.r}
+                              fill={
+                                isSelected
+                                  ? "var(--graph-node-focused)"
+                                  : index === 1
+                                    ? "color-mix(in srgb, var(--graph-node) 50%, var(--graph-node-focused) 50%)"
+                                    : "var(--graph-node)"
+                              }
+                              stroke="var(--surface)"
+                              strokeWidth="2"
+                            />
+                            <text
+                              x={topic.cx}
+                              y={cy + topic.r + 16}
+                              textAnchor="middle"
+                              className={cn(
+                                "text-[11px] font-medium",
+                                isSelected ? "fill-fg" : "fill-fg-2",
+                              )}
+                            >
+                              {shortLabel}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+
+                    {/* Graph legend matching src/styles.css */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-line text-[12px] text-fg-3">
+                      <div className="flex items-center gap-4">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span
+                            className="size-2.5 rounded-full"
+                            style={{ backgroundColor: "var(--graph-node-focused)" }}
+                          />
+                          <span>Nhiều liên kết</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span
+                            className="size-2.5 rounded-full"
+                            style={{ backgroundColor: "var(--graph-node)" }}
+                          />
+                          <span>Độ phủ thấp</span>
+                        </span>
+                      </div>
+                      <span className="font-mono text-[12px]">Kích thước = Điểm nổi lên</span>
+                    </div>
+                  </div>
+
+                  {/* Right Evidence Inspector inside preview */}
+                  <div className="lg:col-span-4 bg-canvas p-4 flex flex-col justify-between gap-4">
+                    <div className="space-y-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <h2 className="text-[14px] font-medium text-fg leading-snug">
+                          {selectedTopic.title}
+                        </h2>
+                        <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded bg-tone-green-soft text-tone-green font-mono text-[12px] font-medium tabular-nums">
+                          {selectedTopic.potential}/100
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 py-3 border-y border-line">
+                        <div>
+                          <div className="text-[12px] text-fg-3">Tài khoản</div>
+                          <div className="font-mono text-[15px] font-medium text-fg tabular-nums mt-0.5">
+                            {selectedTopic.accounts}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[12px] text-fg-3">Đầu báo</div>
+                          <div className="font-mono text-[15px] font-medium text-fg tabular-nums mt-0.5">
+                            {selectedTopic.publishers}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[12px] text-fg-3">Giai đoạn</div>
+                          <div className="text-[13px] font-medium text-fg mt-1">
+                            {selectedTopic.phase}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-[12px] font-medium text-fg-3">
+                          Bằng chứng trích dẫn
+                        </div>
+                        {selectedTopic.examples.map((ex, i) => (
+                          <div
+                            key={i}
+                            className="rounded-lg border border-line bg-surface p-3 space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between gap-2 text-[12px]">
+                              <span className="font-medium text-fg">{ex.source}</span>
+                              <span className="text-fg-3">{ex.kind}</span>
+                            </div>
+                            <p className="text-[12px] text-fg-2 leading-[1.45] line-clamp-2">
+                              {ex.excerpt}
+                            </p>
+                            <div className="text-[12px] text-fg-3">{ex.time}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={onOpenApp}
+                      className="w-full h-9 rounded-lg border border-line bg-surface hover:bg-hover text-fg text-[13px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors duration-150"
+                    >
+                      <span>Mở trong không gian làm việc</span>
+                      <ArrowUpRight className="size-4 text-fg-3" strokeWidth={1.5} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-            <button
-              onClick={onOpenApp}
-              className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-purple-700 dark:text-[#a78bfa] hover:text-purple-900 dark:hover:text-white px-4 py-2 rounded-lg bg-purple-50 dark:bg-white/5 hover:bg-purple-100 dark:hover:bg-white/10 transition-colors whitespace-nowrap shrink-0"
-            >
-              <span>Xem trực quan trên Map</span>
-              <ArrowRight className="size-4" />
-            </button>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ------------------------------------------------------------ */}
-      {/* 6. 4 Core Tech Pillars (Weak Signal, Multimodal, Hawkes...) */}
-      {/* ------------------------------------------------------------ */}
-      <section id="tech" className="py-24 px-4 sm:px-6 max-w-6xl mx-auto">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-[#a78bfa] mb-3 font-semibold">
-            <Cpu className="size-4" />
-            <span>Nền tảng kỹ thuật chuyên sâu</span>
-          </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
-            Bốn Trụ Cột Công Nghệ Đột Phá
-          </h2>
-          <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-            Hệ thống ứng dụng mô hình hóa toán học xác suất và kiến trúc AI đa phương thức cục bộ,
-            đảm bảo tính khoa học và minh bạch cao nhất.
-          </p>
-        </div>
+        {/* ------------------------------------------------------------ */}
+        {/* 3. Real Sources & Explicit Scope Separation                  */}
+        {/* ------------------------------------------------------------ */}
+        <section id="sources" className="py-20 sm:py-24 px-4 sm:px-6 border-b border-line">
+          <div className="max-w-[1200px] mx-auto">
+            <div className="max-w-2xl mb-12">
+              <h2 className="text-[28px] sm:text-[36px] font-medium tracking-[-0.02em] text-fg leading-[1.15] mb-4">
+                Tám nguồn công khai tiếng Việt, phân tách rõ vai trò
+              </h2>
+              <p className="text-[16px] text-fg-2 leading-[1.6]">
+                Hệ thống thu thập theo chu kỳ có giới hạn (tối đa 500–1.000 bản ghi mỗi nguồn) và
+                không bao giờ gộp tin tức báo chí thành tài khoản cộng đồng hay lượt phản hồi.
+              </p>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {TECH_PILLARS.map((pillar) => {
-            const Icon = pillar.icon;
-            return (
-              <div
-                key={pillar.number}
-                className="p-8 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group shadow-sm"
-              >
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Community discussion sources */}
+              <div className="lg:col-span-5 rounded-xl border border-line bg-surface p-6 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="flex size-11 items-center justify-center rounded-lg bg-[#a78bfa]/15 border border-[#a78bfa]/30 text-[#a78bfa] group-hover:scale-110 group-hover:bg-[#a78bfa]/25 transition-all duration-300">
-                      <Icon className="size-5.5" />
-                    </span>
-                    <span className="font-mono text-3xl font-bold text-neutral-300 dark:text-[#555555] group-hover:text-[#a78bfa]/50 transition-colors duration-300">
-                      {pillar.number}
-                    </span>
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <MessageSquare
+                      className="size-4 text-fg-3"
+                      strokeWidth={1.5}
+                      aria-hidden="true"
+                    />
+                    <h3 className="text-[16px] font-medium text-fg">
+                      Thảo luận cộng đồng (2 diễn đàn)
+                    </h3>
                   </div>
-                  <h3 className="text-[19px] font-bold text-neutral-900 dark:text-white mb-3 leading-snug">
-                    {pillar.title}
-                  </h3>
-                  <p className="text-[15.5px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-6">
-                    {pillar.description}
+                  <p className="text-[14px] text-fg-2 leading-[1.55] mb-6">
+                    Mỗi bài đăng gắn với một định danh tác giả theo nguồn. Mốc thời gian RSS được
+                    ghi nhãn rõ là hoạt động diễn đàn, không suy đoán thành toàn bộ luồng bình luận.
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2 pt-4 border-t border-neutral-200 dark:border-[#363636]">
-                  {pillar.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="text-[13px] font-mono px-2.5 py-1 rounded bg-neutral-100 dark:bg-[#1e1e1e] text-neutral-700 dark:text-[#cccccc] border border-neutral-200 dark:border-[#333333]"
-                    >
-                      {tag}
-                    </span>
+                <div className="divide-y divide-line border-t border-line">
+                  {COMMUNITY_SOURCES.map((src) => (
+                    <div key={src.name} className="py-4 first:pt-4 last:pb-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[15px] font-medium text-fg">{src.name}</span>
+                        <span className="font-mono text-[12px] text-fg-3">{src.endpoint}</span>
+                      </div>
+                      <p className="text-[13px] text-fg-3 mt-1">{src.note}</p>
+                    </div>
                   ))}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </section>
 
-      {/* ------------------------------------------------------------ */}
-      {/* 7. Target Personas & Interactive Use Cases (Lindy Tile 5)   */}
-      {/* ------------------------------------------------------------ */}
-      <section
-        id="solutions"
-        className="py-24 px-4 sm:px-6 bg-neutral-100/70 dark:bg-[#222222] border-y border-neutral-200 dark:border-[#363636]"
-      >
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-[#a78bfa] mb-3 font-semibold">
-              <Users className="size-4" />
-              <span>Giải pháp cho từng đối tượng</span>
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
-              Trendifest dành cho những ai cần đi trước thị trường?
-            </h2>
-            <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-              Chọn vai trò của bạn để khám phá kịch bản ứng dụng cụ thể.
-            </p>
-          </div>
+              {/* Publisher news sources */}
+              <div className="lg:col-span-7 rounded-xl border border-line bg-surface p-6">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <FileText className="size-4 text-fg-3" strokeWidth={1.5} aria-hidden="true" />
+                  <h3 className="text-[16px] font-medium text-fg">
+                    Báo chí có nhãn nguồn (6 đầu báo, 53 luồng chuyên mục)
+                  </h3>
+                </div>
+                <p className="text-[14px] text-fg-2 leading-[1.55] mb-6">
+                  Hợp nhất bài viết trùng liên kết qua các chuyên mục và tái xác thực bằng ETag. Tin
+                  bài được tính riêng ở cột đầu báo để tránh nhân bản giả tạo độ phủ cộng đồng.
+                </p>
 
-          {/* Interactive Filter Pills (Lindy Tile 5 style) */}
-          <div className="flex flex-wrap justify-center gap-2.5 mb-12">
-            {USE_CASES.map((uc) => (
-              <button
-                key={uc.id}
-                onClick={() => setActiveUseCase(uc.id)}
-                className={cn(
-                  "px-5 py-2.5 rounded-full text-[15px] font-medium transition-all whitespace-nowrap",
-                  activeUseCase === uc.id
-                    ? "bg-[#a78bfa] text-[#141416] font-bold shadow-lg"
-                    : "bg-white dark:bg-[#262626] text-neutral-600 dark:text-[#aaaaaa] hover:text-neutral-900 dark:hover:text-white border border-neutral-200 dark:border-[#363636] hover:bg-neutral-50 dark:hover:bg-[#303030]",
-                )}
-              >
-                {uc.tab}
-              </button>
-            ))}
-          </div>
-
-          {/* Dynamic Active Use Case Display */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] rounded-3xl p-7 sm:p-12 shadow-xl">
-            {/* Left Content */}
-            <div className="lg:col-span-7">
-              <div className="inline-block text-[13px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-md mb-4">
-                {currentUseCase.metric}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {NEWS_SOURCES.map((src) => (
+                    <div
+                      key={src.name}
+                      className="rounded-lg border border-line bg-canvas px-4 py-3"
+                    >
+                      <div className="text-[14px] font-medium text-fg">{src.name}</div>
+                      <div className="text-[13px] text-fg-3 mt-0.5">{src.detail}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white mb-4 leading-snug">
-                {currentUseCase.headline}
-              </h3>
-              <p className="text-[16px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-7">
-                {currentUseCase.description}
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 4. Comparison Table                                          */}
+        {/* ------------------------------------------------------------ */}
+        <section className="py-20 sm:py-24 px-4 sm:px-6 border-b border-line bg-sunken">
+          <div className="max-w-[1200px] mx-auto">
+            <div className="max-w-2xl mb-12">
+              <h2 className="text-[28px] sm:text-[36px] font-medium tracking-[-0.02em] text-fg leading-[1.15] mb-4">
+                Từ đếm từ khóa bề nổi sang gom cụm có kiểm chứng
+              </h2>
+              <p className="text-[16px] text-fg-2 leading-[1.6]">
+                Thay vì gom mọi nguồn vào một bảng xếp hạng chung chung, Trendifest giữ nguyên ngữ
+                cảnh phát sinh và cấu trúc bằng chứng của từng chủ đề.
               </p>
-              <ul className="space-y-3.5">
-                {currentUseCase.points.map((pt, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-3 text-[15.5px] text-neutral-800 dark:text-[#dddddd] leading-relaxed"
+            </div>
+
+            <div className="rounded-xl border border-line bg-surface overflow-hidden">
+              <div className="hidden md:grid md:grid-cols-12 gap-6 px-6 py-3.5 border-b border-line bg-canvas text-[13px] font-medium text-fg-3">
+                <div className="col-span-3">Tiêu chí</div>
+                <div className="col-span-4">Công cụ từ khóa truyền thống</div>
+                <div className="col-span-5 text-fg">Cách làm của Trendifest</div>
+              </div>
+              <div className="divide-y divide-line">
+                {COMPARISON_ROWS.map((row) => (
+                  <div
+                    key={row.criteria}
+                    className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 px-6 py-5 text-[14px] leading-[1.55]"
                   >
-                    <CheckCircle2 className="size-5 text-[#a78bfa] shrink-0 mt-0.5" />
-                    <span>{pt}</span>
-                  </li>
+                    <div className="md:col-span-3 font-medium text-fg">{row.criteria}</div>
+                    <div className="md:col-span-4 text-fg-3">{row.traditional}</div>
+                    <div className="md:col-span-5 text-fg-2">{row.trendifest}</div>
+                  </div>
                 ))}
-              </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 5. Local Processing Pipeline (Interactive 4-step list)       */}
+        {/* ------------------------------------------------------------ */}
+        <section id="pipeline" className="py-20 sm:py-24 px-4 sm:px-6 border-b border-line">
+          <div className="max-w-[1200px] mx-auto">
+            <div className="max-w-2xl mb-12">
+              <h2 className="text-[28px] sm:text-[36px] font-medium tracking-[-0.02em] text-fg leading-[1.15] mb-4">
+                Bốn bước xử lý từ bản ghi thô đến đồ thị chủ đề
+              </h2>
+              <p className="text-[16px] text-fg-2 leading-[1.6]">
+                Toàn bộ khâu tính toán vector và phân cụm chạy tách biệt trong worker nền với
+                Postgres/pgvector, giữ cho luồng đọc giao diện luôn ổn định.
+              </p>
             </div>
 
-            {/* Right Screen Mockup */}
-            <div className="lg:col-span-5 rounded-2xl bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] p-6 shadow-inner">
-              <div className="flex items-center justify-between mb-5 pb-3 border-b border-neutral-200 dark:border-[#333333]">
-                <span className="text-[14px] font-bold text-neutral-900 dark:text-white">
-                  {currentUseCase.previewTitle}
-                </span>
-                <span className="text-[12px] font-mono text-purple-700 dark:text-[#a78bfa] bg-purple-100 dark:bg-[#a78bfa]/15 px-2.5 py-0.5 rounded font-medium">
-                  {currentUseCase.previewBadge}
-                </span>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Step selector list */}
+              <div className="lg:col-span-5 space-y-2">
+                {PIPELINE_STEPS.map((item, idx) => {
+                  const isActive = activePipelineStep === idx;
+                  return (
+                    <button
+                      key={item.step}
+                      type="button"
+                      onClick={() => setActivePipelineStep(idx)}
+                      aria-pressed={isActive}
+                      className={cn(
+                        "w-full text-left rounded-xl border p-4 transition-colors duration-150",
+                        isActive
+                          ? "border-line-strong bg-surface"
+                          : "border-line bg-canvas hover:bg-surface",
+                      )}
+                    >
+                      <div className="flex items-baseline gap-3">
+                        <span
+                          className="font-mono text-[13px] tabular-nums font-medium"
+                          style={{
+                            color: isActive ? "var(--graph-node-focused)" : "var(--fg-3)",
+                          }}
+                        >
+                          {item.step}
+                        </span>
+                        <span className="text-[15px] font-medium text-fg">{item.title}</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-              <div className="space-y-3.5">
-                <div className="p-3.5 rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#3a3a3a] shadow-sm">
-                  <div className="text-[12.5px] text-neutral-500 dark:text-[#888888] mb-1">
-                    Cụm sự kiện theo dõi:
+
+              {/* Active step detail card */}
+              <div className="lg:col-span-7 rounded-xl border border-line bg-surface p-6 sm:p-8">
+                <div className="flex items-center justify-between gap-4 pb-4 mb-5 border-b border-line">
+                  <div className="flex items-center gap-2.5">
+                    <Cpu className="size-4 text-fg-3" strokeWidth={1.5} aria-hidden="true" />
+                    <span className="font-mono text-[13px] text-fg-3 tabular-nums">
+                      Bước {PIPELINE_STEPS[activePipelineStep].step} / 04
+                    </span>
                   </div>
-                  <div className="text-[15px] font-semibold text-neutral-900 dark:text-white">
-                    {currentUseCase.previewEvent}
+                  <span className="text-[12px] font-mono text-fg-3">Local worker</span>
+                </div>
+                <h3 className="text-[20px] font-medium text-fg mb-3">
+                  {PIPELINE_STEPS[activePipelineStep].title}
+                </h3>
+                <p className="text-[15px] text-fg-2 leading-[1.6] mb-4">
+                  {PIPELINE_STEPS[activePipelineStep].summary}
+                </p>
+                <p className="text-[14px] text-fg-3 leading-[1.6]">
+                  {PIPELINE_STEPS[activePipelineStep].detail}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 6. Emergence Score & Visual Grammar (Asymmetric Split)       */}
+        {/* ------------------------------------------------------------ */}
+        <section
+          id="scoring"
+          className="py-20 sm:py-24 px-4 sm:px-6 border-b border-line bg-sunken"
+        >
+          <div className="max-w-[1200px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Left: Weight Breakdown Chart */}
+            <div className="lg:col-span-7 rounded-xl border border-line bg-surface p-6 sm:p-8">
+              <div className="mb-6">
+                <h2 className="text-[24px] sm:text-[28px] font-medium tracking-[-0.02em] text-fg leading-[1.2] mb-2">
+                  Cấu trúc Điểm nổi lên (Emergence Score)
+                </h2>
+                <p className="text-[14px] text-fg-2 leading-[1.55]">
+                  Điểm tổng hợp từ 0 đến 100 phản ánh bằng chứng đã thu thập trong cửa sổ quan sát,
+                  nhân với hệ số độ tin cậy{" "}
+                  <span className="font-mono text-[13px] text-fg">
+                    0.3 + 0.7 × min(1, (tài khoản + đầu báo) / 5)
+                  </span>
+                  .
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                {SCORE_WEIGHTS.map((factor) => (
+                  <div key={factor.name}>
+                    <div className="flex items-baseline justify-between gap-4 mb-1.5">
+                      <span className="text-[14px] font-medium text-fg">{factor.name}</span>
+                      <span className="font-mono text-[13px] font-medium text-fg tabular-nums">
+                        {factor.weight}%
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded bg-canvas border border-line overflow-hidden mb-1.5">
+                      <div
+                        className="h-full rounded-sm"
+                        style={{
+                          width: `${factor.weight}%`,
+                          backgroundColor: factor.accent
+                            ? "var(--graph-node-focused)"
+                            : "var(--fg-3)",
+                        }}
+                      />
+                    </div>
+                    <p className="text-[13px] text-fg-3">{factor.description}</p>
                   </div>
+                ))}
+              </div>
+
+              <div className="mt-6 pt-5 border-t border-line text-[13px] text-fg-3 leading-[1.55]">
+                Thành phần Velocity giữ ở mức trung tính cho đến khi chủ đề tích lũy đủ mẫu quan sát
+                theo giờ phủ hai cửa sổ 6 giờ liên tiếp không có khoảng trống quá 75 phút.
+              </div>
+            </div>
+
+            {/* Right: Graph Reading Guide */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="rounded-xl border border-line bg-surface p-6">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <Layers className="size-4 text-fg-3" strokeWidth={1.5} aria-hidden="true" />
+                  <h3 className="text-[15px] font-medium text-fg">Kích thước nốt</h3>
                 </div>
-                <div className="p-3.5 rounded-xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#3a3a3a] flex items-center justify-between shadow-sm">
-                  <span className="text-[12.5px] text-neutral-500 dark:text-[#888888]">
-                    Quỹ đạo lan truyền:
-                  </span>
-                  <span className="text-[14px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                    {currentUseCase.previewCommunity}
-                  </span>
+                <p className="text-[14px] text-fg-2 leading-[1.55]">
+                  Tỷ lệ thuận với điểm nổi lên. Nhiều bài viết độc lập cùng nói về một sự kiện sẽ
+                  củng cố kích thước của một nốt duy nhất thay vì tạo ra các chấm rời rạc.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-line bg-surface p-6">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <Network className="size-4 text-fg-3" strokeWidth={1.5} aria-hidden="true" />
+                  <h3 className="text-[15px] font-medium text-fg">Màu sắc & cạnh nối</h3>
                 </div>
-                <div className="p-3.5 rounded-xl bg-purple-50 dark:bg-[#2a2438] border border-purple-200 dark:border-[#a78bfa]/30 text-center">
+                <p className="text-[14px] text-fg-2 leading-[1.55]">
+                  Màu chạy từ trung tính sang tím khi số liên kết chủ đề tăng (tối đa 3 liên kết
+                  mạnh nhất). Cạnh nối chỉ dùng làm ngữ cảnh, không cộng thêm điểm.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-line bg-surface p-6">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <GitMerge className="size-4 text-fg-3" strokeWidth={1.5} aria-hidden="true" />
+                  <h3 className="text-[15px] font-medium text-fg">Kiểm duyệt gộp & tách</h3>
+                </div>
+                <p className="text-[14px] text-fg-2 leading-[1.55]">
+                  Khóa tương thích thực thể và năm sự kiện khi gộp; cho phép tách bản ghi chọn lọc
+                  và hoàn tác nếu chưa có thay đổi phụ thuộc mới hơn.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 7. Use Cases (Tabbed Workflows + Matching Artifact)          */}
+        {/* ------------------------------------------------------------ */}
+        <section id="use-cases" className="py-20 sm:py-24 px-4 sm:px-6 border-b border-line">
+          <div className="max-w-[1200px] mx-auto">
+            <div className="max-w-2xl mb-8">
+              <h2 className="text-[28px] sm:text-[36px] font-medium tracking-[-0.02em] text-fg leading-[1.15] mb-4">
+                Ứng dụng trong công việc hằng ngày
+              </h2>
+              <p className="text-[16px] text-fg-2 leading-[1.6]">
+                Chọn góc nhìn phù hợp để xem cách bảng chủ đề, nhật ký kiểm duyệt và quy tắc theo
+                dõi vận hành cùng nhau.
+              </p>
+            </div>
+
+            {/* Tab list */}
+            <div role="tablist" aria-label="Nhóm người dùng" className="flex flex-wrap gap-2 mb-8">
+              {USE_CASES.map((uc) => {
+                const isActive = uc.id === activeUseCase;
+                return (
                   <button
-                    onClick={onOpenApp}
-                    className="text-[14px] font-bold text-purple-700 dark:text-[#a78bfa] hover:text-purple-900 dark:hover:text-white flex items-center justify-center gap-1.5 w-full py-1"
-                  >
-                    <span>Khám phá trào lưu này trên Live Map</span>
-                    <ArrowRight className="size-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      {/* 8. Interactive Graph Canvas Preview Section                  */}
-      {/* ------------------------------------------------------------ */}
-      <section className="py-24 px-4 sm:px-6 max-w-6xl mx-auto">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-[#a78bfa] mb-3 font-semibold">
-            <Layers className="size-4" />
-            <span>Giao diện phân tích đột phá</span>
-          </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
-            Bàn làm việc phân tích: Nơi đồ thị chính là toàn bộ ứng dụng
-          </h2>
-          <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-            Không cần chuyển đổi qua lại giữa hàng chục dashboard rối mắt. Mọi quan hệ văn hóa mạng
-            đều hiển thị trong một đồ thị Obsidian canvas tối giản, mượt mà:
-          </p>
-        </div>
-
-        {/* Visual Vocabulary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300 shadow-sm">
-            <div className="text-[13px] font-mono text-[#7c3aed] dark:text-[#a78bfa] mb-1.5 font-bold">
-              MÀU SẮC (COLOR)
-            </div>
-            <div className="text-[16px] font-bold text-neutral-900 dark:text-white mb-2">
-              Số lượng liên kết
-            </div>
-            <p className="text-[14px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-              Từ tím nhạt (kết nối đơn lẻ) đến tím đậm rực rỡ khi trào lưu tích lũy quan hệ xuyên
-              cộng đồng.
-            </p>
-          </div>
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300 shadow-sm">
-            <div className="text-[13px] font-mono text-[#7c3aed] dark:text-[#a78bfa] mb-1.5 font-bold">
-              KÍCH THƯỚC (SIZE)
-            </div>
-            <div className="text-[16px] font-bold text-neutral-900 dark:text-white mb-2">
-              Điểm bộc phát (0-100)
-            </div>
-            <p className="text-[14px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-              Tỷ lệ thuận với Điểm bộc phát (Emergence Score) tổng hợp từ Reach, Velocity, Spread và
-              Persistence.
-            </p>
-          </div>
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300 shadow-sm">
-            <div className="text-[13px] font-mono text-[#7c3aed] dark:text-[#a78bfa] mb-1.5 font-bold">
-              HÌNH DÁNG (SHAPE)
-            </div>
-            <div className="text-[16px] font-bold text-neutral-900 dark:text-white mb-2">
-              Dạng thức nội dung
-            </div>
-            <p className="text-[14px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-              Tròn (Văn bản), Vuông bo (Hình ảnh), Tam giác (Video), Quả trám (Âm thanh), Ngũ giác
-              (Liên kết).
-            </p>
-          </div>
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/50 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(167,139,250,0.1)] transition-all duration-300 shadow-sm">
-            <div className="text-[13px] font-mono text-[#7c3aed] dark:text-[#a78bfa] mb-1.5 font-bold">
-              INSPECTOR DRAWER
-            </div>
-            <div className="text-[16px] font-bold text-neutral-900 dark:text-white mb-2">
-              Minh chứng bài gốc
-            </div>
-            <p className="text-[14px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-              Nhấp vào bất kỳ nốt nào để mở trích dẫn nguồn, số lượt like/share và link mở thẳng bài
-              viết trên Bluesky.
-            </p>
-          </div>
-        </div>
-
-        {/* Action Button */}
-        <div className="text-center">
-          <button
-            onClick={onOpenApp}
-            className="inline-flex items-center gap-2 px-9 py-4 rounded-full bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] font-bold text-[16px] shadow-xl transition-transform hover:scale-105 active:scale-95"
-          >
-            <span>Mở Bàn Làm Việc Trend Map Canvas</span>
-            <ExternalLink className="size-4" />
-          </button>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      {/* 9. Compliance & Privacy-First (Lindy Tile 8)                 */}
-      {/* ------------------------------------------------------------ */}
-      <section
-        id="compliance"
-        className="py-24 px-4 sm:px-6 bg-neutral-100/70 dark:bg-[#222222] border-y border-neutral-200 dark:border-[#363636]"
-      >
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-[#a78bfa] mb-3 font-semibold">
-              <Shield className="size-4" />
-              <span>Bảo vệ quyền riêng tư theo thiết kế</span>
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
-              Tuân thủ pháp luật, tôn trọng riêng tư và toàn quyền kiểm soát
-            </h2>
-            <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed">
-              Khác biệt hoàn toàn với các dịch vụ cào dữ liệu lậu (scrape-first) kém bền vững,
-              Trendifest được thiết kế với chuẩn mực pháp lý cao nhất tại Việt Nam.
-            </p>
-          </div>
-
-          {/* 3 Pillar Cards (Lindy Tile 8 style) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Card 1: Compliant */}
-            <div className="p-8 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group shadow-sm">
-              <div>
-                <div className="flex items-center gap-2.5 mb-3.5 text-emerald-600 dark:text-emerald-400">
-                  <FileCheck2 className="size-5.5 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="text-[18px] font-bold text-neutral-900 dark:text-white">
-                    Chuẩn mực Pháp lý VN
-                  </span>
-                </div>
-                <p className="text-[15.5px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-6">
-                  Tiên phong tuân thủ chặt chẽ{" "}
-                  <strong className="text-neutral-900 dark:text-white">
-                    Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15
-                  </strong>{" "}
-                  và{" "}
-                  <strong className="text-neutral-900 dark:text-white">
-                    Nghị định 356/2025/NĐ-CP
-                  </strong>{" "}
-                  (hiệu lực từ 2026).
-                </p>
-                <div className="p-4.5 rounded-xl bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#333333] space-y-2.5 text-[14.5px] text-neutral-700 dark:text-[#cccccc]">
-                  <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>Không lập hồ sơ dữ liệu cá nhân</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>Không suy đoán tuổi, giới tính cụ thể</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>Chỉ xử lý nội dung công khai hợp lệ</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 2: Access-First */}
-            <div className="p-8 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group shadow-sm">
-              <div>
-                <div className="flex items-center gap-2.5 mb-3.5 text-[#7c3aed] dark:text-[#a78bfa]">
-                  <Globe2 className="size-5.5 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="text-[18px] font-bold text-neutral-900 dark:text-white">
-                    Kết nối Access-First
-                  </span>
-                </div>
-                <p className="text-[15.5px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-6">
-                  Nói không với kỹ thuật cào dữ liệu lậu trái phép. Chỉ sử dụng các cổng API chính
-                  thức và luồng WebSocket công khai có quản trị.
-                </p>
-                <div className="p-4.5 rounded-xl bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#333333] space-y-2.5 text-[14.5px] text-neutral-700 dark:text-[#cccccc]">
-                  <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-[#7c3aed] dark:text-[#a78bfa] shrink-0" />
-                    <span>Bluesky Jetstream v2 unauthenticated tail</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-[#7c3aed] dark:text-[#a78bfa] shrink-0" />
-                    <span>Meta Threads API & TikTok Research API</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-[#7c3aed] dark:text-[#a78bfa] shrink-0" />
-                    <span>Bảo lưu quyền tác giả & permalink</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 3: Deletion Compliance & 100% Local */}
-            <div className="p-8 rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] hover:border-[#a78bfa]/60 hover:-translate-y-1.5 hover:shadow-[0_12px_30px_rgba(167,139,250,0.12)] transition-all duration-300 flex flex-col justify-between group shadow-sm">
-              <div>
-                <div className="flex items-center gap-2.5 mb-3.5 text-cyan-600 dark:text-cyan-400">
-                  <Lock className="size-5.5 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="text-[18px] font-bold text-neutral-900 dark:text-white">
-                    Quyền Lãng Quên & Local AI
-                  </span>
-                </div>
-                <p className="text-[15.5px] text-neutral-600 dark:text-[#aaaaaa] leading-relaxed mb-6">
-                  Tôn trọng quyền xóa bài viết. Mô hình vector chạy cục bộ trong môi trường nội bộ
-                  của tổ chức mà không phát tán ra ngoài.
-                </p>
-                <div className="p-4.5 rounded-xl bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#333333] space-y-2.5 text-[14.5px] text-neutral-700 dark:text-[#cccccc]">
-                  <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
-                    <span>Tự động xóa vector khi bài gốc bị xóa</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
-                    <span>100% Local Transformers (CPU/GPU riêng)</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Check className="size-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
-                    <span>Không huấn luyện mô hình trên dữ liệu người dùng</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      {/* 10. FAQ Accordion                                           */}
-      {/* ------------------------------------------------------------ */}
-      <section id="faq" className="py-24 px-4 sm:px-6 max-w-4xl mx-auto">
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-1.5 text-[13px] uppercase font-mono tracking-wider text-purple-700 dark:text-[#a78bfa] mb-3 font-semibold">
-            <HelpCircle className="size-4" />
-            <span>Giải đáp thắc mắc</span>
-          </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-5 leading-tight">
-            Câu Hỏi Thường Gặp
-          </h2>
-          <p className="text-[17px] sm:text-[18px] text-neutral-600 dark:text-[#aaaaaa]">
-            Những điều bạn cần biết về nguyên lý hoạt động và cam kết của Trendifest.
-          </p>
-        </div>
-
-        <div className="divide-y divide-neutral-200 dark:divide-[#363636] border-y border-neutral-200 dark:border-[#363636]">
-          {FAQS.map((faq, idx) => {
-            const isOpen = openFaq === idx;
-            return (
-              <div key={idx} className="py-6">
-                <button
-                  onClick={() => setOpenFaq(isOpen ? null : idx)}
-                  className="flex items-center justify-between w-full text-left gap-4 text-neutral-900 dark:text-white hover:text-purple-700 dark:hover:text-[#a78bfa] transition-colors py-1"
-                >
-                  <span className="text-[17px] sm:text-[19px] font-bold leading-snug">
-                    {faq.question}
-                  </span>
-                  <ChevronDown
+                    key={uc.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveUseCase(uc.id)}
                     className={cn(
-                      "size-5 text-neutral-400 dark:text-[#888888] shrink-0 transition-transform duration-200",
-                      isOpen && "rotate-180 text-purple-700 dark:text-[#a78bfa]",
+                      "h-9 px-4 rounded-lg text-[14px] font-medium border transition-colors duration-150",
+                      isActive
+                        ? "bg-inverse text-inverse-fg border-inverse"
+                        : "bg-surface text-fg-2 border-line hover:text-fg hover:bg-hover",
                     )}
-                  />
-                </button>
-                {isOpen && (
-                  <p className="mt-4 text-[15.5px] sm:text-[16px] text-neutral-600 dark:text-[#bbbbbb] leading-relaxed pr-8">
-                    {faq.answer}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      {/* 13. Grand Final CTA Banner (Lindy Tile 10 Aura Card)         */}
-      {/* ------------------------------------------------------------ */}
-      <section className="py-24 px-4 sm:px-6">
-        <div className="max-w-5xl mx-auto rounded-3xl bg-gradient-to-b from-purple-100 via-purple-50 to-white dark:from-[#2e2642] dark:to-[#1e1e1e] border border-purple-200 dark:border-[#a78bfa]/40 p-10 sm:p-20 text-center relative overflow-hidden shadow-2xl group hover:border-purple-300 dark:hover:border-[#a78bfa]/70 transition-all duration-500">
-          <div
-            aria-hidden="true"
-            className="absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-[340px] bg-gradient-to-b from-purple-400/20 via-purple-300/15 to-transparent dark:from-[#c084fc]/25 dark:via-[#a78bfa]/20 dark:to-transparent blur-[130px] pointer-events-none rounded-full animate-pulse"
-          />
-
-          <div className="relative z-10">
-            <h2 className="text-4xl sm:text-6xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-6 leading-tight">
-              Sẵn sàng đón đầu đỉnh sóng văn hóa số cùng Trendifest?
-            </h2>
-            <p className="max-w-2xl mx-auto text-[18px] sm:text-[21px] text-neutral-600 dark:text-[#cccccc] leading-relaxed mb-10">
-              Đừng để thương hiệu của bạn là người cuối cùng biết đến trào lưu. Bắt đầu quan sát các
-              tín hiệu bộc phát đầu tiên ngay hôm nay.
-            </p>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-7">
-              <button
-                onClick={onOpenApp}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-bold bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] px-9 py-4 rounded-full shadow-2xl transition-all hover:scale-105 active:scale-95 whitespace-nowrap shrink-0"
-              >
-                <span>Khám Phá Đồ Thị Live Ngay</span>
-                <ArrowRight className="size-4.5 shrink-0" />
-              </button>
-              <button
-                onClick={() => setDemoModalOpen(true)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[16px] font-medium text-neutral-800 dark:text-white bg-white dark:bg-[#262626] hover:bg-neutral-100 dark:hover:bg-[#333333] border border-neutral-300 dark:border-[#363636] px-8 py-4 rounded-full transition-colors whitespace-nowrap shrink-0 shadow-sm"
-              >
-                <span>Liên Hệ Đặt Lịch Demo Doanh Nghiệp</span>
-              </button>
+                  >
+                    {uc.tab}
+                  </button>
+                );
+              })}
             </div>
 
-            <p className="text-[14px] text-neutral-500 dark:text-[#888888]">
-              Không cần thẻ tín dụng • Truy cập tức thì • Đăng ký tài khoản trong 2 phút
-            </p>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start rounded-xl border border-line bg-surface p-6 sm:p-8">
+              <div className="lg:col-span-7">
+                <h3 className="text-[22px] font-medium text-fg leading-[1.25] mb-3">
+                  {currentUseCase.headline}
+                </h3>
+                <p className="text-[15px] text-fg-2 leading-[1.6] mb-6">
+                  {currentUseCase.description}
+                </p>
+                <ul className="space-y-3">
+                  {currentUseCase.points.map((point) => (
+                    <li
+                      key={point}
+                      className="flex items-start gap-2.5 text-[14px] text-fg-2 leading-[1.55]"
+                    >
+                      <Check
+                        className="size-4 text-fg-3 shrink-0 mt-1"
+                        strokeWidth={1.5}
+                        aria-hidden="true"
+                      />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="lg:col-span-5 rounded-lg border border-line bg-canvas p-5">
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-line">
+                  <span className="text-[13px] font-medium text-fg">
+                    {currentUseCase.artifactTitle}
+                  </span>
+                  <span className="font-mono text-[12px] text-fg-3">Mẫu giao diện</span>
+                </div>
+                <div className="space-y-2.5">
+                  {currentUseCase.artifactRows.map((row) => (
+                    <div key={row.label} className="rounded-lg border border-line bg-surface p-3.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-mono text-[12px] text-fg-3 tabular-nums">
+                          {row.rank}
+                        </span>
+                        <span className="font-mono text-[12px] font-medium text-fg tabular-nums">
+                          {row.score}
+                        </span>
+                      </div>
+                      <div className="text-[14px] font-medium text-fg mt-1 leading-snug">
+                        {row.label}
+                      </div>
+                      <div className="text-[12px] text-fg-3 mt-1">{row.meta}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 8. Compliance & Privacy Architecture                         */}
+        {/* ------------------------------------------------------------ */}
+        <section
+          id="compliance"
+          className="py-20 sm:py-24 px-4 sm:px-6 border-b border-line bg-sunken"
+        >
+          <div className="max-w-[1200px] mx-auto">
+            <div className="max-w-2xl mb-12">
+              <h2 className="text-[28px] sm:text-[36px] font-medium tracking-[-0.02em] text-fg leading-[1.15] mb-4">
+                Thu thập có ranh giới và suy luận tại chỗ
+              </h2>
+              <p className="text-[16px] text-fg-2 leading-[1.6]">
+                Thiết kế theo nguyên tắc ưu tiên cổng truy cập hợp lệ, không giữ HTML thô và tách
+                bạch rõ giới hạn mẫu ngay trong giao diện phân tích.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="rounded-xl border border-line bg-surface p-6">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <ShieldCheck className="size-4 text-fg-3" strokeWidth={1.5} aria-hidden="true" />
+                  <h3 className="text-[16px] font-medium text-fg">Đối chiếu Luật 91/2025/QH15</h3>
+                </div>
+                <p className="text-[14px] text-fg-2 leading-[1.6] mb-4">
+                  Thiết kế hướng tới tuân thủ Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15 và Nghị định
+                  356/2025/NĐ-CP.
+                </p>
+                <ul className="space-y-2 text-[13px] text-fg-3">
+                  <li>Không suy đoán độ tuổi hay nhân khẩu học</li>
+                  <li>Không gộp tài khoản chéo nền tảng thành một người</li>
+                  <li>Chỉ xử lý văn bản công khai qua danh mục cấu hình</li>
+                </ul>
+              </div>
+
+              <div className="rounded-xl border border-line bg-surface p-6">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <Database className="size-4 text-fg-3" strokeWidth={1.5} aria-hidden="true" />
+                  <h3 className="text-[16px] font-medium text-fg">Cổng công khai có giới hạn</h3>
+                </div>
+                <p className="text-[14px] text-fg-2 leading-[1.6] mb-4">
+                  Mỗi phản hồi HTTP giới hạn tối đa 1 MB và thời hạn 15 giây, không thu thập lén qua
+                  thách thức bảo mật.
+                </p>
+                <ul className="space-y-2 text-[13px] text-fg-3">
+                  <li>Không lưu giữ mã nguồn HTML hay script của trang báo</li>
+                  <li>Chỉ lấy ảnh đính kèm HTTPS từ đúng tên miền nguồn</li>
+                  <li>Hiển thị lỗi từng chuyên mục thay vì ẩn thành nguồn rỗng</li>
+                </ul>
+              </div>
+
+              <div className="rounded-xl border border-line bg-surface p-6">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <Lock className="size-4 text-fg-3" strokeWidth={1.5} aria-hidden="true" />
+                  <h3 className="text-[16px] font-medium text-fg">Local AI & hết hạn 30 ngày</h3>
+                </div>
+                <p className="text-[14px] text-fg-2 leading-[1.6] mb-4">
+                  Trọng số mô hình tải về bộ nhớ đệm cục bộ; nội dung bài đăng không rời khỏi máy
+                  chủ suy luận nội bộ.
+                </p>
+                <ul className="space-y-2 text-[13px] text-fg-3">
+                  <li>Tự động xóa dữ liệu và vector dẫn xuất sau 30 ngày</li>
+                  <li>Chỉnh sửa bài gốc tự động vô hiệu hóa vector cũ</li>
+                  <li>Không suy diễn việc xóa bài từ danh sách RSS cuộn</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 9. FAQ Accordion                                             */}
+        {/* ------------------------------------------------------------ */}
+        <section id="faq" className="py-20 sm:py-24 px-4 sm:px-6 border-b border-line">
+          <div className="max-w-3xl mx-auto">
+            <h2 className="text-[28px] sm:text-[36px] font-medium tracking-[-0.02em] text-fg leading-[1.15] mb-10">
+              Câu hỏi thường gặp
+            </h2>
+
+            <div className="divide-y divide-line border-y border-line">
+              {FAQS.map((faq, idx) => {
+                const isOpen = openFaq === idx;
+                return (
+                  <div key={faq.question} className="py-5">
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaq(isOpen ? null : idx)}
+                      aria-expanded={isOpen}
+                      className="flex items-center justify-between w-full text-left gap-4 text-fg hover:text-fg-2 transition-colors duration-150"
+                    >
+                      <span className="text-[16px] font-medium leading-[1.45]">{faq.question}</span>
+                      <ChevronDown
+                        className={cn(
+                          "size-4 text-fg-3 shrink-0 transition-transform duration-150",
+                          isOpen && "rotate-180",
+                        )}
+                        strokeWidth={1.5}
+                      />
+                    </button>
+                    {isOpen && (
+                      <p className="mt-3 text-[14px] text-fg-2 leading-[1.6] pr-8">{faq.answer}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 10. Quiet Closing Callout                                    */}
+        {/* ------------------------------------------------------------ */}
+        <section className="py-20 px-4 sm:px-6">
+          <div className="max-w-[1200px] mx-auto rounded-2xl border border-line bg-surface p-8 sm:p-12 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="max-w-xl">
+              <h2 className="text-[24px] sm:text-[32px] font-medium tracking-[-0.02em] text-fg leading-[1.15] mb-3">
+                Bắt đầu khảo sát bản đồ chủ đề ngay trong trình duyệt
+              </h2>
+              <p className="text-[15px] text-fg-2 leading-[1.55]">
+                Không cần đăng nhập hay cài đặt tiện ích bổ sung. Toàn bộ đồ thị, bảng xếp hạng và
+                quy tắc theo dõi hoạt động trực tiếp tại trang ứng dụng.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={onOpenApp}
+                className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg bg-inverse hover:bg-inverse-hover text-inverse-fg text-[14px] font-medium transition-[background-color,transform] duration-150 active:scale-[0.98]"
+              >
+                <span>Mở đồ thị trực tiếp</span>
+                <ArrowRight className="size-4" strokeWidth={1.5} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setContactModalOpen(true)}
+                className="inline-flex items-center justify-center h-11 px-5 rounded-lg border border-line bg-canvas hover:bg-hover text-fg text-[14px] font-medium transition-colors duration-150"
+              >
+                Liên hệ trao đổi
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
 
       {/* ------------------------------------------------------------ */}
-      {/* 14. Footer (Lindy Tile 11)                                   */}
+      {/* 11. Footer                                                   */}
       {/* ------------------------------------------------------------ */}
-      <footer className="border-t border-neutral-200 dark:border-[#363636] bg-neutral-100 dark:bg-[#181818] py-16 px-4 sm:px-6 text-[14.5px] text-neutral-600 dark:text-[#888888]">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-5 gap-10 mb-12">
-          {/* Brand Info */}
-          <div className="md:col-span-2 space-y-4">
-            <div className="flex items-center gap-2.5 text-[18px] font-bold text-neutral-900 dark:text-white">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-purple-100 dark:bg-[#a78bfa]/20 border border-purple-200 dark:border-[#a78bfa]/40 text-purple-700 dark:text-[#a78bfa]">
-                <Network className="size-4.5" />
-              </span>
+      <footer className="border-t border-line bg-canvas py-14 px-4 sm:px-6 text-[13px] text-fg-3">
+        <div className="max-w-[1200px] mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 pb-10 border-b border-line">
+          <div className="md:col-span-5 space-y-3">
+            <div className="flex items-center gap-2.5 text-[15px] font-semibold text-fg">
+              <BrandMark />
               <span>Trendifest</span>
             </div>
-            <p className="text-[14.5px] text-neutral-600 dark:text-[#999999] leading-relaxed max-w-sm">
-              Hệ thống trinh sát và dự báo sớm xu hướng số, văn hóa mạng và biến động thảo luận cho
-              Gen Z tại Việt Nam. Thuộc lĩnh vực Khoa học Dữ liệu và Mạng xã hội.
+            <p className="max-w-sm leading-[1.6] text-fg-2">
+              Không gian làm việc phân tích chủ đề tiếng Việt từ thảo luận diễn đàn và báo chí có
+              nhãn nguồn, suy luận vector cục bộ và kiểm chứng minh bạch.
             </p>
-            <div className="text-[13.5px] text-neutral-500 dark:text-[#777777] space-y-1">
-              <div>Kiến trúc: Local Vector Inference • Privacy-First</div>
-              <div>Tiêu chuẩn: Tuân thủ Luật An toàn thông tin & BV Dữ liệu cá nhân</div>
-            </div>
           </div>
 
-          {/* Column 1: Sản phẩm */}
-          <div>
-            <div className="text-[14px] font-mono uppercase tracking-wider text-neutral-900 dark:text-white mb-3.5 font-bold">
-              Sản phẩm
-            </div>
-            <ul className="space-y-2.5 text-[14.5px]">
+          <div className="md:col-span-2 space-y-2.5">
+            <div className="font-medium text-fg">Sản phẩm</div>
+            <ul className="space-y-2">
               <li>
                 <button
+                  type="button"
                   onClick={onOpenApp}
-                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                  className="hover:text-fg transition-colors duration-150"
                 >
-                  Trend Map Canvas
+                  Đồ thị chủ đề
                 </button>
               </li>
               <li>
-                <a
-                  href="#how-it-works"
-                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
-                >
-                  Quy trình trinh sát
+                <a href="#sources" className="hover:text-fg transition-colors duration-150">
+                  Nguồn dữ liệu
                 </a>
               </li>
               <li>
-                <a
-                  href="#tech"
-                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
-                >
-                  Mô hình Hawkes Process
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#faq"
-                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
-                >
-                  Câu hỏi thường gặp (FAQ)
+                <a href="#scoring" className="hover:text-fg transition-colors duration-150">
+                  Cách tính điểm
                 </a>
               </li>
             </ul>
           </div>
 
-          {/* Column 2: Pháp lý & Đạo đức */}
-          <div>
-            <div className="text-[14px] font-mono uppercase tracking-wider text-neutral-900 dark:text-white mb-3.5 font-bold">
-              Pháp lý & Đạo đức
-            </div>
-            <ul className="space-y-2.5 text-[14.5px]">
+          <div className="md:col-span-2 space-y-2.5">
+            <div className="font-medium text-fg">Nguyên tắc</div>
+            <ul className="space-y-2">
               <li>
-                <a
-                  href="#compliance"
-                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
-                >
-                  Luật BV Dữ liệu cá nhân 91/2025
+                <a href="#pipeline" className="hover:text-fg transition-colors duration-150">
+                  Suy luận cục bộ
                 </a>
               </li>
               <li>
-                <a
-                  href="#compliance"
-                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
-                >
-                  Chính sách Access-First
+                <a href="#compliance" className="hover:text-fg transition-colors duration-150">
+                  Luật 91/2025/QH15
                 </a>
               </li>
               <li>
-                <a
-                  href="#compliance"
-                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
-                >
-                  Quyền lãng quên (Deletion)
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#compliance"
-                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
-                >
-                  Nguyên tắc AI Độc lập
+                <a href="#faq" className="hover:text-fg transition-colors duration-150">
+                  Câu hỏi thường gặp
                 </a>
               </li>
             </ul>
           </div>
 
-          {/* Column 3: Liên hệ */}
-          <div>
-            <div className="text-[14px] font-mono uppercase tracking-wider text-neutral-900 dark:text-white mb-3.5 font-bold">
-              Liên hệ
-            </div>
-            <ul className="space-y-2.5 text-[14.5px]">
+          <div className="md:col-span-3 space-y-2.5">
+            <div className="font-medium text-fg">Liên hệ</div>
+            <ul className="space-y-2">
               <li>
                 <a
                   href="mailto:hanhnguyen17122006@gmail.com"
-                  className="hover:text-purple-700 dark:hover:text-white transition-colors"
+                  className="hover:text-fg transition-colors duration-150"
                 >
                   hanhnguyen17122006@gmail.com
                 </a>
               </li>
-              <li>
-                <span className="text-neutral-900 dark:text-white font-medium">Hotline:</span> 0935
-                009 725
-              </li>
-              <li>
-                <span>Đà Nẵng, Việt Nam</span>
-              </li>
+              <li className="font-mono tabular-nums">0935 009 725</li>
+              <li>Đà Nẵng, Việt Nam</li>
             </ul>
           </div>
         </div>
 
-        {/* Footer Bottom Bar */}
-        <div className="max-w-6xl mx-auto pt-8 border-t border-neutral-200 dark:border-[#2a2a2a] flex flex-col sm:flex-row items-center justify-between gap-4 text-[13.5px] text-neutral-500 dark:text-[#777777]">
-          <div>Copyright © 2026 Trendifest. All rights reserved.</div>
-          <div className="flex items-center gap-4">
-            <span className="text-purple-700 dark:text-[#a78bfa] font-semibold">
-              ✦ Real-time Social Signal Intelligence
-            </span>
-            <span>•</span>
-            <span>Độc lập • Minh bạch • Bảo mật</span>
-          </div>
+        <div className="max-w-[1200px] mx-auto pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <span>Trendifest · Vietnamese topic workspace</span>
+          <span>Mọi chỉ số đều gắn với bằng chứng quan sát được</span>
         </div>
       </footer>
 
       {/* ------------------------------------------------------------ */}
-      {/* 15. Demo Booking Modal Dialog                                */}
+      {/* 12. Contact / Walkthrough Modal                              */}
       {/* ------------------------------------------------------------ */}
-      {demoModalOpen && (
+      {contactModalOpen && (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-sm"
+          aria-labelledby="contact-dialog-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim"
         >
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] p-7 sm:p-9 shadow-2xl relative text-left">
+          <div className="w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-float relative">
             <button
+              type="button"
               onClick={() => {
-                setDemoModalOpen(false);
-                setDemoSubmitted(false);
+                setContactModalOpen(false);
+                setContactSubmitted(false);
               }}
-              className="absolute top-4 right-4 text-neutral-400 dark:text-[#888888] hover:text-neutral-900 dark:hover:text-white p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/5"
+              aria-label="Đóng hộp thoại"
+              className="absolute top-4 right-4 size-8 inline-flex items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-hover transition-colors duration-150"
             >
-              <X className="size-5" />
+              <X className="size-4" strokeWidth={1.5} />
             </button>
 
-            {!demoSubmitted ? (
+            {!contactSubmitted ? (
               <>
-                <div className="flex items-center gap-2 mb-2 text-purple-700 dark:text-[#a78bfa]">
-                  <Compass className="size-5" />
-                  <span className="text-[13px] font-mono uppercase tracking-wider font-semibold">
-                    Đặt lịch Demo Giải pháp
-                  </span>
-                </div>
-                <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2.5">
-                  Trải nghiệm Trendifest cho Doanh nghiệp
+                <h3 id="contact-dialog-title" className="text-[18px] font-medium text-fg mb-2">
+                  Liên hệ trao đổi về Trendifest
                 </h3>
-                <p className="text-[15px] text-neutral-600 dark:text-[#aaaaaa] mb-6 leading-relaxed">
-                  Để lại thông tin để đội ngũ Trendifest thiết lập phiên làm việc thử nghiệm và cung
-                  cấp quyền truy cập hệ thống.
+                <p className="text-[14px] text-fg-2 leading-[1.55] mb-5">
+                  Để lại thông tin nếu bạn muốn trao đổi về triển khai cục bộ hoặc danh mục nguồn
+                  tiếng Việt.
                 </p>
 
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    setDemoSubmitted(true);
+                    setContactSubmitted(true);
                   }}
-                  className="space-y-4.5"
+                  className="space-y-4"
                 >
                   <div>
-                    <label className="block text-[14px] font-medium text-neutral-700 dark:text-[#cccccc] mb-1.5">
-                      Họ và tên *
+                    <label className="block text-[13px] font-medium text-fg-2 mb-1.5">
+                      Họ và tên
                     </label>
                     <input
                       type="text"
                       required
-                      placeholder="Nguyễn Văn A"
-                      className="w-full px-4 py-2.5 rounded-lg bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] text-neutral-900 dark:text-white text-[15px] focus:outline-none focus:border-purple-600 dark:focus:border-[#a78bfa]"
+                      placeholder="Trần Minh Anh"
+                      className="w-full h-10 px-3 rounded-lg border border-line bg-canvas text-[14px] text-fg placeholder:text-fg-3"
                     />
                   </div>
                   <div>
-                    <label className="block text-[14px] font-medium text-neutral-700 dark:text-[#cccccc] mb-1.5">
-                      Email công việc *
+                    <label className="block text-[13px] font-medium text-fg-2 mb-1.5">
+                      Email liên hệ
                     </label>
                     <input
                       type="email"
                       required
-                      placeholder="a.nguyen@company.vn"
-                      className="w-full px-4 py-2.5 rounded-lg bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] text-neutral-900 dark:text-white text-[15px] focus:outline-none focus:border-purple-600 dark:focus:border-[#a78bfa]"
+                      placeholder="minhanh@tochuc.vn"
+                      className="w-full h-10 px-3 rounded-lg border border-line bg-canvas text-[14px] text-fg placeholder:text-fg-3"
                     />
                   </div>
                   <div>
-                    <label className="block text-[14px] font-medium text-neutral-700 dark:text-[#cccccc] mb-1.5">
-                      Tên tổ chức / Thương hiệu
+                    <label className="block text-[13px] font-medium text-fg-2 mb-1.5">
+                      Nội dung quan tâm
                     </label>
-                    <input
-                      type="text"
-                      placeholder="Agency / Brand Name"
-                      className="w-full px-4 py-2.5 rounded-lg bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] text-neutral-900 dark:text-white text-[15px] focus:outline-none focus:border-purple-600 dark:focus:border-[#a78bfa]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[14px] font-medium text-neutral-700 dark:text-[#cccccc] mb-1.5">
-                      Mục tiêu quan tâm nhất
-                    </label>
-                    <select className="w-full px-4 py-2.5 rounded-lg bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-[#363636] text-neutral-900 dark:text-white text-[15px] focus:outline-none focus:border-purple-600 dark:focus:border-[#a78bfa]">
-                      <option>Đón đầu xu hướng cho chiến dịch marketing</option>
-                      <option>Theo dõi và phòng ngừa rủi ro thảo luận số</option>
-                      <option>Bắt trend soundtrack/CapCut làm nội dung TikTok</option>
-                      <option>Nghiên cứu thị trường & dữ liệu học thuật</option>
+                    <select className="w-full h-10 px-3 rounded-lg border border-line bg-canvas text-[14px] text-fg">
+                      <option>Triển khai máy chủ thu thập & nhúng cục bộ</option>
+                      <option>Nghiên cứu chủ đề báo chí và diễn đàn tiếng Việt</option>
+                      <option>Góp ý về bộ nguồn công khai hoặc thuật toán gom cụm</option>
                     </select>
                   </div>
-
                   <button
                     type="submit"
-                    className="w-full mt-3 py-3.5 rounded-lg bg-[#a78bfa] hover:bg-[#8b7cf6] text-[#141416] font-bold text-[15.5px] transition-colors shadow-lg"
+                    className="w-full h-10 rounded-lg bg-inverse hover:bg-inverse-hover text-inverse-fg text-[14px] font-medium transition-colors duration-150"
                   >
-                    Gửi Yêu Cầu Đặt Lịch
+                    Gửi thông tin
                   </button>
                 </form>
               </>
             ) : (
-              <div className="text-center py-8">
-                <div className="size-14 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 className="size-8" />
-                </div>
-                <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">
-                  Đã nhận thông tin thành công!
+              <div className="py-4">
+                <h3 id="contact-dialog-title" className="text-[18px] font-medium text-fg mb-2">
+                  Đã ghi nhận thông tin
                 </h3>
-                <p className="text-[15px] text-neutral-600 dark:text-[#aaaaaa] mb-6">
-                  Đội ngũ Trendifest sẽ liên hệ với bạn trong vòng 24 giờ làm việc để thống nhất
-                  lịch demo.
+                <p className="text-[14px] text-fg-2 leading-[1.55] mb-5">
+                  Cảm ơn bạn đã liên hệ. Đội ngũ phụ trách sẽ phản hồi qua email bạn đã cung cấp.
                 </p>
                 <button
+                  type="button"
                   onClick={() => {
-                    setDemoModalOpen(false);
-                    setDemoSubmitted(false);
+                    setContactModalOpen(false);
+                    setContactSubmitted(false);
                   }}
-                  className="px-6 py-2.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-[#333333] dark:hover:bg-[#404040] text-neutral-900 dark:text-white text-[14.5px] font-medium"
+                  className="h-9 px-4 rounded-lg border border-line bg-canvas hover:bg-hover text-fg text-[14px] font-medium transition-colors duration-150"
                 >
-                  Đóng cửa sổ
+                  Đóng
                 </button>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------ */}
-      {/* 16. Video Walkthrough Modal Dialog                           */}
-      {/* ------------------------------------------------------------ */}
-      {videoModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md"
-        >
-          <div className="w-full max-w-3xl rounded-2xl bg-white dark:bg-[#262626] border border-neutral-200 dark:border-[#363636] p-7 shadow-2xl relative text-left">
-            <button
-              onClick={() => setVideoModalOpen(false)}
-              className="absolute top-4 right-4 text-neutral-400 dark:text-[#888888] hover:text-neutral-900 dark:hover:text-white p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-white/5"
-            >
-              <X className="size-5" />
-            </button>
-
-            <div className="flex items-center gap-2 mb-3 text-purple-700 dark:text-[#a78bfa]">
-              <PlayCircle className="size-5.5" />
-              <span className="text-[13px] font-mono uppercase tracking-wider font-semibold">
-                Video Giới thiệu 2 Phút
-              </span>
-            </div>
-            <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">
-              Cách Trendifest Hoạt Động Trên Thực Tế
-            </h3>
-
-            {/* Video Player Simulation with Step-by-Step Flow */}
-            <div className="aspect-video w-full rounded-xl bg-neutral-900 dark:bg-[#1a1a1a] border border-neutral-800 dark:border-[#333333] flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden">
-              <div className="flex items-center justify-between text-[12.5px] font-mono text-neutral-400 dark:text-[#888888]">
-                <span>MÔ PHỎNG LUỒNG TRINH SÁT (SIMULATION DEMO)</span>
-                <span className="text-emerald-400 font-semibold">● 1080p HD</span>
-              </div>
-
-              <div className="space-y-4 my-auto">
-                <div className="p-5 rounded-2xl bg-neutral-800/90 dark:bg-[#262626] border border-purple-400/40 dark:border-[#a78bfa]/40 shadow-lg max-w-lg mx-auto">
-                  <div className="flex items-center gap-2 text-[14px] text-emerald-400 font-bold mb-1.5">
-                    <Activity className="size-4 animate-spin" />
-                    <span>Thuật toán Hawkes: Phát hiện gia tốc tự kích hoạt</span>
-                  </div>
-                  <p className="text-[15px] text-white leading-relaxed">
-                    Mẫu video CapCut kết hợp âm thanh remix vượt biên từ phân đoạn{" "}
-                    <span className="text-purple-300 dark:text-[#a78bfa] font-semibold">
-                      Shitposting
-                    </span>{" "}
-                    sang{" "}
-                    <span className="text-blue-300 dark:text-[#60a5fa] font-semibold">
-                      Music Discovery
-                    </span>
-                    .
-                  </p>
-                  <div className="mt-2.5 text-[12.5px] font-mono text-neutral-400 dark:text-[#aaaaaa]">
-                    Dự báo xác suất bùng nổ: 74% trong 12 giờ tới (Độ tin cậy: 0.86)
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-neutral-800 dark:border-[#2a2a2a]">
-                <button
-                  onClick={() => {
-                    setVideoModalOpen(false);
-                    onOpenApp();
-                  }}
-                  className="inline-flex items-center gap-2 text-[14.5px] font-bold text-purple-300 dark:text-[#a78bfa] hover:text-white"
-                >
-                  <span>Mở ứng dụng để tự thao tác trực tiếp</span>
-                  <ArrowRight className="size-4" />
-                </button>
-                <span className="text-[12.5px] font-mono text-neutral-400 dark:text-[#777777]">
-                  Thời lượng: 02:14
-                </span>
-              </div>
-            </div>
           </div>
         </div>
       )}
