@@ -1,0 +1,10 @@
+import { launch, openFilm } from './browser.mjs';
+const b = await launch();
+console.log('version', b.version());
+const { pg, errs } = await openFilm(b, 1);
+console.log('errs', JSON.stringify(errs));
+const r = await pg.evaluate(() => ({ ready: !!window.__ready, dur: window.__film && window.__film.dur, n: window.__film && window.__film.cues.length }));
+console.log(JSON.stringify(r));
+const t0 = Date.now(); await pg.evaluate(async () => { await window.__seek(3.3); }); console.log('seek ms', Date.now() - t0);
+const t1 = Date.now(); await pg.screenshot({ path: '/tmp/kf/dbg.png', clip: { x: 0, y: 0, width: 1920, height: 1080 }, timeout: 60000 }); console.log('shot ms', Date.now() - t1);
+await b.close();

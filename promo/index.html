@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trendifest — V3.1</title>
+<style>
+body{max-width:1180px;margin:auto;padding:24px;background:#0a201f;color:#fff5dd;font:16px system-ui,sans-serif}video{display:block;width:100%;background:#071615;aspect-ratio:16/9}
+</style>
+<h1>Trendifest — bản dựng V3.1</h1>
+<video controls playsinline preload="metadata" aria-label="Xem phim giới thiệu Trendifest" src="out/v3.1/RTS%202026%20-%20Video%20-%20TRENDIFEST%20V3.1.mp4"></video>
+<script type="module">
+import { duration, FPS, bpm } from './v3/film.mjs';
+// The skill reads metadata here; playback belongs to the MP4 decoder, never a second seek clock.
+window.__film={title:'TRENDIFEST',dur:duration,fps:FPS,bpm};window.__ready=true;
+</script>
+</html>

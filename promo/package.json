@@ -1,0 +1,15 @@
+{
+  "name": "trendifest-promo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "capture": "node capture.mjs",
+    "render": "CUT=3 node render.mjs",
+    "render:v2": "node render.mjs", 
+    "render:teaser": "CUT=teaser node render.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.1.1",
+    "playwright": "^1.65.1"
+  }
+}

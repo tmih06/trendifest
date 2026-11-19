@@ -1,0 +1,14 @@
+node_modules
+__pycache__/
+media/*
+!media/*.ttf
+!media/OFL-*.txt
+out/
+# V4 generated media: rebuilt by v4/tools/build_audio.py and the ffmpeg frame extraction in README
+v4/audio/
+v4/frames/
+# V5 generated media: v5/tools/build_audio.py, v5/tools/frames.sh, v5/tools/capture.mjs (a capture of the
+# local app and its collected data: re-record it rather than commit it)
+v5/audio/
+v5/frames/
+v5/takes/

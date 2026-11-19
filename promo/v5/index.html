@@ -1,0 +1,169 @@
+<!doctype html>
+<!-- index.html: the V5 film page. 1920x1080 stage; main.js builds it and exposes __seek for the renderer. -->
+<html lang="vi"><head><meta charset="utf-8"><title>TRENDIFEST V5</title>
+<style>
+/* Be Vietnam Pro (OFL) is drawn for Vietnamese: stacked diacritics sit inside the line box at every weight. */
+@font-face { font-family: BVP; src: url(fonts/BeVietnamPro-Light.ttf); font-weight: 300; }
+@font-face { font-family: BVP; src: url(fonts/BeVietnamPro-Regular.ttf); font-weight: 400; }
+@font-face { font-family: BVP; src: url(fonts/BeVietnamPro-Medium.ttf); font-weight: 500; }
+@font-face { font-family: BVP; src: url(fonts/BeVietnamPro-SemiBold.ttf); font-weight: 600; }
+@font-face { font-family: BVP; src: url(fonts/BeVietnamPro-Bold.ttf); font-weight: 700; }
+@font-face { font-family: JBM; src: url(fonts/JetBrainsMono.ttf); }
+:root { --ink: #F5F4FA; --mute: rgba(235,232,255,.58); --line: rgba(255,255,255,.10); --acc: #8C6CFF; --acc2: #5B8CFF; --ok: #3DDC97; --warn: #FFB547; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #000; overflow: hidden; }
+#stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; background: #050507; font-family: BVP, sans-serif; color: var(--ink);
+  -webkit-font-smoothing: antialiased; }
+#bg { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+#world { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; perspective: 2200px; perspective-origin: 960px 540px; }
+.scene { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+.tt-card .meta svg.mini { width: 18px; height: 18px; vertical-align: -3px; }
+.abs { position: absolute; left: 0; top: 0; }
+.full { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+.cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+#vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 46%, transparent 55%, rgba(0,0,0,.55) 100%); }
+/* type */
+.line { position: absolute; left: 0; top: 0; font-weight: 600; letter-spacing: -.02em; line-height: 1.12; white-space: normal; }
+.line .w { display: inline-block; margin-right: .26em; will-change: transform, opacity, filter; }
+.line .w:last-child { margin-right: 0; }
+.grad { background: linear-gradient(180deg, #FFFFFF 10%, #CFC4FF 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.line.grad .w { background: linear-gradient(180deg, #FFFFFF 10%, #CFC4FF 100%); -webkit-background-clip: text; background-clip: text; color: transparent; padding-bottom: .08em; }
+.kick { font-weight: 500; font-size: 26px; letter-spacing: .16em; text-transform: uppercase; color: var(--mute); }
+.tag { position: absolute; left: 0; top: 0; padding: 9px 16px 9px 30px; border-radius: 99px; font: 500 17px BVP; letter-spacing: .08em; text-transform: uppercase;
+  color: rgba(240,238,255,.72); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); white-space: nowrap; }
+.tag::before { content: ''; position: absolute; left: 14px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--c, var(--acc)); }
+/* glass card */
+.card { position: absolute; left: 0; top: 0; border-radius: 28px; background: linear-gradient(160deg, rgba(40,38,58,.92), rgba(17,16,26,.94));
+  border: 1px solid rgba(255,255,255,.11); box-shadow: 0 40px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08); overflow: hidden; }
+.dot { position: absolute; left: 0; top: 0; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 18px 6px rgba(160,140,255,.85), 0 0 60px 24px rgba(120,90,255,.35); }
+.tile { position: absolute; left: 0; top: 0; border-radius: 26px; overflow: hidden; background: #111; box-shadow: 0 30px 70px rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.1); }
+.ico { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* morph object (dot -> audio pill -> Threads comment -> trending row) */
+.morph { position: absolute; left: 0; top: 0; overflow: hidden; background: #0E0E12; border: 1px solid rgba(255,255,255,.14); box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.3); }
+.layer { position: absolute; left: 0; top: 0; }
+.pill { width: 560px; height: 120px; display: flex; align-items: center; padding: 0 34px 0 26px; gap: 22px; }
+.disc { width: 72px; height: 72px; border-radius: 50%; background: conic-gradient(from 0deg, #8C6CFF, #FF5CA8, #FFB547, #5B8CFF, #8C6CFF); position: relative; flex: none; }
+.disc::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px; border-radius: 50%; background: #0E0E12; }
+.pill b { font-weight: 600; font-size: 27px; display: block; }
+.pill span { font-size: 20px; color: var(--mute); }
+.bars { margin-left: auto; display: flex; align-items: center; gap: 5px; height: 64px; }
+.bars i { display: block; width: 6px; border-radius: 3px; background: linear-gradient(#fff, #B9A8FF); }
+/* Threads comment card */
+.th { width: 780px; padding: 30px 34px; font-size: 26px; }
+.th-head { display: flex; align-items: center; gap: 16px; }
+.th-av { width: 58px; height: 58px; border-radius: 50%; background: linear-gradient(135deg, #FFB547, #FF5CA8 55%, #8C6CFF); flex: none; position: relative; }
+.th-av::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #f3d9c9 0 26%, transparent 27%), radial-gradient(circle at 50% 100%, #f3d9c9 0 42%, transparent 43%), #2a2433; }
+.th-head b { font-weight: 600; font-size: 25px; }
+.th-head span { color: rgba(255,255,255,.45); font-size: 23px; }
+.th-more { margin-left: auto; color: rgba(255,255,255,.5); font-size: 28px; letter-spacing: 2px; }
+.th-text { margin: 16px 0 0 74px; line-height: 1.38; font-size: 27px; color: #F2F2F2; }
+.th-acts { margin: 20px 0 0 74px; display: flex; gap: 34px; color: rgba(255,255,255,.62); font-size: 21px; align-items: center; }
+.th-acts div { display: flex; align-items: center; gap: 9px; }
+.th-acts svg { width: 27px; height: 27px; }
+.th-logo { font: 700 30px BVP; }
+/* phone */
+.phone { position: absolute; left: 0; top: 0; width: 440px; height: 900px; border-radius: 62px; background: #0A0A0D; border: 10px solid #1C1C22;
+  box-shadow: 0 50px 120px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.06), 0 0 0 1px rgba(255,255,255,.12); overflow: hidden; }
+.phone .island { position: absolute; left: 50%; top: 16px; width: 124px; height: 36px; margin-left: -62px; border-radius: 20px; background: #000; }
+.phone .hdr { position: absolute; left: 28px; top: 82px; right: 28px; }
+.phone .hdr b { font-size: 34px; font-weight: 700; display: block; }
+.phone .tabs { display: flex; gap: 22px; margin-top: 16px; font-size: 19px; color: var(--mute); }
+.phone .tabs .on { color: #fff; border-bottom: 3px solid #fff; padding-bottom: 6px; }
+.row { position: absolute; left: 14px; width: 392px; height: 104px; border-radius: 18px; background: rgba(255,255,255,.05); display: flex; align-items: center; gap: 16px; padding: 0 18px; }
+.row .rk { font: 700 30px BVP; width: 30px; text-align: center; color: rgba(255,255,255,.5); }
+.row .tx b { display: block; font-size: 22px; font-weight: 600; }
+.row .tx span { font-size: 17px; color: var(--mute); }
+.row .up { margin-left: auto; width: 30px; height: 30px; color: var(--ok); }
+/* ad tile */
+.ad { width: 300px; height: 430px; }
+.ad .ph { position: absolute; left: 0; top: 0; width: 300px; height: 250px; overflow: hidden; }
+.ad .sp { position: absolute; left: 22px; top: 270px; font-size: 17px; color: var(--mute); }
+.ad .br { position: absolute; left: 22px; top: 302px; font-size: 24px; font-weight: 600; }
+.ad .chip { position: absolute; left: 22px; top: 356px; padding: 9px 16px; border-radius: 99px; background: rgba(140,108,255,.18); border: 1px solid rgba(140,108,255,.45); font-size: 18px; display: flex; gap: 8px; align-items: center; }
+.ad .chip svg { width: 18px; height: 18px; }
+/* browser window around a real capture */
+.win { position: absolute; left: 0; top: 0; width: 1520px; height: 950px; border-radius: 20px; overflow: hidden; background: #0C0C10; border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 60px 140px rgba(0,0,0,.7); }
+.win .bar { position: absolute; left: 0; top: 0; right: 0; height: 48px; background: #17171D; border-bottom: 1px solid rgba(255,255,255,.07); }
+.win .bar i { position: absolute; top: 17px; width: 14px; height: 14px; border-radius: 50%; }
+.win .url { position: absolute; left: 50%; top: 10px; width: 440px; margin-left: -220px; height: 28px; border-radius: 8px; background: rgba(255,255,255,.06); font: 400 15px BVP; color: rgba(255,255,255,.55); text-align: center; line-height: 28px; }
+.win .vp { position: absolute; left: 0; top: 48px; width: 1520px; height: 902px; overflow: hidden; }
+.win .take { position: absolute; left: 0; top: 0; width: 1520px; height: 902.5px; transform-origin: 0 0; }
+/* model cards */
+.model { width: 330px; height: 380px; }
+.model canvas { position: absolute; left: 25px; top: 25px; width: 280px; height: 170px; border-radius: 16px; background: rgba(0,0,0,.25); }
+.model b { position: absolute; left: 28px; top: 226px; font-size: 34px; font-weight: 600; }
+.model span { position: absolute; left: 28px; top: 280px; right: 24px; font-size: 21px; line-height: 1.35; color: var(--mute); }
+.plate { position: absolute; left: 0; top: 0; border-radius: 30px; background: linear-gradient(135deg, rgba(140,108,255,.55), rgba(70,60,140,.35)); border: 1.5px solid rgba(200,190,255,.5); }
+.callout { position: absolute; left: 0; top: 0; font-size: 28px; font-weight: 500; white-space: nowrap; }
+.callout small { display: block; font-size: 19px; color: var(--mute); font-weight: 400; margin-top: 4px; }
+/* graph labels */
+.gl { position: absolute; left: 0; top: 0; padding: 10px 18px; border-radius: 99px; font-size: 21px; font-weight: 500; white-space: nowrap; background: rgba(18,17,28,.85); border: 1px solid rgba(255,255,255,.14); }
+.gl.big { font-size: 26px; font-weight: 600; padding: 14px 24px; background: rgba(140,108,255,.25); border-color: rgba(190,175,255,.6); }
+/* chart card */
+.chart { width: 760px; height: 470px; }
+.chart .tt { position: absolute; left: 34px; top: 28px; font-size: 26px; font-weight: 600; }
+.chart .st { position: absolute; left: 34px; top: 66px; font-size: 18px; color: var(--mute); }
+.chart svg.plot { position: absolute; left: 24px; top: 100px; width: 420px; height: 330px; overflow: visible; }
+.wcol { position: absolute; top: 120px; width: 76px; height: 300px; }
+.wcol .bk { position: absolute; left: 14px; top: 0; width: 48px; height: 250px; border-radius: 12px; background: rgba(255,255,255,.06); overflow: hidden; }
+.wcol .fl { position: absolute; left: 0; bottom: 0; width: 48px; border-radius: 12px; background: linear-gradient(0deg, #8C6CFF, #FF7AC0); }
+.wcol b { position: absolute; left: 0; top: 264px; width: 76px; text-align: center; font-size: 20px; font-weight: 600; }
+/* TikTok-style card */
+.tt-card { width: 360px; height: 640px; border-radius: 34px; }
+.tt-card .side { position: absolute; right: 14px; bottom: 130px; display: flex; flex-direction: column; gap: 22px; }
+.tt-card .side i { display: block; width: 50px; height: 50px; border-radius: 50%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.25); padding: 12px; color: #fff; }
+.tt-card .meta { position: absolute; left: 20px; bottom: 26px; right: 80px; font-size: 19px; text-shadow: 0 1px 6px rgba(0,0,0,.6); }
+.tt-card .meta b { display: block; font-size: 21px; margin-bottom: 8px; }
+.tt-card .shade { position: absolute; inset: 0; background: linear-gradient(transparent 55%, rgba(0,0,0,.65)); }
+/* alert card */
+.alert { width: 1000px; height: 640px; overflow: hidden; }   /* film.js animates the height as rows arrive */
+.alert .hd { position: absolute; left: 40px; top: 34px; right: 40px; display: flex; align-items: center; gap: 18px; }
+.alert .hd .pulse { width: 18px; height: 18px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 6px rgba(255,181,71,.2); }
+.alert .hd b { font-size: 36px; font-weight: 600; }
+.alert .hd .auto { margin-left: auto; font-size: 18px; padding: 8px 14px; border-radius: 99px; background: rgba(255,255,255,.07); color: var(--mute); }
+.alert .sub { position: absolute; left: 76px; top: 88px; font-size: 22px; color: var(--mute); }
+.arow { position: absolute; left: 40px; right: 40px; height: 128px; border-radius: 20px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); }
+.arow .ai { position: absolute; left: 26px; top: 38px; width: 52px; height: 52px; border-radius: 14px; background: rgba(140,108,255,.18); color: #CFC4FF; padding: 12px; }
+.arow b { position: absolute; left: 100px; top: 34px; font-size: 25px; font-weight: 600; }
+.arow span { position: absolute; left: 100px; top: 72px; font-size: 18px; color: var(--mute); }
+.arow canvas { position: absolute; left: 480px; top: 24px; width: 420px; height: 80px; }
+.seg { position: absolute; top: 46px; width: 74px; height: 36px; border-radius: 10px; background: rgba(255,255,255,.07); }
+.src { position: absolute; top: 40px; padding: 10px 16px; border-radius: 12px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); font: 400 19px JBM; white-space: nowrap; display: flex; gap: 8px; align-items: center; }
+.src svg { width: 18px; height: 18px; color: var(--acc2); }
+.stamp { position: absolute; left: 0; top: 0; padding: 14px 24px 14px 20px; border-radius: 99px; background: rgba(61,220,151,.16); border: 1.5px solid rgba(61,220,151,.7); color: #BFF5DC; font-size: 26px; font-weight: 600; display: flex; gap: 12px; align-items: center; white-space: nowrap; }
+.stamp svg { width: 30px; height: 30px; color: var(--ok); }
+/* report + export */
+.doc { position: absolute; left: 0; top: 0; width: 460px; height: 600px; border-radius: 18px; background: #F6F5FB; color: #16141F; box-shadow: 0 50px 110px rgba(0,0,0,.6); overflow: hidden; }
+.doc .dh { position: absolute; left: 36px; top: 34px; font-size: 26px; font-weight: 700; line-height: 1.2; }
+.doc .dm { position: absolute; left: 36px; top: 84px; font-size: 16px; line-height: 1.2; color: #6B6880; }
+.doc i { position: absolute; left: 36px; height: 12px; border-radius: 6px; background: #E2E0EC; }
+.doc svg { position: absolute; left: 36px; top: 130px; width: 388px; height: 150px; }
+.btn { position: absolute; left: 0; top: 0; width: 340px; height: 92px; border-radius: 46px; background: linear-gradient(180deg, #9B7FFF, #6E4DF5); box-shadow: 0 20px 50px rgba(110,77,245,.45), inset 0 1px 0 rgba(255,255,255,.35);
+  display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 29px; font-weight: 600; white-space: nowrap; }
+.btn svg { width: 30px; height: 30px; }
+.toast { position: absolute; left: 0; top: 0; padding: 20px 30px 20px 22px; border-radius: 22px; background: rgba(30,29,42,.95); border: 1px solid rgba(255,255,255,.12); display: flex; gap: 16px; align-items: center; font-size: 25px; white-space: nowrap; box-shadow: 0 30px 70px rgba(0,0,0,.5); }
+.toast .ck { width: 44px; height: 44px; border-radius: 50%; background: var(--ok); color: #05301E; padding: 9px; }
+.cursor { position: absolute; left: 0; top: 0; width: 34px; height: 44px; filter: drop-shadow(0 3px 5px rgba(0,0,0,.5)); }
+/* team */
+.person { width: 390px; height: 210px; }
+.person .av { position: absolute; left: 28px; top: 30px; width: 76px; height: 76px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 600; color: #fff; }
+.person b { position: absolute; left: 28px; top: 124px; font-size: 25px; font-weight: 600; white-space: nowrap; }
+.person span { position: absolute; left: 28px; top: 160px; font-size: 18px; color: var(--mute); white-space: nowrap; }
+/* closing pillars */
+.pillar { width: 450px; height: 330px; }
+.pillar canvas { position: absolute; left: 30px; top: 30px; width: 96px; height: 96px; }
+.pillar b { position: absolute; left: 32px; top: 150px; right: 30px; font-size: 30px; font-weight: 600; line-height: 1.3; }
+/* logo (mask, so it takes any fill) */
+.logo { position: absolute; left: 0; top: 0; -webkit-mask: url(logo.svg) center / contain no-repeat; mask: url(logo.svg) center / contain no-repeat; background: linear-gradient(160deg, #FFFFFF 20%, #BBA8FF 70%, #8C6CFF); }
+.halo { position: absolute; left: 0; top: 0; border-radius: 50%; background: radial-gradient(circle, rgba(140,108,255,.55), rgba(140,108,255,0) 65%); }
+.word { position: absolute; left: 0; top: 0; white-space: nowrap; font-weight: 600; letter-spacing: .08em; }
+.word span { display: inline-block; }
+.small { position: absolute; left: 0; top: 0; font-size: 22px; color: var(--mute); white-space: nowrap; letter-spacing: .04em; }
+/* preview scrubber (not drawn in renders) */
+.scrub { position: fixed; left: 20px; right: 20px; bottom: 10px; z-index: 9; }
+.scrubt { position: fixed; right: 24px; bottom: 34px; z-index: 9; color: #fff; font: 14px JBM; background: rgba(0,0,0,.6); padding: 4px 8px; }
+</style></head>
+<body><div id="stage"><canvas id="bg" width="480" height="270"></canvas><div id="world"></div><div id="vig"></div><div id="hud"></div></div>
+<script type="module" src="main.js"></script></body></html>

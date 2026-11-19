@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trendifest — V2</title>
+<style>
+@font-face{font-family:Archivo;src:url(media/Archivo.ttf);font-weight:100 900;font-display:block}
+@font-face{font-family:'JetBrains Mono';src:url(media/JetBrainsMono.ttf);font-weight:100 800;font-display:block}
+body{box-sizing:border-box;max-width:1180px;margin:auto;padding:24px;background:#171329;color:#fffefa;font:16px system-ui,sans-serif}
+canvas{display:block;width:100%;height:auto;background:#211650} audio,input{width:100%;display:block;margin:14px 0} output{color:#ddf580}
+</style>
+<h1>Trendifest — bản dựng V2</h1>
+<canvas width="1920" height="1080" aria-label="Khung hình hiện tại"></canvas>
+<audio controls src="out/v2/mix.wav" aria-label="Thuyết minh và nhạc nền"></audio>
+<label for="seek">Tua thời gian</label><input id="seek" type="range" min="0" value="0" step="0.016666667"><output for="seek"></output>
+<script type="module">
+import { cue, draw, duration, mediaFiles } from './film.mjs';
+const c=document.querySelector('canvas').getContext('2d'), audio=document.querySelector('audio');
+const slider=document.querySelector('input'), label=document.querySelector('output');
+slider.max=duration;
+const logo=new Image();logo.src='../public/logo.svg';
+const videos=Object.fromEntries(Object.entries(mediaFiles).map(([key,file])=>{
+  const v=document.createElement('video');v.src='media/'+file;v.preload='auto';v.muted=true;return [key,v];
+}));
+await Promise.all([logo.decode(),document.fonts.load('800 100px Archivo'),document.fonts.load('600 26px JetBrains Mono')]);
+let seeking=false;
+/** Paints the newest requested audio time; slow media seeks may drop preview frames, never render frames. */
+async function tick() {
+  const t=audio.currentTime,{media,at}=cue(t),source=videos[media];
+  if(!seeking) {
+    seeking=true;
+    try {
+      if(source?.readyState>=2) {
+        const to=Math.min(at,source.duration-0.06);
+        if(Math.abs(source.currentTime-to)>.028) {
+          const seeked=new Promise(resolve=>source.addEventListener('seeked',resolve,{once:true}));
+          source.currentTime=to;await seeked;
+        }
+      }
+      draw(c,t,{logo,source:source?.readyState>=2?source:undefined});
+      slider.value=t;label.textContent=t.toFixed(2)+' s';
+    } finally { seeking=false; }
+  }
+  requestAnimationFrame(tick);
+}
+slider.addEventListener('input',()=>{ audio.currentTime=Number(slider.value); });
+tick();
+</script>
